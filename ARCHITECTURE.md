@@ -210,12 +210,13 @@ Modules, using domain-driven boundaries rather than one module per brief-listed 
 - **WalletsModule**: smart account deployment, session key issuance and revocation, paymaster budget tracking
 - **StrategiesModule**: genome schema, strategy-plugin registry (trading is the first plugin, see section 12)
 - **X402Module**: the x402 client wrapper, provider allowlist, response-outcome logging
-- **RiskModule**: the app-layer Policy/Risk Engine described in section 1; evaluates every proposed action before it is enqueued for execution
+- **RiskModule**: the app-layer Policy/Risk Engine described in section 1, packaged as a shared internal library, not a network service. The agent worker imports it directly and calls it in-process for every proposed action before submitting execution; the API imports the same package for read-only preview or dry-run use (for example, letting a user see whether a hypothetical action would pass policy before an agent proposes it for real), but the API never invokes it as part of any live agent decision, since the API has no agent loop to make that decision in. One rule implementation, two processes importing it, no network hop on the enforcement path.
 - **TradingModule**: Kuru integration, order submission, fill tracking
 - **FitnessModule**: computes and stores the fitness metric defined in `EVOLUTION.md` on the fixed evaluation cadence
 - **ReproductionModule**: eligibility evaluation, mutation operator, child provisioning orchestration
-- **IndexerModule**: on-chain event ingestion into the Postgres read-model; the only module permitted to write agent identity/lineage rows sourced from chain state, so the read-model's provenance is always traceable to an on-chain event
-- **SimulationModule**: runs the deterministic simulator against synthetic market conditions, does not touch real wallets or real chain state, used to validate `EVOLUTION.md`'s mechanism before it is trusted with real capital
+- **SimulationModule**: a thin NestJS wrapper that triggers and stores results from the standalone simulation engine (the top-level `simulation/` package, reusable outside the API, matching the brief's requirement to build the simulator before real trading). The engine itself does not touch real wallets or real chain state; SimulationModule's job is only to run it on demand and persist its output for the dashboard, not to reimplement its logic.
+
+Not created as an API module: an Indexer. Per section 1, the indexer is a separate deployable component, not one of the API's NestJS modules, because it has a different failure and retry profile (syncing on-chain events into Postgres) than the API's request/response workload. It may share code with the API (for example, the same database models), but it runs and scales independently.
 
 Not created for the MVP: a separate BlockchainModule (RPC access is a thin shared provider, not a domain module) and a MarketDataModule distinct from TradingModule (Kuru's own market data is consumed inside TradingModule for the MVP's single-venue scope; this splits out only once a second venue is integrated).
 

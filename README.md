@@ -12,6 +12,7 @@ Working order: research first, documentation second, implementation last. Nothin
 
 ## Documents
 
+- [`BRIEF.md`](./BRIEF.md): the founding product brief every other document cites as its source of requirements
 - [`ARCHITECTURE.md`](./ARCHITECTURE.md): system architecture, component/data/capital flow, on-chain/off-chain boundary, wallet architecture decision
 - [`EVOLUTION.md`](./EVOLUTION.md): genome, fitness, reproduction, mutation, population dynamics
 - [`ECONOMICS.md`](./ECONOMICS.md): capital model, cost model, preliminary population simulations
