@@ -14,8 +14,8 @@ The genome is the set of parameters that define one agent's strategy and behavio
 |---|---|---|
 | `strategyType` | Immutable | Only one strategy plugin (trading) exists at MVP scope; immutable because there is nothing to mutate it into yet, not because strategy switching is disallowed in principle. See `ARCHITECTURE.md` section 12. |
 | `assetUniverse` | Mutable, inherited, mutated | Subset of a platform-defined allowed pair list. Cannot mutate outside the allowed list. |
-| `riskTolerance` (max position size as a fraction of capital) | Mutable, inherited, mutated, externally constrained | Mutation cannot push this above a protocol-level hard ceiling regardless of how many generations mutate it upward. |
-| `executionFrequency` (tick interval) | Mutable, inherited, mutated, externally constrained | Bounded below by a protocol minimum interval, so no agent can mutate toward a tick rate that turns gas and x402 cost into a denial-of-service against itself or the shared RPC/facilitator infrastructure. |
+| `riskTolerance` (max position size as a fraction of capital) | Mutable, inherited, mutated, externally constrained | Mutation cannot push this above a protocol-level hard ceiling regardless of how many generations mutate it upward. Proposed default ceiling: 0.25. Proposed default floor: 0.01. Both are provisional pending the M1 simulation epic (issue #10). |
+| `executionFrequency` (tick interval) | Mutable, inherited, mutated, externally constrained | Bounded below by a protocol minimum interval, so no agent can mutate toward a tick rate that turns gas and x402 cost into a denial-of-service against itself or the shared RPC/facilitator infrastructure. Proposed default range: 1 to 50 ticks. The floor of 1 is the minimum interval. The ceiling of 50 gives mutation a clip. Both are provisional pending issue #10. |
 | `timeHorizon` (signal lookback window) | Mutable, inherited, mutated | |
 | `entryConditions`, `exitConditions` (indicator thresholds) | Mutable, inherited, mutated | Strategy-plugin-specific parameter schema, validated against the plugin's own bounds before being accepted. |
 | `informationSources` (which of the MVP's two x402 providers to query, and how often) | Mutable, inherited, mutated, externally constrained | Bounded by `informationBudget` below. |
@@ -46,7 +46,7 @@ downside_deviation = sqrt( mean( min(0, r_i - target)^2 ) )
 raw_sortino = (mean(r_i) - target) / downside_deviation
 ```
 
-where `r_i` is the per-tick return net of costs, and `target` is a protocol-level minimum acceptable return (defaulted to zero: any tick that loses money net of costs counts against downside deviation). If `downside_deviation` is exactly zero (no losing ticks at all in the window), the agent is not assigned an artificially maximal score; it is flagged for manual review instead. A real strategy realizing genuine zero downside over a meaningful sample is a strong signal of something worth investigating on its own, wash trading against a predictable counterparty, a policy-engine gap the agent is exploiting, or a market-data or accounting bug, not a signal to reward blindly.
+where `r_i` is the per-tick return net of costs, and `target` is a protocol-level minimum acceptable return (defaulted to zero: any tick that loses money net of costs counts against downside deviation). If `downside_deviation` is exactly zero (no losing ticks at all in the window), the agent is not assigned an artificially maximal score; it is flagged for review instead. The operational workflow for that flag is in section 2.3. A real strategy realizing genuine zero downside over a meaningful sample is a strong signal of something worth investigating on its own, wash trading against a predictable counterparty, a policy-engine gap the agent is exploiting, or a market-data or accounting bug, not a signal to reward blindly.
 
 ### 2.3 Skill versus luck: shrinkage toward the population
 
@@ -57,19 +57,29 @@ w(n) = n / (n + k)
 adjusted_fitness = w(n) * raw_sortino + (1 - w(n)) * population_median_sortino
 ```
 
-`n` is the agent's trade count in the evaluation window, and `k` is a protocol-level constant representing how many trades of evidence it takes before an agent's own track record is trusted more than the population's baseline. This does not claim to separate skill from luck with certainty; it claims something narrower and defensible: an agent with very little evidence is scored close to the population average rather than close to whatever its first few, possibly lucky or unlucky, trades happened to produce, and an agent with a long track record is scored increasingly on its own merits.
+`n` is the agent's trade count in the evaluation window, and `k` is a protocol-level constant representing how many trades of evidence it takes before an agent's own track record is trusted more than the population's baseline. Proposed default: `k = 20`. At that value, `w(n)` reaches one half at the same trade count as `N_min`, so an agent is only half-trusted on its own record at the point reproduction eligibility can even be considered. The order of magnitude is tens of trades: `k = 1` would make shrinkage do almost nothing, and a `k` in the hundreds would keep almost every MVP-scale track record glued to the population median. This value is a proposed default, provisional pending the M1 simulation epic (issue #10), not a final constant.
+
+This does not claim to separate skill from luck with certainty; it claims something narrower and defensible: an agent with very little evidence is scored close to the population average rather than close to whatever its first few, possibly lucky or unlucky, trades happened to produce, and an agent with a long track record is scored increasingly on its own merits.
+
+**Zero downside deviation.** When section 2.2 flags an agent because `downside_deviation` is exactly zero and the window contains at least one trade, the following workflow applies. It is a proposed operating rule, provisional pending issue #10, not a claim that the right reviewer or the right pause length has been measured.
+
+- The flag triggers on that window. It does not trigger on a window with no trades.
+- A platform operator reviews the flag. The agent does not review itself, and the model does not clear its own flag.
+- While the flag is set, the agent keeps trading. Reproduction eligibility is paused. The agent is not retired merely because the flag is set.
+- The flag clears when an operator explicitly clears it after review, or when a later evaluation window has a downside deviation other than zero. The audit record of the flag is kept either way.
+- In the simulation engine there is no operator. The flag is recorded, and reproduction eligibility stays paused until a later window has non-zero downside.
 
 A **hard minimum trade count** (`N_min`, a protocol constant, proposed default 20) gates reproduction eligibility regardless of shrinkage-adjusted score. Shrinkage alone is not sufficient protection against a single lucky trade triggering premature reproduction; the hard floor exists because shrinkage only reduces the size of the effect, it does not eliminate the risk of a very small sample producing a high score by chance.
 
 ### 2.4 Fitness is relative, not absolute
 
-Fitness is expressed as a percentile within the live population over a trailing window, not as an absolute number compared against a fixed bar. This follows directly from a finding in the research phase: artificial-market simulations of evolving trading populations show that populations do not converge to one stable best strategy, they cycle through a continuing, regime-shifting competition among coexisting strategies, so a fixed absolute bar would either reward everyone during a favorable regime or reproduce nobody during an unfavorable one, neither of which reflects genuine relative fitness within that regime.
+Fitness is expressed as a percentile within the live population over a trailing window, not as an absolute number compared against a fixed bar. Proposed default window length: 100 ticks. That is several times `N_min` and still shorter than the 300-tick horizon used in `ECONOMICS.md` section 4, so a regime shift can show up inside one run and a single tick cannot dominate the percentile. This length is a proposed default, provisional pending issue #10, not a final window. This follows directly from a finding in the research phase: artificial-market simulations of evolving trading populations show that populations do not converge to one stable best strategy, they cycle through a continuing, regime-shifting competition among coexisting strategies, so a fixed absolute bar would either reward everyone during a favorable regime or reproduce nobody during an unfavorable one, neither of which reflects genuine relative fitness within that regime.
 
 ## 3. Reproduction
 
 ### 3.1 Eligibility
 
-All of the following must hold, evaluated on a fixed cadence (not on every tick, so that reproduction decisions are never made on single-tick noise):
+All of the following must hold, evaluated on a fixed cadence (not on every tick, so that reproduction decisions are never made on single-tick noise). Proposed default cadence: every 20 ticks. Proposed default `cooldown`: 40 ticks, two evaluation cadences, which is the concrete reading of "long enough to span multiple evaluation windows" until simulation tunes it. Both numbers are proposed defaults, provisional pending issue #10, not final.
 
 1. Agent status is Active.
 2. `n_trades >= N_min` (protocol constant, proposed default 20).
@@ -88,7 +98,7 @@ parent.capital -= child_capital
 child.principal = child_capital
 ```
 
-`reproduction_fraction` (protocol constant, proposed default 50 percent) and `max_child_capital` (protocol constant, an absolute ceiling) are both fixed, non-genome parameters. The allocation is computed against the parent's **profit only**, `parent.capital - parent.principal`, never against the parent's principal.
+`reproduction_fraction` (protocol constant, proposed default 50 percent) and `max_child_capital` (protocol constant, an absolute ceiling) are both fixed, non-genome parameters. Proposed default for `max_child_capital`: the parent's own starting principal (10 in the illustrative capital model of `ECONOMICS.md`). The ceiling exists so a single reproduction cannot move an arbitrarily large profit into one child. This number is a proposed default, provisional pending issue #10, not a final ceiling. The allocation is computed against the parent's **profit only**, `parent.capital - parent.principal`, never against the parent's principal.
 
 **Explicit invariant, enforced by the ledger, not just by this formula**: `parent.capital >= parent.principal` must hold both before and after every reproduction event. A parent never reproduces itself below its own starting capital. This is a deliberate departure from the brief's original $5 to $10 to two times $5 worked example, which implicitly has the parent give up half its total capital, effectively halving the parent for every child produced. That version does not conserve the parent's own survival, which the brief itself later asks this document to investigate (brief section 15: "investigate parent survival"). The mechanism adopted here answers that question directly: the parent survives every reproduction event by construction, because only profit above its own principal is ever at risk of being allocated to a child.
 
@@ -98,7 +108,14 @@ child.principal = child_capital
 
 Single-parent reproduction only for the MVP. Crossover (combining two parents' genomes) is deliberately not implemented: it requires a mate-selection mechanism and a way to combine potentially incompatible genome instances that has no validated design yet, and the brief's own base case is single-parent inheritance. This is noted as a documented future extension, not a gap.
 
-Each mutable genome field (section 1) is mutated independently with probability `p_mut` (protocol constant, proposed default 15 percent per field per reproduction event). A mutated field's new value is drawn from a bounded perturbation of its current value (proposed default: up to 20 percent of the field's current value, clipped to that field's own allowed range from section 1). This keeps mutation exploratory without being able to jump a child's genome to an extreme, unvalidated configuration in one generation.
+Each mutable genome field (section 1) is mutated independently with probability `p_mut` (protocol constant, proposed default 15 percent per field per reproduction event). A mutated numeric field's new value is drawn from a uniform distribution on the symmetric interval from -20 percent to +20 percent of the field's current value, added to that current value, then clipped to the field's allowed range from section 1. The draw is mean-zero: the perturbation is as likely to shrink the field as to grow it. This is a proposed default, provisional pending issue #10.
+
+Fields that are not numeric do not use that percentage draw:
+
+- A set-valued field (`assetUniverse`) either gains or loses exactly one element from the platform allowlist, chosen uniformly, and the result is clipped so the set is never empty and never leaves the allowlist.
+- An allow-listed categorical field (`modelConfiguration`) jumps to a different value in its allowlist, chosen uniformly.
+
+Both of those rules use the same per-field `p_mut`. They are proposed defaults, provisional pending issue #10, stated here so the simulation engine does not invent a second mutation rule for non-numeric fields.
 
 ## 4. Population caps and controls
 
@@ -110,7 +127,7 @@ Each mutable genome field (section 1) is mutated independently with probability 
 
 The research phase flagged, from general evolutionary-computation practice independent of any crypto-specific source, that premature convergence to a single dominant strategy (a monoculture) is a well-documented risk in population-based optimization generally. Two mechanisms are adopted for the MVP, both established techniques from evolutionary computation rather than invented ones, and one candidate mechanism is explicitly deferred:
 
-1. **Niche-based fitness sharing**: agents are bucketed into a strategy niche by discretizing two or three key genome parameters (proposed: asset universe and risk-tolerance band). Reproduction eligibility (section 3.1, rule 4) is evaluated against the agent's own niche median, not the global population median. If a single niche's population share exceeds a protocol-level threshold (proposed default 40 percent of the live population), agents in that niche receive a reproduction-eligibility penalty, making it structurally harder for an already-dominant strategy to keep growing its share purely by being dominant.
+1. **Niche-based fitness sharing**: agents are bucketed into a strategy niche by discretizing two key genome parameters: asset universe and risk-tolerance band. Asset-universe membership is an exact-set match, not an overlap score. Exact match needs no extra similarity threshold, and two agents are in the same asset niche only when they trade the same set of pairs. Risk tolerance uses five bands over the proposed range from section 1, with cuts at 0.05, 0.10, 0.15, and 0.20: `[0.01, 0.05)`, `[0.05, 0.10)`, `[0.10, 0.15)`, `[0.15, 0.20)`, `[0.20, 0.25]`. The band count, the cuts, and the exact-set rule are proposed defaults, provisional pending issue #10. Reproduction eligibility (section 3.1, rule 4) is evaluated against the agent's own niche median, not the global population median. If a single niche's population share exceeds a protocol-level threshold (proposed default 40 percent of the live population), agents in that niche receive a reproduction-eligibility penalty, making it structurally harder for an already-dominant strategy to keep growing its share purely by being dominant.
 2. **Diversity-responsive mutation**: when a niche exceeds the same population-share threshold, `p_mut` for that niche's next reproduction events is increased (proposed: doubled), pushing new offspring further from the dominant cluster than default mutation would.
 3. **A minimum niche floor (artificially protecting a low-fitness niche from ever going extinct) is deliberately not implemented for the MVP.** Doing so would directly contradict the product's own thesis, that agents compete for capital and survive or become inactive based on fitness, by exempting some agents from that competition. This is flagged as a testable question for the simulation engine, not a settled decision: if simulation shows that niche-based fitness sharing alone is insufficient to prevent full population collapse into a monoculture, a floor is the next mechanism to test, not to assume necessary in advance.
 
@@ -118,15 +135,15 @@ The research phase flagged, from general evolutionary-computation practice indep
 
 There is no "death" state that deletes an agent. An agent is **retired**, not destroyed, when any of the following holds:
 
-- Capital falls below a protocol-level minimum viable floor (proposed default: an amount below which fixed per-tick costs, gas plus the minimum viable x402 information purchase, make further trading not economically rational for that agent specifically).
-- Adjusted fitness percentile stays in the bottom decile of its niche for `K` consecutive evaluation windows without recovering (a starvation rule, protocol constant `K` to be tuned in simulation).
+- Capital falls below a protocol-level minimum viable floor (proposed default: 0.06, which sits just above one tick of the base-case gas cost plus one low-end x402 call from `ECONOMICS.md` section 1, the amount below which fixed per-tick costs make further trading not economically rational for that agent). This floor is a proposed default, provisional pending issue #10.
+- Adjusted fitness percentile stays in the bottom decile of its niche for `K` consecutive evaluation windows without recovering (a starvation rule). Proposed default: `K = 3`. This is a proposed default, provisional pending issue #10, not a measured retirement horizon.
 - The user explicitly retires the agent.
 
 A retired agent stops ticking. Its on-chain identity flips to an inactive status but is never removed; its full trade, fitness, and lineage history remains queryable, matching the brief's own "survive or become inactive" framing rather than a "die" framing, and matching ERC-8004's own pattern of persistent, non-deletable agent identity. Retirement never seizes or force-liquidates remaining capital: whatever balance is left in the agent's smart account stays there, recoverable by the account's owner, the user, under the wallet architecture defined in `ARCHITECTURE.md`.
 
 ## 7. What simulation must validate before any of this touches real capital
 
-This document defines a mechanism, not a proven one. The specific numeric constants proposed throughout (`N_min`, `cooldown`, `P_threshold`, `profit_threshold_fraction`, `reproduction_fraction`, `max_child_capital`, `p_mut`, the niche-share threshold, the population cap, and `K`) are starting hypotheses for the simulation engine to test and tune, not final values. Before any of this mechanism is trusted with testnet or mainnet capital, the simulation engine (see `ECONOMICS.md`) must produce evidence, not an assumption, that:
+This document defines a mechanism, not a proven one. The specific numeric constants proposed throughout (`k`, the trailing fitness window, the evaluation cadence, `N_min`, `cooldown`, `P_threshold`, `profit_threshold_fraction`, `reproduction_fraction`, `max_child_capital`, `p_mut`, the mutation band, the risk-tolerance ceiling and bands, the execution-frequency range, the niche-share threshold, the population cap, the capital floor, and `K`) are starting hypotheses for the simulation engine to test and tune, not final values. Before any of this mechanism is trusted with testnet or mainnet capital, the simulation engine (see `ECONOMICS.md`) must produce evidence, not an assumption, that:
 
 1. A reproducing population achieves better risk-adjusted, cost-inclusive returns than an equivalently sized population of independently configured static agents with no reproduction, across multiple market regimes (trending, mean-reverting, choppy, and a stress scenario). If it does not, the evolutionary mechanism is not earning its own complexity, and that is a legitimate outcome for this document to report honestly, not a result to suppress.
 2. Niche-based fitness sharing, as specified in section 5, actually prevents collapse into a monoculture at population sizes of 10, 100, and 1,000 agents, within a reasonable number of generations.
