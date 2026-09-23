@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: simulation/package-lock.json
+      - name: install
+        working-directory: simulation
+        run: npm ci
+      - name: test
+        working-directory: simulation
+        run: npm test
+      - name: reject em dash
+        run: |
+          if git grep -n -I $'\u2014' -- . ':!simulation/package-lock.json'; then
+            exit 1
+          fi
