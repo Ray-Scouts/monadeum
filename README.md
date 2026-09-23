@@ -17,7 +17,7 @@ Working order: research first, documentation second, implementation last. Nothin
 - [`EVOLUTION.md`](./EVOLUTION.md): genome, fitness, reproduction, mutation, population dynamics
 - [`ECONOMICS.md`](./ECONOMICS.md): capital model, cost model, preliminary population simulations
 - [`THREAT-MODEL.md`](./THREAT-MODEL.md): assets, actors, trust boundaries, attack scenarios, security invariants
-- [`SECURITY.md`](./SECURITY.md): wallet security, agent permissions, AI security, key management, emergency controls
+- [`SECURITY.md`](./SECURITY.md): wallet security, agent permissions, AI security, key management, emergency controls, and the three operating modes
 
 Every numeric constant and vendor choice in these documents is marked as either a researched fact or a stated hypothesis to be validated in simulation and testnet, per each document's own limitations section. None of it is final.
 
