@@ -91,6 +91,8 @@ export interface ReproductionInput {
   populationSize: number;
   populationCap: number;
   nowTick: number;
+  /** Niche percentile the agent must reach. 0.5 normally, 0.75 when the niche is over-represented. */
+  requiredPercentile: number;
 }
 
 export interface ReproductionDecision {
@@ -178,4 +180,8 @@ export interface RunConfig {
   risk?: RiskModule;
   execution?: ExecutionBackend;
   principal?: number;
+  /** Niche ranking and the over-represented penalty. Defaults to on. */
+  diversity?: boolean;
+  /** Spread starting genomes across pairs and risk bands. */
+  spreadNiches?: boolean;
 }

@@ -2,7 +2,7 @@ import { createExecutionBackend, DEFAULT_COSTS } from "./execution.js";
 import { createFitnessModule, sortinoParts } from "./fitness.js";
 import { generateMarket } from "./market.js";
 import { experimentPopulationCap, PROTOCOL } from "./protocol.js";
-import { createReproductionModule, median, nicheKey, percentile } from "./reproduction.js";
+import { createReproductionModule, median, nicheKey, nichePressure, percentile } from "./reproduction.js";
 import { createRiskModule } from "./risk.js";
 import { saltedRng } from "./rng.js";
 import { propose } from "./strategy.js";
@@ -99,12 +99,30 @@ export function run(config: RunConfig): RunResult {
   const agentRng = saltedRng(config.seed, 2);
   const bars = generateMarket(config.regime, config.ticks, marketRng);
   const cap = experimentPopulationCap(config.population);
+  const diversity = config.diversity !== false;
+  const bandMids = [0.03, 0.07, 0.12, 0.17, 0.22];
+  const pairSets = [["PAIR_A"], ["PAIR_B"], ["PAIR_C"], ["PAIR_A", "PAIR_B"], ["PAIR_A", "PAIR_C"]];
+  const startingGenome = (index: number): Genome => {
+    if (!config.spreadNiches) {
+      return {
+        ...baseGenome,
+        assetUniverse: [...baseGenome.assetUniverse],
+        informationSources: [...baseGenome.informationSources],
+      };
+    }
+    return risk.clipGenome({
+      ...baseGenome,
+      riskTolerance: bandMids[index % bandMids.length] ?? 0.1,
+      assetUniverse: [...(pairSets[index % pairSets.length] ?? ["PAIR_A"])],
+      informationSources: [...baseGenome.informationSources],
+    });
+  };
 
   const agents: Agent[] = [];
   for (let i = 0; i < config.population; i++) {
     agents.push({
       id: `a${String(i).padStart(4, "0")}`,
-      genome: { ...baseGenome, assetUniverse: [...baseGenome.assetUniverse], informationSources: [...baseGenome.informationSources] },
+      genome: startingGenome(i),
       capital: principal,
       principal,
       status: "active",
@@ -201,11 +219,17 @@ export function run(config: RunConfig): RunResult {
       });
 
       const active = agents.filter((agent) => agent.status === "active");
-      const scores = active
-        .map((agent) => agent.adjustedFitness)
-        .filter((value): value is number => value !== null);
+      const matesOf = (agent: Agent): Agent[] => {
+        if (!diversity) return active;
+        const key = nicheKey(agent.genome);
+        const mates = active.filter((item) => nicheKey(item.genome) === key);
+        return mates.length > 0 ? mates : active;
+      };
       for (const agent of active) {
         if (agent.adjustedFitness === null) continue;
+        const scores = matesOf(agent)
+          .map((item) => item.adjustedFitness)
+          .filter((value): value is number => value !== null);
         const rank = percentile(agent.adjustedFitness, scores);
         if (rank <= 0.1) agent.lowFitnessWindows += 1;
         else agent.lowFitnessWindows = 0;
@@ -221,12 +245,16 @@ export function run(config: RunConfig): RunResult {
         });
         for (const parent of ordered) {
           if (agents.length >= cap) break;
+          const mates = matesOf(parent);
+          const share = active.length === 0 ? 0 : mates.length / active.length;
+          const pressure = nichePressure(share, diversity);
           const decision = reproduction.evaluate({
             agent: snapshot(parent, bar.tick),
-            reference: agents.filter((agent) => agent.status === "active").map((agent) => snapshot(agent, bar.tick)),
+            reference: mates.map((agent) => snapshot(agent, bar.tick)),
             populationSize: agents.length,
             populationCap: cap,
             nowTick: bar.tick,
+            requiredPercentile: pressure.requiredPercentile,
           });
           if (!decision.eligible) continue;
           const allocation = reproduction.allocate({
@@ -243,7 +271,7 @@ export function run(config: RunConfig): RunResult {
           const childGenome = reproduction.mutate({
             genome: parent.genome,
             rng: agentRng,
-            pMut: PROTOCOL.pMut,
+            pMut: pressure.pMut,
           });
           agents.push({
             id: `c${String(nextChild).padStart(4, "0")}`,
