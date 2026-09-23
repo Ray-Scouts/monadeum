@@ -28,6 +28,10 @@ A population of agents, each with a small, fixed, hidden "skill" parameter (repr
 
 ## 4. Results
 
+### 4.1 Preliminary single-seed table
+
+The block below is the preliminary model, one seed (`RNG_SEED = 42`), all-in every tick. It is the antecedent. Section 4.2 is the result that supersedes it.
+
 ```
  pop             regime      mode  end_pop  total_cap  roi_pct  sortino   gini  repro
   10           trending    static       10      90.74    -9.26  -0.0754  0.230      0
@@ -58,7 +62,17 @@ A population of agents, each with a small, fixed, hidden "skill" parameter (repr
 
 (`roi_pct` is total ending population capital versus total starting capital deployed; `sortino` is the population-level realized risk-adjusted return over the full run; `gini` is the Gini coefficient of capital across surviving agents; `repro` is the total count of reproduction events.)
 
+### 4.2 Multi-seed legal policy
+
+`simulation/results/multiseed.md` is 50 seeds, 300 ticks, diversity on, risk tolerance 0.25, trade every tick. That policy was the best static legal cell in the sizing sweep. Mean ROI is about -35 to -36 percent in the trending regime and about -39 to -42 percent in the other three, at every population size. The sample standard deviation is a few percentage points, and smaller at population 1,000 except where the regime itself is noisy. Evolving and static match to the reported precision in every one of the 12 cells. The Welch two-sided p-value on ROI is 1. The gap is 0. No cell is outside the noise of a single run, because the two modes are the same run: reproduction count stays at zero, so the evolutionary branch never diverges.
+
 ## 5. What these numbers actually say, read honestly
+
+**The multi-seed legal-policy runs are the numbers to use.** The paragraphs under the next heading were written about section 4.1 and stay here so that antecedent is not quietly rewritten. They are not a description of section 4.2.
+
+Under the legal policy, both modes lose about 35 to 42 percent of capital over 300 ticks. The loss is stable across 50 seeds. It is not an evolving-versus-static result. Nothing reproduced, so niche sharing, shrinkage, and the reproduction threshold did not get a chance to move ROI. The stress regime has the worst mean, about -42 percent, and there is no evolutionary pattern there to be an exception to. The sizing sweep already points at the fixed x402 charge on a capped position as the drag. Section 8, once published, is the go/no-go that uses these cells.
+
+### What the preliminary single-seed table said
 
 **The dominant finding is not about evolution, it is about cost drag, and it is a genuinely useful finding to have surfaced this early.** Every regime except the mildly-trending one loses roughly 45 to 60 percent of deployed capital over 300 ticks, including the static, no-reproduction baseline. That loss is not evolution's fault: it comes from the combination of trading full capital every single tick and paying a 15-basis-point-per-tick assumed fee-and-slippage cost, which compounds to a large cumulative drag over hundreds of ticks regardless of any trading edge. This is exactly the kind of result a simulation phase is supposed to surface before real capital is at risk: **trading frequency and position sizing are not minor tuning parameters, they are the first-order determinant of whether this system is economically viable at all**, and the default assumption used in this quick model (trade everything, every tick) is a bad one that `EVOLUTION.md`'s genome already defines the tools to avoid (`executionFrequency`, `riskTolerance`), but which this preliminary model does not yet apply. Before any testnet capital is committed, the production simulation engine needs to sweep realistic position-size and frequency ranges, not the worst-case default used here to get a first result quickly.
 
