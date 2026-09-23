@@ -112,6 +112,14 @@ The LLM proposes an action referencing a nonexistent asset, a wrong amount or de
 
 **Mitigation**: the Policy/Risk Engine performs structural validation, asset membership in the agent's allowed universe, amount bounds, destination allowlist, on every proposed action independent of how well-reasoned the LLM's justification sounds. A proposal failing structural validation is rejected before any signing step, regardless of its stated rationale.
 
+### Scenario G: compromised root credential with population-wide blast radius
+
+The user's root wallet is the owner of every agent smart account that user controls (`ARCHITECTURE.md` section 6). That is what makes recovery possible: one credential can revoke a session key or sweep a compromised agent. It is also what makes the credential a population-wide key. An attacker who phishes or otherwise takes that root credential can, in one session, revoke or sweep every agent the user owns. No single agent's spend limit catches this, because the actions are owner actions, not agent actions. This is the same category of blast radius as scenario D, triggered by a stolen root credential rather than by a mutation.
+
+**Consequence if unmitigated**: every agent under that root wallet can be drained or halted together, in the time it takes to submit one transaction per agent.
+
+**Mitigation**: a single-agent revoke or sweep still executes immediately, which is what `ARCHITECTURE.md` section 6 requires for recovery from one compromised agent. An action that names more than one agent, or that would touch more than three distinct agents from the same root wallet inside 60 minutes, is held. Release takes a second confirmation that restates the agent count, then a 15 minute delay. The rule is specified in `SECURITY.md` section 9 (bulk recovery hold). The on-chain enforcement is later work (issue #26). The hold does not apply to a lone revoke or sweep while the rolling count is still within the threshold.
+
 ## 7. Security invariants
 
 1. An agent's smart account rejects any transaction exceeding its own on-chain-encoded spend limit, regardless of what the application layer approved.
@@ -121,7 +129,7 @@ The LLM proposes an action referencing a nonexistent asset, a wrong amount or de
 5. Protocol-level parameters (spend caps, reproduction thresholds, mutation bounds, population caps) are not part of any agent's genome and are not modified by mutation, reproduction, or any agent's own proposed action.
 6. A failed or malformed external API call never causes an action to proceed as though the call had succeeded.
 7. The LLM's output is never itself sufficient authorization for a financial action; every proposed action passes through the Policy/Risk Engine and is independently bounded by the on-chain smart account limit before it can execute.
-8. The user can revoke an agent's session key at any time, immediately stopping that agent's ability to transact, without affecting any other agent or the user's own root wallet.
+8. The user can revoke one agent's session key at any time, immediately stopping that agent's ability to transact, without affecting any other agent or the user's own root wallet. A bulk revoke or sweep, or the action that would put the same root wallet over three distinct agents inside 60 minutes, is held as specified in `SECURITY.md` section 9. That hold is the mitigation for scenario G. It is not a delay on the single-agent path.
 9. An agent's identity, once created, is never deleted; retirement changes status, it does not erase history.
 10. Any state where the system cannot determine whether a proposed action is within policy fails closed; the action does not execute.
 
@@ -132,6 +140,7 @@ Stated honestly, not minimized:
 - **No documented real-world incident exists for an evolutionary or reproducing agent population being exploited**, as distinct from the single-agent incidents cited above. Monadeum's reproduction-specific attack surface is defended by first-principles invariants and academic threat analysis, not by a body of real incident-response experience the way single-agent wallet compromise already has.
 - **The operator of Monad's official x402 facilitator is not identified anywhere in Monad's own documentation.** Monadeum inherits whatever operational risk that facilitator carries and cannot independently verify its uptime or security posture beyond what is observable in production.
 - **Invariant 1's correctness depends on the smart account validator module's implementation being correct.** That is a smart-contract security question, audits and formal verification, that this document states as a requirement but does not itself discharge; see `SECURITY.md`'s smart-contract section for how that requirement is intended to be met before any real capital is at risk.
+- **The bulk-recovery hold can be waited out by an attacker who already controls the confirmation step.** The second confirmation is itself an action of the root wallet, and the 15 minute delay only helps if the legitimate owner notices in that window. The hold raises the cost of a population-wide sweep. It does not remove the risk when the attacker holds the root credential for longer than the delay.
 
 ## 9. Non-goals
 

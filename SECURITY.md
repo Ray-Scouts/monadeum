@@ -64,6 +64,18 @@ A layered-cap pattern, matching the production precedent found in research (Coin
 3. **An aggregate, population-level circuit breaker**, tracking total capital at risk across all live agents and the population's aggregate reproduction rate. If either crosses a configured threshold, this the platform-wide equivalent of a kill switch: new agent ticks stop being scheduled, and reproduction is paused, until a human reviews and clears the condition. This is the control that specifically answers `THREAT-MODEL.md` scenario D, a degenerate mutation spreading through the population; no single agent's individual spend limit catches a slow, population-wide drift toward a bad strategy, only an aggregate view can.
 4. **Manual, immediate per-agent stop**: the user can retire any agent from the dashboard at any time, which revokes its session key immediately (section 1); the operator can do the same for any agent platform-wide in an incident.
 
+### Bulk recovery hold
+
+The owner path in section 1 (revoke, rotate, or sweep) stays immediate for one agent. It does not stay immediate when one root wallet would touch many agents in a short window. A phished or otherwise compromised root credential could otherwise revoke or sweep every agent that owner controls in one session. That is the same blast-radius shape as layer 3 above, with credential compromise in place of a degenerate mutation. The on-chain enforcement of this hold is tracked separately (issue #26). The rule below is a proposed default for that work, not a claim that these exact numbers have been measured.
+
+- Count the distinct agent accounts a root wallet has revoked or swept during the last 60 minutes.
+- An action that names exactly one agent executes immediately when the count, including that agent, is still 3 or lower.
+- An action that names two or more agents is held. It does not execute.
+- An action that names one agent, but would push the distinct-agent count above 3 inside the window, is held. It does not execute.
+- A held action notifies the user and lists the agents it would affect. Releasing it takes a second explicit confirmation that restates how many agents are affected, followed by a 15 minute delay, and only then execution.
+- A legitimate owner who wants to retire every agent can still do it. They confirm the count and wait 15 minutes. They do not get a path that skips the hold.
+- A single revoke or sweep does not wait. Revoking agent A, and revoking agent B an hour later, both execute at once. Revoking A, then B, then C inside the same hour still executes. The request that would touch a fourth distinct agent, or any request that names two agents at once, waits.
+
 ## 10. Operating modes
 
 The product runs in one of three modes. This section assembles the controls `BRIEF.md` requires for each mode and points at the document that already specifies the mechanism. It does not add a control.
