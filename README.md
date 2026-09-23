@@ -8,7 +8,7 @@ Pre-implementation. This repository holds decisions and their rationale, self-co
 
 This repository is intended to go public eventually. That is a separate, explicit decision to be made later, not a default. Until then it stays private. Every document here should read as if it were already public: it states conclusions and the reasoning behind them directly, without depending on or linking to any other repository.
 
-Working order: research first, documentation second, implementation last. Nothing here should be built until the corresponding decision has been written down and justified. Research and documentation are done for the MVP scope; implementation has not started.
+Working order: research first, documentation second, implementation last. Nothing here should be built until the corresponding decision has been written down and justified. Research and documentation are done for the MVP scope. The simulation epic has a published answer in `ECONOMICS.md` section 8: the evolving-versus-static comparison is inconclusive, because no agent reproduced, and M3 (issue #28) waits on a narrower experiment about the profit threshold and the x402 price. The rest of the implementation has not started.
 
 ## Documents
 
