@@ -49,6 +49,14 @@ function choose<T>(rng: () => number, items: readonly T[]): T {
   return items[index] as T;
 }
 
+export function nichePressure(share: number, diversity: boolean): { requiredPercentile: number; pMut: number } {
+  const crowded = diversity && share > PROTOCOL.nicheShareThreshold;
+  return {
+    requiredPercentile: crowded ? PROTOCOL.penalizedPercentile : PROTOCOL.pThreshold,
+    pMut: crowded ? PROTOCOL.pMut * 2 : PROTOCOL.pMut,
+  };
+}
+
 export function createReproductionModule(): ReproductionModule {
   return {
     evaluate(input: ReproductionInput): ReproductionDecision {
@@ -63,7 +71,7 @@ export function createReproductionModule(): ReproductionModule {
         .map((item) => item.adjustedFitness)
         .filter((item): item is number => item !== null);
       const rank = agent.adjustedFitness === null ? 0 : percentile(agent.adjustedFitness, scores);
-      if (agent.adjustedFitness === null || rank < PROTOCOL.pThreshold) failed.push("percentile");
+      if (agent.adjustedFitness === null || rank < input.requiredPercentile) failed.push("percentile");
       const profit = agent.capital - agent.principal;
       if (profit < PROTOCOL.profitThresholdFraction * agent.principal) failed.push("profit");
       if (agent.descendants >= PROTOCOL.maxDescendants) failed.push("descendants");
