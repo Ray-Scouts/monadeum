@@ -64,13 +64,55 @@ A layered-cap pattern, matching the production precedent found in research (Coin
 3. **An aggregate, population-level circuit breaker**, tracking total capital at risk across all live agents and the population's aggregate reproduction rate. If either crosses a configured threshold, this the platform-wide equivalent of a kill switch: new agent ticks stop being scheduled, and reproduction is paused, until a human reviews and clears the condition. This is the control that specifically answers `THREAT-MODEL.md` scenario D, a degenerate mutation spreading through the population; no single agent's individual spend limit catches a slow, population-wide drift toward a bad strategy, only an aggregate view can.
 4. **Manual, immediate per-agent stop**: the user can retire any agent from the dashboard at any time, which revokes its session key immediately (section 1); the operator can do the same for any agent platform-wide in an incident.
 
-## 10. Key management
+## 10. Operating modes
+
+The product runs in one of three modes. This section assembles the controls `BRIEF.md` requires for each mode and points at the document that already specifies the mechanism. It does not add a control.
+
+### Simulation
+
+No real money moves. Inputs are historical or synthetic. A run with a given seed is deterministic. Market conditions, costs, and strategy parameters are configurable.
+
+- No real money, and no wallets or chain state: `BRIEF.md` (Simulation engine) and `ARCHITECTURE.md` section 10 (`SimulationModule`).
+- Deterministic historical or synthetic markets: `ECONOMICS.md` sections 3 and 7, and `BRIEF.md` (Simulation engine).
+- Configurable conditions: `BRIEF.md` (Simulation engine) and the cost inputs in `ECONOMICS.md` section 1.
+
+### Testnet
+
+Testnet uses real testnet assets. It exists to validate the paths mainnet will use.
+
+- Wallets and smart accounts: `ARCHITECTURE.md` section 6.
+- x402: `ARCHITECTURE.md` section 8 and section 5 of this document.
+- Reproduction: `EVOLUTION.md` section 3.
+- Accounting: `ECONOMICS.md` section 2. Reproduction reallocates capital that already exists. It does not create capital.
+- Trading: `ARCHITECTURE.md` section 10 (`TradingModule`).
+- Policies: sections 1 and 4 of this document.
+
+### Mainnet
+
+Mainnet is opt-in per user and per agent. It is never the default, and unrestricted autonomous mainnet trading is not a mode of this system.
+
+Opt-in is two stored flags, `user.mainnetEnabled` and `agent.mainnetEnabled`. Both default to false. An agent may execute on mainnet only when both are true. Each flag changes only by an explicit action of the root-wallet owner, and that action is stored with its timestamp. Funding an agent, deploying its smart account, or finishing a testnet run does not set either flag. A missing flag is not mainnet.
+
+`BRIEF.md` requires the following controls on mainnet. Each one is already specified elsewhere:
+
+- Spending limits: section 1 (per-transaction cap and rolling daily cap) and the tighter session budget in section 9.
+- Position limits: `EVOLUTION.md` section 1, the protocol ceiling on `riskTolerance`.
+- Loss limits: the rolling daily spend cap in section 1, the population-level capital-at-risk circuit breaker in section 9, and the minimum viable capital floor in `EVOLUTION.md` section 6. Those three are the loss controls the document set actually specifies. There is no separate maximum-drawdown parameter beside them.
+- API budgets: `informationBudget` in `EVOLUTION.md` section 1, and the per-tick and daily x402 budget in `ARCHITECTURE.md` section 3.
+- Gas budgets: the per-agent paymaster budget in `ARCHITECTURE.md` section 7.
+- Reproduction limits: eligibility and `max_child_capital` in `EVOLUTION.md` section 3, and the per-parent descendant cap in `EVOLUTION.md` section 4.
+- A maximum population: the global population cap in `EVOLUTION.md` section 4.
+- An allowlist of permitted contracts: section 1 of this document.
+- An emergency stop: section 9 of this document (the population circuit breaker, and the immediate per-agent stop).
+- Withdrawal controls: `ARCHITECTURE.md` section 3 (a withdrawal back to the user stays inside the user's configured limits) and section 1 of this document (the owner can sweep a compromised agent's account).
+
+## 11. Key management
 
 - **User root keys**: never held by the platform. The embedded wallet vendor (Privy or Dynamic) manages the user's own key material under its own custody model; the platform never has access to the user's root signing key.
 - **Agent session keys**: held server-side by agent worker processes, scoped narrowly (section 2), rotated on a schedule and immediately on any suspected compromise, and revocable by the user at any time without needing platform operator action.
 - **No private key, of any kind, is ever committed to source control, logged in plaintext, or stored outside the vendor's own key-management infrastructure or a dedicated secrets manager.** This is a hard rule, not a preference, and applies equally to development, testnet, and mainnet environments.
 
-## 11. Monitoring
+## 12. Monitoring
 
 Every agent action, decision, x402 payment, transaction, trade, error, capital change, fitness change, reproduction event, and mutation is logged with enough detail to reconstruct what happened without reading raw logs, feeding the dashboard views defined in `ARCHITECTURE.md` section 15. Specific patterns monitored for anomaly, beyond simple logging:
 
@@ -78,7 +120,7 @@ Every agent action, decision, x402 payment, transaction, trade, error, capital c
 - An agent approaching its on-chain spend cap repeatedly without breaching it is flagged as worth reviewing, since it suggests the on-chain cap is doing load-bearing work that the application-layer policy engine's own tighter budget should ideally have caught first.
 - Reproduction events are monitored in aggregate for rate anomalies (section 9, layer 3) and individually for whether a child's mutated genome falls outside the bounds `EVOLUTION.md` section 3.3 defines, which should be structurally impossible if the mutation operator is implemented correctly, and therefore worth alerting on immediately if it is ever observed.
 
-## 12. Known limitations
+## 13. Known limitations
 
 Stated honestly, matching `THREAT-MODEL.md` section 8's residual-risk posture:
 
