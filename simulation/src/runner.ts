@@ -1,0 +1,310 @@
+import { createExecutionBackend, DEFAULT_COSTS } from "./execution.js";
+import { createFitnessModule, sortinoParts } from "./fitness.js";
+import { generateMarket } from "./market.js";
+import { experimentPopulationCap, PROTOCOL } from "./protocol.js";
+import { createReproductionModule, median, nicheKey, percentile } from "./reproduction.js";
+import { createRiskModule } from "./risk.js";
+import { saltedRng } from "./rng.js";
+import { propose } from "./strategy.js";
+import type {
+  AgentSnapshot,
+  AgentSummary,
+  CostLedger,
+  CostModel,
+  Genome,
+  RunConfig,
+  RunResult,
+} from "./types.js";
+
+interface Agent {
+  id: string;
+  genome: Genome;
+  capital: number;
+  principal: number;
+  status: "active" | "retired";
+  trades: number;
+  lastTradeTick: number;
+  lastReproductionTick: number;
+  birthTick: number;
+  descendants: number;
+  returns: number[];
+  tradeMarks: number[];
+  flaggedZeroDownside: boolean;
+  adjustedFitness: number | null;
+  rawSortino: number | null;
+  lowFitnessWindows: number;
+  skill: number;
+  infoThisTick: boolean;
+}
+
+const DEFAULT_GENOME: Genome = {
+  strategyType: "trading",
+  assetUniverse: ["PAIR_A"],
+  riskTolerance: 0.1,
+  executionFrequency: 5,
+  timeHorizon: 20,
+  entryThreshold: 0,
+  exitThreshold: 0,
+  informationSources: ["nansen"],
+  informationBudget: 0.05,
+  modelConfiguration: "low",
+};
+
+function snapshot(agent: Agent, nowTick: number): AgentSnapshot {
+  return {
+    id: agent.id,
+    capital: agent.capital,
+    principal: agent.principal,
+    adjustedFitness: agent.adjustedFitness,
+    rawSortino: agent.rawSortino,
+    flaggedZeroDownside: agent.flaggedZeroDownside,
+    tradeCount: agent.tradeMarks.reduce((sum, mark) => sum + mark, 0),
+    status: agent.status,
+    descendants: agent.descendants,
+    ticksSinceReproduction: nowTick - Math.max(agent.lastReproductionTick, agent.birthTick),
+    genome: agent.genome,
+  };
+}
+
+function pushWindow(agent: Agent, value: number, traded: boolean): void {
+  agent.returns.push(value);
+  agent.tradeMarks.push(traded ? 1 : 0);
+  const extra = agent.returns.length - PROTOCOL.trailingWindow;
+  if (extra > 0) {
+    agent.returns.splice(0, extra);
+    agent.tradeMarks.splice(0, extra);
+  }
+}
+
+export function gini(values: readonly number[]): number {
+  const sorted = values.filter((value) => value >= 0).sort((a, b) => a - b);
+  const n = sorted.length;
+  if (n === 0) return 0;
+  const sum = sorted.reduce((total, value) => total + value, 0);
+  if (sum === 0) return 0;
+  let weighted = 0;
+  for (let i = 0; i < n; i++) weighted += (i + 1) * (sorted[i] ?? 0);
+  return (2 * weighted) / (n * sum) - (n + 1) / n;
+}
+
+export function run(config: RunConfig): RunResult {
+  const costs: CostModel = { ...DEFAULT_COSTS, ...config.costs };
+  const fitness = config.fitness ?? createFitnessModule();
+  const reproduction = config.reproduction ?? createReproductionModule();
+  const risk = config.risk ?? createRiskModule();
+  const execution = config.execution ?? createExecutionBackend();
+  const principal = config.principal ?? PROTOCOL.principal;
+  const baseGenome = risk.clipGenome({ ...DEFAULT_GENOME, ...config.genome });
+  const marketRng = saltedRng(config.seed, 1);
+  const agentRng = saltedRng(config.seed, 2);
+  const bars = generateMarket(config.regime, config.ticks, marketRng);
+  const cap = experimentPopulationCap(config.population);
+
+  const agents: Agent[] = [];
+  for (let i = 0; i < config.population; i++) {
+    agents.push({
+      id: `a${String(i).padStart(4, "0")}`,
+      genome: { ...baseGenome, assetUniverse: [...baseGenome.assetUniverse], informationSources: [...baseGenome.informationSources] },
+      capital: principal,
+      principal,
+      status: "active",
+      trades: 0,
+      lastTradeTick: -1,
+      lastReproductionTick: -1,
+      birthTick: 0,
+      descendants: 0,
+      returns: [],
+      tradeMarks: [],
+      flaggedZeroDownside: false,
+      adjustedFitness: null,
+      rawSortino: null,
+      lowFitnessWindows: 0,
+      skill: -0.002 + agentRng() * 0.006,
+      infoThisTick: false,
+    });
+  }
+
+  const ledger: CostLedger = { gas: 0, x402: 0, fees: 0, slippage: 0, grossPnl: 0 };
+  const portfolioReturns: number[] = [];
+  let reproductions = 0;
+  let nextChild = 0;
+  const marketReturns: number[] = [];
+
+  for (const bar of bars) {
+    let capitalBefore = 0;
+    let netPortfolio = 0;
+    for (const agent of agents) {
+      if (agent.status !== "active") continue;
+      capitalBefore += agent.capital;
+      const before = agent.capital;
+      let traded = false;
+      let net = 0;
+      agent.infoThisTick = false;
+      if (
+        agentRng() < costs.infoPurchaseProbability &&
+        costs.x402Usd <= agent.genome.informationBudget &&
+        agent.capital > costs.x402Usd
+      ) {
+        agent.capital -= costs.x402Usd;
+        ledger.x402 += costs.x402Usd;
+        net -= costs.x402Usd;
+        agent.infoThisTick = true;
+      }
+      const edge = agent.skill + (agent.infoThisTick ? costs.infoEdge : 0);
+      if (risk.allowsTrade(bar.tick, agent.lastTradeTick, agent.genome)) {
+        const proposal = propose({ marketReturns, genome: agent.genome, edge });
+        if (proposal) {
+          const notional = Math.min(risk.positionNotional(agent.capital, agent.genome), agent.capital);
+          const estimatedCost = notional * ((costs.feeBps + costs.slippageBps) / 10_000) + costs.gasUsd;
+          if (notional > 0 && agent.capital > estimatedCost) {
+            const fill = execution.execute({ notional, edge, pair: proposal.pair }, bar, costs);
+            const cost = fill.fee + fill.slippage + fill.gas;
+            agent.capital += fill.pnl - cost;
+            ledger.grossPnl += fill.pnl;
+            ledger.fees += fill.fee;
+            ledger.slippage += fill.slippage;
+            ledger.gas += fill.gas;
+            net += fill.pnl - cost;
+            agent.trades += 1;
+            agent.lastTradeTick = bar.tick;
+            traded = true;
+          }
+        }
+      }
+      if (agent.capital < PROTOCOL.capitalFloor) agent.status = "retired";
+      const denom = before > 0 ? before : 1;
+      pushWindow(agent, (agent.capital - before) / denom, traded);
+      netPortfolio += agent.capital - before;
+    }
+    marketReturns.push(bar.ret);
+    portfolioReturns.push(capitalBefore > 0 ? netPortfolio / capitalBefore : 0);
+
+    if (bar.tick % PROTOCOL.evalEvery === 0) {
+      const raws: number[] = [];
+      const parts = agents.map((agent) => sortinoParts(agent.returns, agent.tradeMarks));
+      for (const part of parts) {
+        if (!part.flagged && part.raw !== null) raws.push(part.raw);
+      }
+      const populationMedian = median(raws);
+      agents.forEach((agent, index) => {
+        const part = parts[index];
+        if (!part) return;
+        const result = fitness.evaluate({
+          returns: agent.returns,
+          tradeCounts: agent.tradeMarks,
+          populationMedianSortino: populationMedian,
+          k: PROTOCOL.k,
+        });
+        agent.flaggedZeroDownside = result.flaggedZeroDownside;
+        agent.adjustedFitness = result.adjustedFitness;
+        agent.rawSortino = result.rawSortino;
+      });
+
+      const active = agents.filter((agent) => agent.status === "active");
+      const scores = active
+        .map((agent) => agent.adjustedFitness)
+        .filter((value): value is number => value !== null);
+      for (const agent of active) {
+        if (agent.adjustedFitness === null) continue;
+        const rank = percentile(agent.adjustedFitness, scores);
+        if (rank <= 0.1) agent.lowFitnessWindows += 1;
+        else agent.lowFitnessWindows = 0;
+        if (agent.lowFitnessWindows >= PROTOCOL.retirementWindows) agent.status = "retired";
+      }
+
+      if (config.mode === "evolving") {
+        const ordered = [...agents].sort((a, b) => {
+          const fb = b.adjustedFitness ?? -Infinity;
+          const fa = a.adjustedFitness ?? -Infinity;
+          if (fb !== fa) return fb - fa;
+          return a.id < b.id ? -1 : 1;
+        });
+        for (const parent of ordered) {
+          if (agents.length >= cap) break;
+          const decision = reproduction.evaluate({
+            agent: snapshot(parent, bar.tick),
+            reference: agents.filter((agent) => agent.status === "active").map((agent) => snapshot(agent, bar.tick)),
+            populationSize: agents.length,
+            populationCap: cap,
+            nowTick: bar.tick,
+          });
+          if (!decision.eligible) continue;
+          const allocation = reproduction.allocate({
+            capital: parent.capital,
+            principal: parent.principal,
+            fraction: PROTOCOL.reproductionFraction,
+            maxChildCapital: parent.principal,
+          });
+          if (allocation.childCapital <= 0) continue;
+          if (allocation.parentCapitalAfter < parent.principal) continue;
+          parent.capital = allocation.parentCapitalAfter;
+          parent.descendants += 1;
+          parent.lastReproductionTick = bar.tick;
+          const childGenome = reproduction.mutate({
+            genome: parent.genome,
+            rng: agentRng,
+            pMut: PROTOCOL.pMut,
+          });
+          agents.push({
+            id: `c${String(nextChild).padStart(4, "0")}`,
+            genome: childGenome,
+            capital: allocation.childCapital,
+            principal: allocation.childCapital,
+            status: "active",
+            trades: 0,
+            lastTradeTick: -1,
+            lastReproductionTick: -1,
+            birthTick: bar.tick,
+            descendants: 0,
+            returns: [],
+            tradeMarks: [],
+            flaggedZeroDownside: false,
+            adjustedFitness: null,
+            rawSortino: null,
+            lowFitnessWindows: 0,
+            skill: -0.002 + agentRng() * 0.006,
+            infoThisTick: false,
+          });
+          nextChild += 1;
+          reproductions += 1;
+        }
+      }
+    }
+  }
+
+  const populationSortino = sortinoParts(portfolioReturns, portfolioReturns.map(() => 1));
+  const livingCapital = agents.map((agent) => agent.capital);
+  const totalCapital = livingCapital.reduce((sum, value) => sum + value, 0);
+  const startingCapital = config.population * principal;
+  const summaries: AgentSummary[] = agents
+    .slice()
+    .sort((a, b) => (a.id < b.id ? -1 : 1))
+    .map((agent) => ({
+      id: agent.id,
+      capital: agent.capital,
+      principal: agent.principal,
+      trades: agent.trades,
+      flaggedZeroDownside: agent.flaggedZeroDownside,
+      status: agent.status,
+      descendants: agent.descendants,
+      niche: nicheKey(agent.genome),
+    }));
+
+  return {
+    seed: config.seed,
+    regime: config.regime,
+    mode: config.mode,
+    population: config.population,
+    ticks: config.ticks,
+    endPopulation: agents.length,
+    totalCapital,
+    startingCapital,
+    roiPct: ((totalCapital - startingCapital) / startingCapital) * 100,
+    sortino: populationSortino.flagged ? null : populationSortino.raw,
+    gini: gini(livingCapital),
+    reproductions,
+    ledger,
+    prices: bars.map((bar) => bar.price),
+    agents: summaries,
+  };
+}
