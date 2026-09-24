@@ -10,6 +10,9 @@
     "sweep": "tsc -p tsconfig.json && node dist/src/cli-sweep.js",
     "diversity": "tsc -p tsconfig.json && node dist/src/cli-diversity.js"
   },
+  "dependencies": {
+    "@monadeum/fitness": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.15.21",
     "typescript": "^5.8.3"
