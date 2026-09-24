@@ -66,7 +66,7 @@ A layered-cap pattern, matching the production precedent found in research (Coin
 
 ### Bulk recovery hold
 
-The owner path in section 1 (revoke, rotate, or sweep) stays immediate for one agent. It does not stay immediate when one root wallet would touch many agents in a short window. A phished or otherwise compromised root credential could otherwise revoke or sweep every agent that owner controls in one session. That is the same blast-radius shape as layer 3 above, with credential compromise in place of a degenerate mutation. The on-chain enforcement of this hold is tracked separately (issue #26). The rule below is a proposed default for that work, not a claim that these exact numbers have been measured.
+The owner path in section 1 (revoke, rotate, or sweep) stays immediate for one agent. It does not stay immediate when one root wallet would touch many agents in a short window. A phished or otherwise compromised root credential could otherwise revoke or sweep every agent that owner controls in one session. That is the same blast-radius shape as layer 3 above, with credential compromise in place of a degenerate mutation. The application hold below is implemented in `libs/recovery`. Chain-level enforcement of the same rule still belongs to the wallet and validator work (issues #24 and #25). The thresholds are proposed defaults, not a claim that these exact numbers have been measured.
 
 - Count the distinct agent accounts a root wallet has revoked or swept during the last 60 minutes.
 - An action that names exactly one agent executes immediately when the count, including that agent, is still 3 or lower.
