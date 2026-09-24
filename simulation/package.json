@@ -11,7 +11,8 @@
     "diversity": "tsc -p tsconfig.json && node dist/src/cli-diversity.js"
   },
   "dependencies": {
-    "@monadeum/fitness": "workspace:*"
+    "@monadeum/fitness": "workspace:*",
+    "@monadeum/reproduction": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.21",
