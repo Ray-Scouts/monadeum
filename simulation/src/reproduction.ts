@@ -1,4 +1,5 @@
 import { median as medianOf, nicheKey as nicheKeyOf, percentile as percentileOf, riskBand as riskBandOf } from "@monadeum/fitness";
+import { allocateCapital, assertGenomeHasNoProtocolFields } from "@monadeum/reproduction";
 import { PROTOCOL } from "./protocol.js";
 import { createRiskModule } from "./risk.js";
 import type {
@@ -64,15 +65,7 @@ export function createReproductionModule(): ReproductionModule {
       return { eligible: failed.length === 0, failed };
     },
     allocate(input: AllocationInput): Allocation {
-      const profit = Math.max(0, input.capital - input.principal);
-      let childCapital = Math.min(input.fraction * profit, input.maxChildCapital);
-      if (input.capital - childCapital < input.principal) {
-        childCapital = Math.max(0, input.capital - input.principal);
-      }
-      return {
-        childCapital,
-        parentCapitalAfter: input.capital - childCapital,
-      };
+      return allocateCapital(input);
     },
     mutate(input: MutationInput): Genome {
       const next: Genome = {
@@ -113,7 +106,9 @@ export function createReproductionModule(): ReproductionModule {
           next.informationSources = [...next.informationSources, source];
         }
       }
-      return risk.clipGenome(next);
+      const child = risk.clipGenome(next);
+      assertGenomeHasNoProtocolFields(child);
+      return child;
     },
   };
 }
