@@ -1,3 +1,4 @@
+import { acceptQuote, acceptTokenField } from "@monadeum/external";
 import { propose, type Action, type AgentView, type Quote } from "@monadeum/strategy";
 
 export type TickRetry = "next-tick" | "none";
@@ -29,7 +30,7 @@ export function enqueueTick(store: TickStore, agentId: string, tick: number): bo
 
 export interface TickPorts {
   observe(): { ok: true; symbol: string } | { ok: false; reason: "rpc" };
-  quote(): Quote | null | { malformed: true };
+  quote(): unknown;
   policy(action: Action): { ok: boolean };
   execute(action: Action, key: string): { ok: true; userOpHash: string } | { ok: false; reason: "paymaster" | "gas" };
   measure(): void;
@@ -52,8 +53,14 @@ export function runTick(store: TickStore, agentId: string, tick: number, state: 
 
   const observed = ports.observe();
   if (!observed.ok) return { action: "none", retry: "next-tick", key };
-  const quote = ports.quote();
-  if (quote && "malformed" in quote) return { action: "none", retry: "next-tick", key };
+  if (!acceptTokenField(observed.symbol).ok) return { action: "none", retry: "next-tick", key };
+  const rawQuote = ports.quote();
+  let quote: Quote | null = null;
+  if (rawQuote !== null) {
+    const accepted = acceptQuote(rawQuote);
+    if (!accepted.ok) return { action: "none", retry: "next-tick", key };
+    quote = { provider: accepted.value.provider, price: accepted.value.price };
+  }
   const action = propose(state, quote);
   if (!action || action.side === "flat") {
     ports.measure();

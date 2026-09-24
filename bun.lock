@@ -19,6 +19,16 @@
         "typescript": "^5.8.3",
       },
     },
+    "libs/external": {
+      "name": "@monadeum/external",
+      "dependencies": {
+        "@nestjs/common": "^11.1.6",
+      },
+      "devDependencies": {
+        "@types/node": "^22.15.21",
+        "typescript": "^5.8.3",
+      },
+    },
     "libs/fitness": {
       "name": "@monadeum/fitness",
       "dependencies": {
@@ -62,6 +72,7 @@
     "libs/tick": {
       "name": "@monadeum/tick",
       "dependencies": {
+        "@monadeum/external": "workspace:*",
         "@monadeum/strategy": "workspace:*",
         "@nestjs/common": "^11.1.6",
       },
@@ -86,6 +97,8 @@
     "@borewit/text-codec": ["@borewit/text-codec@0.2.2", "", {}, "sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ=="],
 
     "@lukeed/csprng": ["@lukeed/csprng@1.1.0", "", {}, "sha512-Z7C/xXCiGWsg0KuKsHTKJxbWhpI3Vs5GwLfOean7MGyVFGqdRgBbAjOCh6u4bbjPc/8MJ2pZmK/0DLdCbivLDA=="],
+
+    "@monadeum/external": ["@monadeum/external@workspace:libs/external"],
 
     "@monadeum/fitness": ["@monadeum/fitness@workspace:libs/fitness"],
 
