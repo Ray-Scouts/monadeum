@@ -1,3 +1,4 @@
+import { median as medianOf, nicheKey as nicheKeyOf, percentile as percentileOf, riskBand as riskBandOf } from "@monadeum/fitness";
 import { PROTOCOL } from "./protocol.js";
 import { createRiskModule } from "./risk.js";
 import type {
@@ -13,35 +14,19 @@ import type {
 const risk = createRiskModule();
 
 export function riskBand(riskTolerance: number): number {
-  let band = 0;
-  for (const cut of PROTOCOL.riskCuts) {
-    if (riskTolerance >= cut) band += 1;
-  }
-  return band;
+  return riskBandOf(riskTolerance, PROTOCOL.riskCuts);
 }
 
 export function nicheKey(genome: Genome): string {
-  const assets = [...genome.assetUniverse].sort().join("+");
-  return `${assets}|b${riskBand(genome.riskTolerance)}`;
+  return nicheKeyOf(genome.assetUniverse, genome.riskTolerance, PROTOCOL.riskCuts);
 }
 
 export function percentile(value: number, sample: readonly number[]): number {
-  if (sample.length === 0) return 0;
-  let below = 0;
-  let equal = 0;
-  for (const item of sample) {
-    if (item < value) below += 1;
-    else if (item === value) equal += 1;
-  }
-  return (below + 0.5 * equal) / sample.length;
+  return percentileOf(value, sample);
 }
 
 export function median(sample: readonly number[]): number {
-  if (sample.length === 0) return 0;
-  const sorted = [...sample].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 1) return sorted[mid] ?? 0;
-  return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+  return medianOf(sample);
 }
 
 function choose<T>(rng: () => number, items: readonly T[]): T {

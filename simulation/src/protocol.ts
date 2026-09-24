@@ -1,13 +1,15 @@
+import { RISK_CUTS, SHRINKAGE_K, TRAILING_WINDOW } from "@monadeum/fitness";
+
 /** Proposed defaults from EVOLUTION.md. The simulation tunes these. It does not treat them as final. */
 export const PROTOCOL = {
-  k: 20,
+  k: SHRINKAGE_K,
   nMin: 20,
-  trailingWindow: 100,
+  trailingWindow: TRAILING_WINDOW,
   evalEvery: 20,
   cooldown: 40,
   riskFloor: 0.01,
   riskCeiling: 0.25,
-  riskCuts: [0.05, 0.1, 0.15, 0.2] as const,
+  riskCuts: RISK_CUTS,
   frequencyMin: 1,
   frequencyMax: 50,
   timeHorizonMin: 1,
