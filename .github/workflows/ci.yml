@@ -10,19 +10,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: simulation/package-lock.json
+          bun-version: 1.3.14
       - name: install
-        working-directory: simulation
-        run: npm ci
+        run: bun install --frozen-lockfile
       - name: test
-        working-directory: simulation
-        run: npm test
+        run: bun run test
       - name: reject em dash
         run: |
-          if git grep -n -I $'\u2014' -- . ':!simulation/package-lock.json'; then
+          if git grep -n -I $'\u2014' -- . ':!bun.lock'; then
             exit 1
           fi

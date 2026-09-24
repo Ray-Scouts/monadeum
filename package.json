@@ -1,0 +1,13 @@
+{
+  "name": "monadeum",
+  "private": true,
+  "packageManager": "bun@1.3.14",
+  "workspaces": [
+    "simulation",
+    "libs/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "test": "bun run --filter monadeum-simulation --filter @monadeum/recovery test"
+  }
+}
