@@ -8,6 +8,6 @@
     "apps/*"
   ],
   "scripts": {
-    "test": "bun run --filter @monadeum/recovery test && bun run --filter @monadeum/fitness test && bun run --filter @monadeum/reproduction test && bun run --filter @monadeum/strategy test && bun run --filter @monadeum/external test && bun run --filter @monadeum/tick test && bun run --filter @monadeum/worker test && bun run --filter monadeum-simulation test"
+    "test": "bun run --filter @monadeum/recovery test && bun run --filter @monadeum/risk test && bun run --filter @monadeum/fitness test && bun run --filter @monadeum/reproduction test && bun run --filter @monadeum/strategy test && bun run --filter @monadeum/external test && bun run --filter @monadeum/tick test && bun run --filter @monadeum/worker test && bun run --filter monadeum-simulation test"
   }
 }

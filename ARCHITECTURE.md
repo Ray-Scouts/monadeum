@@ -304,11 +304,14 @@ export type Violation =
   | "per-action-cap" | "session-daily-cap" | "information-cap" | "position-fraction" | "plan-hash-mismatch" | "policy-unverified";
 
 export type Decision =
-  | { approved: true; policyVersion: number; policyHash: Hex; planHash: Hex }
+  | { approved: true; policyVersion: number; policyHash: Hex; planHash: Hex | null }  // null for information requests
   | { approved: false; policyVersion: number; policyHash: Hex; violations: Violation[] };
 
-export function evaluateInformation(policy: PolicyDocument, request: InformationRequest, ledger: Ledger): Decision;
-export function evaluateTrade(policy: PolicyDocument, proposal: ActionProposal, plan: ExecutionPlan, ledger: Ledger): Decision;
+/** A document whose signature and hash chain were verified on load. null when verification failed. */
+export interface VerifiedPolicy { document: PolicyDocument; hash: Hex }
+
+export function evaluateInformation(policy: VerifiedPolicy | null, request: InformationRequest, ledger: Ledger): Decision;
+export function evaluateTrade(policy: VerifiedPolicy | null, proposal: ActionProposal, plan: ExecutionPlan, ledger: Ledger): Decision;
 ```
 
 A rejection returns every violation it found, not only the first, so monitoring (`SECURITY.md` section 12) sees the full shape of a bad proposal.
@@ -323,6 +326,8 @@ The RiskModule derives how much each call spends from its calldata, and never fr
 - Every `Decision` is logged with `policyVersion` and `policyHash`, so any past approval can be replayed against the exact document that produced it.
 
 This is what gives the opening constraint of `EVOLUTION.md` a concrete home: the evolutionary process writes genomes, and it holds no credential that can write a policy version.
+
+The checks above are implemented in `libs/risk`. The append-only table and its database grants arrive with the first Postgres schema, because no database layer exists yet. Until then, `libs/risk` verifies whatever rows it is given, and the grants are a requirement on that later work, not something the library can enforce.
 
 **How the schema versions**: `version` changes when a threshold changes. That is data, signed, and deployed without code. `schemaVersion` changes when a field or a check is added or removed. That is a code change, reviewed in a pull request that updates this section. The RiskModule accepts only the `schemaVersion` values it was built for, and treats any other as `policy-unverified`.
 
