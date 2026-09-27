@@ -296,11 +296,12 @@ export interface Ledger {
   spentToday: BaseUnits;
   informationToday: BaseUnits;
   informationThisTick: BaseUnits;
+  assetUniverse: string[];         // from the agent's stored genome, not from the proposal
 }
 
 export type Violation =
-  | "call-not-allowed" | "pair-not-allowed" | "per-action-cap" | "session-daily-cap"
-  | "information-cap" | "position-fraction" | "plan-hash-mismatch" | "policy-unverified";
+  | "call-not-allowed" | "recipient-not-allowed" | "pair-not-allowed" | "provider-not-allowed"
+  | "per-action-cap" | "session-daily-cap" | "information-cap" | "position-fraction" | "plan-hash-mismatch" | "policy-unverified";
 
 export type Decision =
   | { approved: true; policyVersion: number; policyHash: Hex; planHash: Hex }
@@ -311,6 +312,8 @@ export function evaluateTrade(policy: PolicyDocument, proposal: ActionProposal, 
 ```
 
 A rejection returns every violation it found, not only the first, so monitoring (`SECURITY.md` section 12) sees the full shape of a bad proposal.
+
+The RiskModule derives how much each call spends from its calldata, and never from a figure the plan declares. A `transfer` or `approve` on the settlement asset spends its `amount`, and its recipient or spender must itself be an allowlisted target (`recipient-not-allowed` otherwise): an `approve` naming an attacker's address is the drain pattern of `THREAT-MODEL.md` scenario A, even though the call itself targets an allowlisted token. Every other allowlisted call spends 0, the same counting rule as the on-chain validator in 16.3. A pair must be both in `allowedPairs` and in the agent's own `assetUniverse`.
 
 **How a rule change is authorized and audited, separately from genome mutation**:
 
@@ -372,7 +375,7 @@ export interface TradeIntent {
 
 export interface ExecutionPlan {
   tickKey: string;
-  calls: { target: Hex; selector: Hex; data: Hex; spend: BaseUnits }[];  // native value is always 0
+  calls: { target: Hex; data: Hex }[];  // native value is always 0; the selector is data's first 4 bytes
   planHash: Hex;                   // 16.4 hash of { tickKey, calls }; recomputed by the RiskModule, never trusted
 }
 ```
