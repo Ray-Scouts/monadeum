@@ -258,7 +258,7 @@ Priority order for the dashboard, matching the brief's own list: onboarding and 
 
 Sections 1 to 15 describe components and what each one is responsible for. This section fixes the four seams where two components built in parallel could each look correct in review and still fail to fit: the Policy/Risk Engine's rule schema (16.1), the proposal type that crosses from strategy to risk to trading (16.2), the on-chain validator interface (16.3), and genome hash canonicalization (16.4). The types below are written in TypeScript and Solidity because a type is harder to misread than a paragraph. They are the contract, not an implementation.
 
-Status: 16.1, 16.2, and 16.4 are decided. 16.3 is a draft. Its daily-cap mechanism waits on the rolling-daily-cap spike (issue #18), and its coverage of x402 payments waits on the open question stated in 16.3.
+Status: 16.1, 16.2, and 16.4 are decided. 16.3 is a draft. Its daily-cap mechanism is finalized in issue #21 once the rolling-daily-cap spike (issue #18) records its testnet run, and its coverage of x402 payments waits on the open question stated in 16.3.
 
 **One rule applies across every seam: money crosses a boundary as an integer in the settlement asset's base units, never as a float.** The on-chain validator compares `uint256` values. An application-layer check done in floating point can place an amount on the other side of a cap from the chain's own check, and then the two layers disagree about the same transaction. Floats stay acceptable inside a strategy's own arithmetic. The conversion to base units happens once, when the proposal is built, rounding down. The settlement asset's `decimals` value is read from the token contract, not assumed.
 
@@ -293,7 +293,8 @@ export interface PolicyDocument {
 /** Authoritative inputs. Read by the worker from the chain and the ledger, never taken from the proposal. */
 export interface Ledger {
   capital: BaseUnits;
-  spentToday: BaseUnits;
+  spentInWindow: BaseUnits;        // windowTotal(account) from 16.3, read on-chain, so both layers use the same window
+  informationBudget: BaseUnits;    // from the agent's stored genome; the effective information cap is the lower of this and the policy caps
   informationToday: BaseUnits;
   informationThisTick: BaseUnits;
   assetUniverse: string[];         // from the agent's stored genome, not from the proposal
@@ -313,7 +314,7 @@ export function evaluateTrade(policy: PolicyDocument, proposal: ActionProposal, 
 
 A rejection returns every violation it found, not only the first, so monitoring (`SECURITY.md` section 12) sees the full shape of a bad proposal.
 
-The RiskModule derives how much each call spends from its calldata, and never from a figure the plan declares. A `transfer` or `approve` on the settlement asset spends its `amount`, and its recipient or spender must itself be an allowlisted target (`recipient-not-allowed` otherwise): an `approve` naming an attacker's address is the drain pattern of `THREAT-MODEL.md` scenario A, even though the call itself targets an allowlisted token. Every other allowlisted call spends 0, the same counting rule as the on-chain validator in 16.3. A pair must be both in `allowedPairs` and in the agent's own `assetUniverse`.
+The RiskModule derives how much each call spends from its calldata, and never from a figure the plan declares. A `transfer` or `approve` on the settlement asset spends its `amount`, and its recipient or spender must itself be an allowlisted target (`recipient-not-allowed` otherwise): an `approve` naming an attacker's address is the drain pattern of `THREAT-MODEL.md` scenario A, even though the call itself targets an allowlisted token. Every other allowlisted call spends 0, the same counting rule as the on-chain validator in 16.3. `perActionCap` is compared with the sum over every call in the plan, not with each call alone, so splitting one action into several calls does not multiply the cap. `session-daily-cap` compares `spentInWindow` plus that sum with `sessionDailyCap`, over the same rolling window the chain enforces: a calendar-day counter would reset while the on-chain window still holds the previous hours, and every approval in that gap would revert on-chain and still pay gas. An information request is capped by the lowest of the genome's `informationBudget`, `perTickInformationCap`, and `dailyInformationCap`; the strategy plugin checking its own budget is not the enforcement, because the plugin sits on the proposal side of `SECURITY.md` section 4. A pair must be both in `allowedPairs` and in the agent's own `assetUniverse`.
 
 **How a rule change is authorized and audited, separately from genome mutation**:
 
@@ -380,16 +381,18 @@ export interface ExecutionPlan {
 }
 ```
 
-**Where the current code differs**: `libs/strategy` computes `notional` as a `number` and folds the information decision into `Action.buyInformation`, and `libs/tick` passes that `Action` to `policy` rather than a built plan. Those are implementation gaps against this section, to be closed by the M2 and M3 work that consumes it. This section does not describe them as done.
+**Where the current code differs**: `libs/strategy` computes `notional` as a `number` and folds the information decision into `Action.buyInformation`, `libs/tick` passes that `Action` to `policy` rather than a built plan, and the genome's `informationBudget` is a float in the simulation and in `libs/strategy`, not base units. Those are implementation gaps against this section, to be closed by the M2 and M3 work that consumes it. This section does not describe them as done.
 
 ### 16.3 On-chain validator interface (draft)
 
 **Decision, provisional**: one spend-policy contract holds per-account limits and the call allowlist, keyed by smart account address. Its checks are split across the two phases of an ERC-4337 operation, because they have different needs:
 
-- **Validation phase** (`check`): the call allowlist at `(target, selector)` granularity, a zero native value, and the per-transaction cap. None of these needs the current time, so all of them can reject an operation before it is included.
+- **Validation phase** (`check`): the call allowlist at `(target, selector)` granularity, a zero native value, and the per-transaction cap. `check` receives every call the operation executes, single or batched, and the per-transaction cap applies to their sum: a check that saw one call at a time would let one batched operation of `k` calls move `k` times the cap. None of these needs the current time, so all of them can reject an operation before it is included.
 - **Execution phase** (`record`, called from a pre-execution hook): the rolling daily cap. ERC-7562's validation rules forbid the `TIMESTAMP` opcode during validation, so a check that needs "the last 24 hours" cannot run there. This is a constraint of the ERC-4337 validation rules as documented, to be confirmed against the bundlers actually used on Monad in issue #18. Its consequence is stated plainly: a daily-cap breach surfaces as a reverted execution that still pays gas, not as an operation rejected before inclusion.
 
 **How an amount is counted**: only calls that move the settlement asset count. `transfer(to, amount)` and `approve(spender, amount)` on the settlement asset count `amount` in full, at the moment of the call. A call to the Kuru router or the reproduction contract counts 0, on the assumption that each pulls funds only through an allowance the account set with a counted `approve`. That assumption is not yet verified for Kuru's router, and is checked in issue #20. Counting an approval in full when it is set is conservative: an unbounded approval exceeds `perTxCap` and is rejected, and unused allowance only reduces headroom.
+
+**The policy contract protects itself**: `setLimits` and `setAllowed` read the account from `msg.sender`, and a call a session key makes also executes from the account, so the contract alone cannot tell the owner from a session key. Two rules close that gap, and neither depends on the allowlist being configured correctly. `check` rejects any call whose target is the policy contract itself, whatever the allowlist says, so a session-key operation can never reach the owner functions. The owner reaches them only through the root-wallet validator, whose operations do not run the session key's hook or policy. Without both rules, one mistaken allowlist entry would let a compromised session key raise its own caps.
 
 **Rolling window rule**: spend is stored in 25 one-hour buckets per account. The window total at hour `h` is the sum of buckets `h - 24` through `h`. That span covers between 24 and 25 hours, so it can over-count by up to one hour of spend but never under-counts. The chain therefore never allows more than `dailyCap` inside any 24-hour period. Storage is fixed-size per account.
 
@@ -397,7 +400,7 @@ export interface ExecutionPlan {
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-/// Draft. The daily-cap state assumes issue #18 finds no native rolling cap.
+/// Draft. The daily-cap state assumes no native rolling cap, which is what issue #18's research found.
 interface IAgentSpendPolicy {
     struct Limits {
         uint128 perTxCap;   // settlement-asset base units
@@ -406,31 +409,38 @@ interface IAgentSpendPolicy {
 
     event LimitsSet(address indexed account, uint128 perTxCap, uint128 dailyCap);
     event CallAllowed(address indexed account, address indexed target, bytes4 indexed selector, bool allowed);
-    event Spent(address indexed account, address indexed target, uint256 amount, uint256 windowTotal);
+    event Spent(address indexed account, uint256 amount, uint256 windowTotal);
 
-    error CallNotAllowed(address target, bytes4 selector);
+    struct Call {
+        address target;
+        uint256 value;
+        bytes data;
+    }
+
+    error CallNotAllowed(address target, bytes4 selector);   // also raised for target == address(this)
     error NativeValueNotAllowed(uint256 value);
     error PerTxCapExceeded(uint256 amount, uint256 cap);
     error DailyCapExceeded(uint256 windowTotal, uint256 cap);
 
-    /// Validation phase. No time-dependent reads. Returns the amount the call counts.
-    function check(address account, address target, uint256 value, bytes calldata data)
-        external view returns (uint256 amount);
+    /// Validation phase. No time-dependent reads. Every call in the operation, single or batched.
+    /// Returns the total the operation counts; perTxCap applies to that total.
+    function check(address account, Call[] calldata calls) external view returns (uint256 total);
 
     /// Execution phase, from the account's pre-execution hook. msg.sender is the account.
-    function record(address target, uint256 amount) external;
+    /// Recomputes the total from the calls, never trusts a caller-supplied amount.
+    function record(Call[] calldata calls) external;
 
     function limits(address account) external view returns (Limits memory);
     function isAllowed(address account, address target, bytes4 selector) external view returns (bool);
     function windowTotal(address account) external view returns (uint256);
 
-    /// Owner only: the account's root-wallet validator, never a session key.
+    /// Owner only: reachable through the root-wallet validator, never a session key, per the self-protection rule.
     function setLimits(Limits calldata newLimits) external;
     function setAllowed(address target, bytes4 selector, bool allowed) external;
 }
 ```
 
-**What changes with issue #18's answer**: if ZeroDev's policy primitives support a resetting daily cap natively, `record`, `windowTotal`, `DailyCapExceeded`, and the bucket storage are dropped, `dailyCap` becomes a reference to the native policy's configuration, and the rest of the interface stands. If the answer is daily session-key rotation instead, that is a different mechanism with its own in-flight-transaction failure mode, and this section is rewritten, not patched. Issue #21 finalizes the interface once #18 closes, and issue #25 implements it.
+**What issue #18 has settled, and what it has not**: ZeroDev ships no native resetting cap on value. Its reset rate limit counts operations, not amounts; its spending limit hook is a lifetime allowance with no reset and, as of 2026-09-27, is not deployed on Monad testnet or mainnet; and its gas, rate limit, and timestamp policies are deployed on Monad testnet but not on mainnet. The custom execution-phase window above therefore stands, rather than a reference to a native policy. Daily session-key rotation is not adopted: without the rate limit on mainnet, rotation alone gives no cumulative bound inside a day. Still open in #18: the recorded testnet run, including whether a batched operation breaks the native call-policy bound. Issue #21 finalizes this interface once #18 closes, and issue #25 implements it.
 
 **Open question, x402 coverage**: the working assumption is that x402's `exact` scheme on EVM settles through an EIP-3009 `transferWithAuthorization` that the payer signs and the facilitator submits. This is not verified against the x402 version and facilitator this project will use. If it holds, an x402 payment never passes through the account's user-operation validation. It is authorized through the account's ERC-1271 `isValidSignature` instead, and the interface above does not see it. Until the policy has an entry point on that signature path, the on-chain daily cap does not bound x402 spend, and only the application-layer information caps in 16.1 do. The same assumption means the x402 facilitator is not a call target the account makes, which is why `allowedCalls` in 16.1 does not list it.
 
@@ -453,20 +463,20 @@ tag: "monadeum:genome:v1" | "monadeum:strategy:v1" | "monadeum:policy:v1" | "mon
 **Normalization, applied before JCS**, because JCS does not do any of it:
 
 1. Set-valued fields (`assetUniverse`, `informationSources`) are deduplicated and sorted in the same UTF-16 code unit order. JCS preserves array order, and mutation (`EVOLUTION.md` section 3.3) adds and removes elements, so element order is an accident of history, not meaning.
-2. Numbers must be finite. Integer-valued fields (`executionFrequency`, `timeHorizon`) must be integers. JCS already rejects `NaN` and infinities and writes `-0` as `0`. Base-unit amounts are decimal strings, per the rule at the top of this section.
+2. Numbers must be finite. Integer-valued fields (`executionFrequency`, `timeHorizon`) must be integers. JCS already rejects `NaN` and infinities and writes `-0` as `0`. Base-unit amounts are decimal strings, per the rule at the top of this section. That includes the genome's `informationBudget`, which is money: `"500000"` in the example below is 0.5 of a six-decimal settlement asset.
 3. An absent optional field is omitted, never written as `null`.
 4. Only genome fields are hashed. Derived values (fitness, reproduction eligibility, `EVOLUTION.md` section 1) and storage metadata (row IDs, timestamps) are excluded. The hashed object carries `schemaVersion`. Renaming or adding a field is a `schemaVersion` change, because key names are part of the hashed bytes.
 
 Example. The genome below, with a duplicated and unsorted `assetUniverse` and a `-0` threshold:
 
 ```json
-{"strategyType":"trading","schemaVersion":1,"riskTolerance":0.1,"executionFrequency":5,"assetUniverse":["PAIR_B","PAIR_A","PAIR_A"],"informationSources":["nansen","defillama"],"timeHorizon":20,"entryThreshold":0.002,"exitThreshold":-0,"informationBudget":0.5,"modelConfiguration":"low"}
+{"strategyType":"trading","schemaVersion":1,"riskTolerance":0.1,"executionFrequency":5,"assetUniverse":["PAIR_B","PAIR_A","PAIR_A"],"informationSources":["nansen","defillama"],"timeHorizon":20,"entryThreshold":0.002,"exitThreshold":-0,"informationBudget":"500000","modelConfiguration":"low"}
 ```
 
 normalizes and canonicalizes to exactly these bytes, which are then hashed:
 
 ```json
-{"assetUniverse":["PAIR_A","PAIR_B"],"entryThreshold":0.002,"executionFrequency":5,"exitThreshold":0,"informationBudget":0.5,"informationSources":["defillama","nansen"],"modelConfiguration":"low","riskTolerance":0.1,"schemaVersion":1,"strategyType":"trading","timeHorizon":20}
+{"assetUniverse":["PAIR_A","PAIR_B"],"entryThreshold":0.002,"executionFrequency":5,"exitThreshold":0,"informationBudget":"500000","informationSources":["defillama","nansen"],"modelConfiguration":"low","riskTolerance":0.1,"schemaVersion":1,"strategyType":"trading","timeHorizon":20}
 ```
 
 The first implementation adds the resulting keccak256 value as a fixed test vector, computed by two independent implementations and checked to agree, so a later change to either side fails a test instead of surfacing as an on-chain mismatch.
