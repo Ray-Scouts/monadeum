@@ -81,6 +81,17 @@
         "typescript": "^5.8.3",
       },
     },
+    "libs/x402": {
+      "name": "@monadeum/x402",
+      "dependencies": {
+        "@monadeum/external": "workspace:*",
+        "@nestjs/common": "^11.1.6",
+      },
+      "devDependencies": {
+        "@types/node": "^22.15.21",
+        "typescript": "^5.8.3",
+      },
+    },
     "simulation": {
       "name": "monadeum-simulation",
       "dependencies": {
@@ -111,6 +122,8 @@
     "@monadeum/tick": ["@monadeum/tick@workspace:libs/tick"],
 
     "@monadeum/worker": ["@monadeum/worker@workspace:apps/worker"],
+
+    "@monadeum/x402": ["@monadeum/x402@workspace:libs/x402"],
 
     "@nestjs/common": ["@nestjs/common@11.2.6", "", { "dependencies": { "file-type": "21.3.4", "iterare": "1.2.1", "load-esm": "1.0.3", "tslib": "2.8.1", "uid": "2.0.2" }, "peerDependencies": { "class-transformer": ">=0.4.1", "class-validator": ">=0.13.2", "reflect-metadata": "^0.1.12 || ^0.2.0", "rxjs": "^7.1.0" }, "optionalPeers": ["class-transformer", "class-validator"] }, "sha512-uXs98qEOesTf6rGs0OcvFpRdF4M6JvzyBmoIXcTYvojdte4HiwDYv+whaALoboyfu/fuq2umF74FLQu3V7ZPHw=="],
 
