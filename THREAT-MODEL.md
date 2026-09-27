@@ -132,6 +132,10 @@ The user's root wallet is the owner of every agent smart account that user contr
 8. The user can revoke one agent's session key at any time, immediately stopping that agent's ability to transact, without affecting any other agent or the user's own root wallet. A bulk revoke or sweep, or the action that would put the same root wallet over three distinct agents inside 60 minutes, is held as specified in `SECURITY.md` section 9. That hold is the mitigation for scenario G. It is not a delay on the single-agent path.
 9. An agent's identity, once created, is never deleted; retirement changes status, it does not erase history.
 10. Any state where the system cannot determine whether a proposed action is within policy fails closed; the action does not execute.
+11. An agent's smart account transfers funds only to targets on its contract allowlist (`SECURITY.md` section 1), never to an arbitrary address, and never to the user's own root wallet except through the owner-initiated withdrawal or sweep path, which the agent's session key cannot invoke.
+12. An agent never produces more descendants than the maximum-descendants-per-parent limit (`EVOLUTION.md` section 4), and that limit is a protocol-level constant, not a genome field, so no mutation or reproduction can raise it.
+13. A child's account receives capital from its parent only through a reproduction event, and never more than the amount `EVOLUTION.md` section 3.2 allows: the reproduction fraction of the parent's profit above principal, capped at `max_child_capital`.
+14. No user-supplied text, whether a prompt, an agent description, or a strategy instruction, changes a protocol-level parameter. Those parameters change only through an explicit operator change made outside any agent's or user's reasoning path.
 
 ## 8. Residual risk
 
