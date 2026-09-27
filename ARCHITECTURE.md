@@ -253,3 +253,217 @@ Deferred past the MVP, explicitly, not by omission. The infrastructure precondit
 Next.js, TypeScript, Tailwind, viem. Wagmi is not adopted as a core dependency: the primary onboarding path is embedded-wallet-driven (Privy's own SDK handles that path directly), and the autonomous agent runtime never touches React or Wagmi at all, it runs entirely in the worker processes described in section 11. Wagmi would add a dependency whose main value (multi-external-wallet connector UX) only matters on the advanced, external-wallet path, which is a smaller share of the intended product surface than the primary social-login path.
 
 Priority order for the dashboard, matching the brief's own list: onboarding and agent creation, funding, population view, lineage view, per-agent performance and transparency (wallet address, transactions, x402 spend, trades visible without reading logs), evolution event feed.
+
+## 16. Interface contracts (addendum)
+
+Sections 1 to 15 describe components and what each one is responsible for. This section fixes the four seams where two components built in parallel could each look correct in review and still fail to fit: the Policy/Risk Engine's rule schema (16.1), the proposal type that crosses from strategy to risk to trading (16.2), the on-chain validator interface (16.3), and genome hash canonicalization (16.4). The types below are written in TypeScript and Solidity because a type is harder to misread than a paragraph. They are the contract, not an implementation.
+
+Status: 16.1, 16.2, and 16.4 are decided. 16.3 is a draft. Its daily-cap mechanism waits on the rolling-daily-cap spike (issue #18), and its coverage of x402 payments waits on the open question stated in 16.3.
+
+**One rule applies across every seam: money crosses a boundary as an integer in the settlement asset's base units, never as a float.** The on-chain validator compares `uint256` values. An application-layer check done in floating point can place an amount on the other side of a cap from the chain's own check, and then the two layers disagree about the same transaction. Floats stay acceptable inside a strategy's own arithmetic. The conversion to base units happens once, when the proposal is built, rounding down. The settlement asset's `decimals` value is read from the token contract, not assumed.
+
+```ts
+type Hex = `0x${string}`;
+/** Integer amount in settlement-asset base units. bigint in memory, decimal string in JSON. */
+type BaseUnits = bigint;
+```
+
+### 16.1 Policy/Risk Engine rule schema
+
+**Decision**: the checks are a fixed set of typed, pure TypeScript functions inside the RiskModule. The thresholds those functions read are a versioned, signed JSON document. The policy is not a runtime-interpreted rules language, and it is not an external rules engine.
+
+**Why**: an interpreted policy language lets a data change alter *what* is checked, not only the thresholds, which moves the most load-bearing control in the system (`SECURITY.md` section 4) to a place code review does not see. An external rules engine puts a network hop on the enforcement path, which section 10 rules out, and adds a failure mode (engine unreachable) that would need its own fail-closed handling. Fixed checks with data thresholds keep the set of checks reviewable in a pull request, and let a threshold change without a deploy.
+
+```ts
+export interface PolicyDocument {
+  schemaVersion: 1;
+  version: number;                 // starts at 1, increments by 1 per change
+  previousHash: Hex | null;        // 16.4 hash of version - 1; null only for version 1
+  effectiveFrom: string;           // ISO 8601, UTC
+  settlementAsset: Hex;            // token address of the settlement asset (USDC)
+  allowedCalls: { target: Hex; selector: Hex; label: "kuru-router" | "reproduction" | "settlement-asset" }[];
+  allowedPairs: string[];
+  perActionCap: BaseUnits;
+  sessionDailyCap: BaseUnits;      // SECURITY.md section 9, layer 2; must not exceed the on-chain dailyCap
+  perTickInformationCap: BaseUnits;
+  dailyInformationCap: BaseUnits;
+  maxPositionFraction: number;     // protocol ceiling on riskTolerance, EVOLUTION.md section 1
+}
+
+/** Authoritative inputs. Read by the worker from the chain and the ledger, never taken from the proposal. */
+export interface Ledger {
+  capital: BaseUnits;
+  spentToday: BaseUnits;
+  informationToday: BaseUnits;
+  informationThisTick: BaseUnits;
+}
+
+export type Violation =
+  | "call-not-allowed" | "pair-not-allowed" | "per-action-cap" | "session-daily-cap"
+  | "information-cap" | "position-fraction" | "plan-hash-mismatch" | "policy-unverified";
+
+export type Decision =
+  | { approved: true; policyVersion: number; policyHash: Hex; planHash: Hex }
+  | { approved: false; policyVersion: number; policyHash: Hex; violations: Violation[] };
+
+export function evaluateInformation(policy: PolicyDocument, request: InformationRequest, ledger: Ledger): Decision;
+export function evaluateTrade(policy: PolicyDocument, proposal: ActionProposal, plan: ExecutionPlan, ledger: Ledger): Decision;
+```
+
+A rejection returns every violation it found, not only the first, so monitoring (`SECURITY.md` section 12) sees the full shape of a bad proposal.
+
+**How a rule change is authorized and audited, separately from genome mutation**:
+
+- Policy documents live in an append-only table, one row per version: the document, its 16.4 hash, the signer address, and the signature. No application database role has `UPDATE` or `DELETE` on it. The worker's role can only `SELECT`. The role that writes genomes (ReproductionModule) has no grant on it at all. Only a separate operator role can `INSERT`.
+- Each version is signed by an operator key over its 16.4 hash (EIP-191). That key is distinct from every session key and from any key a worker process holds. The allowed signer address is pinned in the worker's deployment configuration.
+- On load, the RiskModule verifies the signature and the `previousHash` chain back to version 1. If either check fails, it evaluates nothing and returns `policy-unverified` for every request. That is the fail-closed behavior of `SECURITY.md` section 8.
+- Every `Decision` is logged with `policyVersion` and `policyHash`, so any past approval can be replayed against the exact document that produced it.
+
+This is what gives the opening constraint of `EVOLUTION.md` a concrete home: the evolutionary process writes genomes, and it holds no credential that can write a policy version.
+
+**How the schema versions**: `version` changes when a threshold changes. That is data, signed, and deployed without code. `schemaVersion` changes when a field or a check is added or removed. That is a code change, reviewed in a pull request that updates this section. The RiskModule accepts only the `schemaVersion` values it was built for, and treats any other as `policy-unverified`.
+
+An owner-set limit tighter than the protocol document (for example, a user lowering one agent's daily cap) is a later extension. When it is added, the effective limit is the minimum of the two, never looser than the document.
+
+### 16.2 Proposal and execution-plan types
+
+**Decision**: a tick produces up to two separately evaluated requests. First, an `InformationRequest`, evaluated before the strategy runs, because section 4 orders the tick as observe, then decide whether to buy information, then reason and propose. Second, an `ActionProposal`: the strategy plugin's zero or one economic action (section 12), with the state and purchased information it was based on. The trading intent in the proposal is then turned into an `ExecutionPlan`, the exact calls to be submitted, and **the RiskModule evaluates the plan, not the intent**. `SECURITY.md` section 4 requires the check to run on the transaction's structural shape (destination, amount, asset), and only the built calls have that shape. The TradingModule then submits only a plan whose hash equals the approved `planHash`.
+
+```ts
+export interface InformationRequest {
+  tickKey: string;                 // `${agentId}:${tick}`, the section 11 idempotency key
+  agentId: string;
+  provider: "nansen" | "defillama";
+  maxPrice: BaseUnits;
+}
+
+export interface PurchasedInformation {
+  provider: "nansen" | "defillama";
+  price: BaseUnits;
+  observedAt: string;              // ISO 8601, UTC
+  paymentRef: string;              // x402 settlement reference
+  // The raw response is not carried. It was untrusted input (section 8); only its validated extraction reaches the strategy.
+}
+
+export interface ActionProposal {
+  schemaVersion: 1;
+  tickKey: string;
+  agentId: string;
+  account: Hex;                    // the agent's smart account
+  genomeHash: Hex;                 // 16.4; binds the proposal to the genome that produced it
+  strategyType: "trading";
+  state: {                         // recorded for audit and explanation; the RiskModule enforces against Ledger instead
+    capital: BaseUnits;
+    principal: BaseUnits;
+    ticksSinceTrade: number;
+    observedAt: string;
+  };
+  information: PurchasedInformation[];
+  action: TradeIntent | null;      // null: the plugin proposes nothing this tick
+}
+
+export interface TradeIntent {
+  kind: "trade";
+  pair: string;
+  side: "long" | "flat";
+  notional: BaseUnits;
+  maxSlippageBps: number;
+}
+
+export interface ExecutionPlan {
+  tickKey: string;
+  calls: { target: Hex; selector: Hex; data: Hex; spend: BaseUnits }[];  // native value is always 0
+  planHash: Hex;                   // 16.4 hash of { tickKey, calls }; recomputed by the RiskModule, never trusted
+}
+```
+
+**Where the current code differs**: `libs/strategy` computes `notional` as a `number` and folds the information decision into `Action.buyInformation`, and `libs/tick` passes that `Action` to `policy` rather than a built plan. Those are implementation gaps against this section, to be closed by the M2 and M3 work that consumes it. This section does not describe them as done.
+
+### 16.3 On-chain validator interface (draft)
+
+**Decision, provisional**: one spend-policy contract holds per-account limits and the call allowlist, keyed by smart account address. Its checks are split across the two phases of an ERC-4337 operation, because they have different needs:
+
+- **Validation phase** (`check`): the call allowlist at `(target, selector)` granularity, a zero native value, and the per-transaction cap. None of these needs the current time, so all of them can reject an operation before it is included.
+- **Execution phase** (`record`, called from a pre-execution hook): the rolling daily cap. ERC-7562's validation rules forbid the `TIMESTAMP` opcode during validation, so a check that needs "the last 24 hours" cannot run there. This is a constraint of the ERC-4337 validation rules as documented, to be confirmed against the bundlers actually used on Monad in issue #18. Its consequence is stated plainly: a daily-cap breach surfaces as a reverted execution that still pays gas, not as an operation rejected before inclusion.
+
+**How an amount is counted**: only calls that move the settlement asset count. `transfer(to, amount)` and `approve(spender, amount)` on the settlement asset count `amount` in full, at the moment of the call. A call to the Kuru router or the reproduction contract counts 0, on the assumption that each pulls funds only through an allowance the account set with a counted `approve`. That assumption is not yet verified for Kuru's router, and is checked in issue #20. Counting an approval in full when it is set is conservative: an unbounded approval exceeds `perTxCap` and is rejected, and unused allowance only reduces headroom.
+
+**Rolling window rule**: spend is stored in 25 one-hour buckets per account. The window total at hour `h` is the sum of buckets `h - 24` through `h`. That span covers between 24 and 25 hours, so it can over-count by up to one hour of spend but never under-counts. The chain therefore never allows more than `dailyCap` inside any 24-hour period. Storage is fixed-size per account.
+
+```solidity
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.24;
+
+/// Draft. The daily-cap state assumes issue #18 finds no native rolling cap.
+interface IAgentSpendPolicy {
+    struct Limits {
+        uint128 perTxCap;   // settlement-asset base units
+        uint128 dailyCap;   // over any 24 hour period, per the window rule
+    }
+
+    event LimitsSet(address indexed account, uint128 perTxCap, uint128 dailyCap);
+    event CallAllowed(address indexed account, address indexed target, bytes4 indexed selector, bool allowed);
+    event Spent(address indexed account, address indexed target, uint256 amount, uint256 windowTotal);
+
+    error CallNotAllowed(address target, bytes4 selector);
+    error NativeValueNotAllowed(uint256 value);
+    error PerTxCapExceeded(uint256 amount, uint256 cap);
+    error DailyCapExceeded(uint256 windowTotal, uint256 cap);
+
+    /// Validation phase. No time-dependent reads. Returns the amount the call counts.
+    function check(address account, address target, uint256 value, bytes calldata data)
+        external view returns (uint256 amount);
+
+    /// Execution phase, from the account's pre-execution hook. msg.sender is the account.
+    function record(address target, uint256 amount) external;
+
+    function limits(address account) external view returns (Limits memory);
+    function isAllowed(address account, address target, bytes4 selector) external view returns (bool);
+    function windowTotal(address account) external view returns (uint256);
+
+    /// Owner only: the account's root-wallet validator, never a session key.
+    function setLimits(Limits calldata newLimits) external;
+    function setAllowed(address target, bytes4 selector, bool allowed) external;
+}
+```
+
+**What changes with issue #18's answer**: if ZeroDev's policy primitives support a resetting daily cap natively, `record`, `windowTotal`, `DailyCapExceeded`, and the bucket storage are dropped, `dailyCap` becomes a reference to the native policy's configuration, and the rest of the interface stands. If the answer is daily session-key rotation instead, that is a different mechanism with its own in-flight-transaction failure mode, and this section is rewritten, not patched. Issue #21 finalizes the interface once #18 closes, and issue #25 implements it.
+
+**Open question, x402 coverage**: the working assumption is that x402's `exact` scheme on EVM settles through an EIP-3009 `transferWithAuthorization` that the payer signs and the facilitator submits. This is not verified against the x402 version and facilitator this project will use. If it holds, an x402 payment never passes through the account's user-operation validation. It is authorized through the account's ERC-1271 `isValidSignature` instead, and the interface above does not see it. Until the policy has an entry point on that signature path, the on-chain daily cap does not bound x402 spend, and only the application-layer information caps in 16.1 do. The same assumption means the x402 facilitator is not a call target the account makes, which is why `allowedCalls` in 16.1 does not list it.
+
+### 16.4 Genome hash canonicalization
+
+**Decision**: RFC 8785, the JSON Canonicalization Scheme (JCS), encoded as UTF-8, hashed with keccak256 behind a domain tag.
+
+```
+hash = keccak256( utf8(tag) || 0x00 || utf8(JCS(normalize(value))) )
+
+tag: "monadeum:genome:v1" | "monadeum:strategy:v1" | "monadeum:policy:v1" | "monadeum:plan:v1"
+```
+
+**Why JCS**: it is a published specification with an exact key order (lexicographic by UTF-16 code units) and an exact number format (ECMAScript number serialization). A TypeScript implementation and any later implementation in another language produce the same bytes without relying on a private convention. RFC 8785 was designed so that, in JavaScript, it matches `JSON.stringify` applied to an object whose keys are recursively sorted with the default sort. Any implementation is still checked against the RFC's own test vectors, not against that equivalence.
+
+**Why keccak256**: it is a native EVM opcode, so a contract can recompute or compare a commitment cheaply, and it is the hash the surrounding Ethereum tooling already uses for commitments. SHA-256 is available on the EVM only as a precompile.
+
+**Why a domain tag**: genome, strategy-version, policy (16.1), and plan (16.2) hashes all use this one scheme. The tag guarantees that a hash of one kind never equals a hash of another kind whose JSON happens to be identical.
+
+**Normalization, applied before JCS**, because JCS does not do any of it:
+
+1. Set-valued fields (`assetUniverse`, `informationSources`) are deduplicated and sorted in the same UTF-16 code unit order. JCS preserves array order, and mutation (`EVOLUTION.md` section 3.3) adds and removes elements, so element order is an accident of history, not meaning.
+2. Numbers must be finite. Integer-valued fields (`executionFrequency`, `timeHorizon`) must be integers. JCS already rejects `NaN` and infinities and writes `-0` as `0`. Base-unit amounts are decimal strings, per the rule at the top of this section.
+3. An absent optional field is omitted, never written as `null`.
+4. Only genome fields are hashed. Derived values (fitness, reproduction eligibility, `EVOLUTION.md` section 1) and storage metadata (row IDs, timestamps) are excluded. The hashed object carries `schemaVersion`. Renaming or adding a field is a `schemaVersion` change, because key names are part of the hashed bytes.
+
+Example. The genome below, with a duplicated and unsorted `assetUniverse` and a `-0` threshold:
+
+```json
+{"strategyType":"trading","schemaVersion":1,"riskTolerance":0.1,"executionFrequency":5,"assetUniverse":["PAIR_B","PAIR_A","PAIR_A"],"informationSources":["nansen","defillama"],"timeHorizon":20,"entryThreshold":0.002,"exitThreshold":-0,"informationBudget":0.5,"modelConfiguration":"low"}
+```
+
+normalizes and canonicalizes to exactly these bytes, which are then hashed:
+
+```json
+{"assetUniverse":["PAIR_A","PAIR_B"],"entryThreshold":0.002,"executionFrequency":5,"exitThreshold":0,"informationBudget":0.5,"informationSources":["defillama","nansen"],"modelConfiguration":"low","riskTolerance":0.1,"schemaVersion":1,"strategyType":"trading","timeHorizon":20}
+```
+
+The first implementation adds the resulting keccak256 value as a fixed test vector, computed by two independent implementations and checked to agree, so a later change to either side fails a test instead of surfacing as an on-chain mismatch.
