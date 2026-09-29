@@ -37,7 +37,8 @@ export interface VerifiedPolicy {
 
 export interface Ledger {
   capital: BaseUnits;
-  spentToday: BaseUnits;
+  spentInWindow: BaseUnits;
+  informationBudget: BaseUnits;
   informationToday: BaseUnits;
   informationThisTick: BaseUnits;
   assetUniverse: string[];
@@ -99,7 +100,9 @@ const SETTLEMENT_ABI = parseAbi([
 ]);
 const NO_POLICY: Hex = `0x${"0".repeat(64)}`;
 
-const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+const same = (a: unknown, b: unknown) =>
+  typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
+const isHex = (v: unknown) => typeof v === "string" && /^0x[0-9a-fA-F]*$/.test(v);
 const isAmount = (v: unknown) => typeof v === "bigint" && v >= 0n;
 
 function wellFormed(d: PolicyDocument): boolean {
@@ -107,7 +110,10 @@ function wellFormed(d: PolicyDocument): boolean {
     d.schemaVersion === 1 &&
     [d.perActionCap, d.sessionDailyCap, d.perTickInformationCap, d.dailyInformationCap].every(isAmount) &&
     Number.isFinite(d.maxPositionFraction) && d.maxPositionFraction >= 0 && d.maxPositionFraction <= 1 &&
-    !Number.isNaN(Date.parse(d.effectiveFrom))
+    !Number.isNaN(Date.parse(d.effectiveFrom)) &&
+    isHex(d.settlementAsset) &&
+    Array.isArray(d.allowedCalls) && d.allowedCalls.every((c) => isHex(c?.target) && isHex(c?.selector)) &&
+    Array.isArray(d.allowedPairs) && d.allowedPairs.every((p) => typeof p === "string")
   );
 }
 
@@ -118,13 +124,17 @@ function wellFormed(d: PolicyDocument): boolean {
 export async function loadPolicy(rows: readonly SignedPolicy[], signer: Hex, now: Date): Promise<VerifiedPolicy | null> {
   let previous: Hex | null = null;
   let active: VerifiedPolicy | null = null;
+  let previousFrom = -Infinity;
   try {
     for (const [i, { document, signature }] of rows.entries()) {
       if (!wellFormed(document) || document.version !== i + 1 || document.previousHash !== previous) return null;
+      const from = Date.parse(document.effectiveFrom);
+      if (from < previousFrom) return null;
+      previousFrom = from;
       const hash = hashOf("monadeum:policy:v1", document);
       const recovered = await recoverMessageAddress({ message: { raw: hash }, signature });
       if (!same(recovered, signer)) return null;
-      if (Date.parse(document.effectiveFrom) <= now.getTime()) active = { document, hash };
+      if (from <= now.getTime()) active = { document, hash };
       previous = hash;
     }
   } catch {
@@ -148,9 +158,10 @@ export function evaluateInformation(policy: VerifiedPolicy | null, request: Info
   const d = policy.document;
   const v: Violation[] = [];
   if (!PROVIDERS.has(request.provider)) v.push("provider-not-allowed");
+  const tickCap = ledger.informationBudget < d.perTickInformationCap ? ledger.informationBudget : d.perTickInformationCap;
   if (
     !isAmount(request.maxPrice) ||
-    ledger.informationThisTick + request.maxPrice > d.perTickInformationCap ||
+    ledger.informationThisTick + request.maxPrice > tickCap ||
     ledger.informationToday + request.maxPrice > d.dailyInformationCap
   ) v.push("information-cap");
   return decide(policy, v, null);
@@ -163,6 +174,15 @@ export function evaluateTrade(
   ledger: Ledger,
 ): Decision {
   if (!policy) return unverified();
+  try {
+    return evaluateTradeUnsafe(policy, proposal, plan, ledger);
+  } catch {
+    // Malformed input fails closed as a rejection, never as an exception.
+    return decide(policy, ["call-not-allowed"], null);
+  }
+}
+
+function evaluateTradeUnsafe(policy: VerifiedPolicy, proposal: ActionProposal, plan: ExecutionPlan, ledger: Ledger): Decision {
   const d = policy.document;
   const v: Violation[] = [];
 
@@ -177,7 +197,7 @@ export function evaluateTrade(
     if (plan.calls.length > 0) v.push("call-not-allowed");
   } else {
     if (!d.allowedPairs.includes(action.pair) || !ledger.assetUniverse.includes(action.pair)) v.push("pair-not-allowed");
-    // ponytail: fraction floored to parts per million, so the cap only ever rounds down
+    // The fraction is floored to parts per million, so the cap only ever rounds down.
     const positionCap = (ledger.capital * BigInt(Math.floor(d.maxPositionFraction * 1_000_000))) / 1_000_000n;
     if (!isAmount(action.notional) || action.notional > positionCap) v.push("position-fraction");
   }
@@ -201,7 +221,7 @@ export function evaluateTrade(
     }
   }
   if (spend > d.perActionCap) v.push("per-action-cap");
-  if (ledger.spentToday + spend > d.sessionDailyCap) v.push("session-daily-cap");
+  if (ledger.spentInWindow + spend > d.sessionDailyCap) v.push("session-daily-cap");
 
   return decide(policy, v, planHash);
 }

@@ -70,7 +70,8 @@ async function chain(overrides: Partial<PolicyDocument>[] = [{}]): Promise<Signe
 const NOW = new Date("2026-09-27T00:00:00Z");
 const ledger: Ledger = {
   capital: 40_000_000n,
-  spentToday: 0n,
+  spentInWindow: 0n,
+  informationBudget: 1_000_000n,
   informationToday: 0n,
   informationThisTick: 0n,
   assetUniverse: ["MON/USDC"],
@@ -149,6 +150,23 @@ test("scenario F: unknown pair, off-allowlist contract, wrong decimals, and malf
   assert.ok(!malformed.approved && malformed.violations.includes("call-not-allowed"));
 });
 
+test("the genome information budget caps a purchase below the policy per-tick cap", async () => {
+  const policy = await active();
+  const request = { tickKey: "agent-1:7", agentId: "agent-1", provider: "nansen" as const, maxPrice: 60_000n };
+  assert.equal(evaluateInformation(policy, request, ledger).approved, true);
+  const d = evaluateInformation(policy, request, { ...ledger, informationBudget: 50_000n });
+  assert.ok(!d.approved && d.violations.includes("information-cap"));
+});
+
+test("a malformed call target is rejected, not thrown", async () => {
+  const policy = await active();
+  const calls = [{ target: undefined as unknown as Hex, data: order }];
+  const d = evaluateTrade(policy, proposal(1_000_000n), { tickKey: "agent-1:7", calls, planHash: "0x00" }, ledger);
+  assert.ok(!d.approved && d.violations.includes("call-not-allowed"));
+  const noCalls = evaluateTrade(policy, proposal(1_000_000n), { tickKey: "agent-1:7" } as ExecutionPlan, ledger);
+  assert.equal(noCalls.approved, false);
+});
+
 test("a plan changed after hashing, or for another tick, is rejected", async () => {
   const policy = await active();
   const p = plan([{ target: USDC, data: approve(ROUTER, 1_000_000n) }]);
@@ -162,7 +180,7 @@ test("a plan changed after hashing, or for another tick, is rejected", async () 
 test("the session daily cap counts what was already spent today", async () => {
   const policy = await active();
   const p = plan([{ target: USDC, data: approve(ROUTER, 4_000_000n) }]);
-  const d = evaluateTrade(policy, proposal(4_000_000n), p, { ...ledger, spentToday: 17_000_000n });
+  const d = evaluateTrade(policy, proposal(4_000_000n), p, { ...ledger, spentInWindow: 17_000_000n });
   assert.ok(!d.approved && d.violations.includes("session-daily-cap"));
 });
 
@@ -178,6 +196,12 @@ test("a policy that fails verification rejects every request", async () => {
 
   const broken = [rows[0], await sign(doc(2, null))];
   assert.equal(await loadPolicy(broken, operator.address, NOW), null);
+
+  const backdated = await sign(doc(2, hashOf("monadeum:policy:v1", rows[0].document), { effectiveFrom: "2026-08-01T00:00:00Z" }));
+  assert.equal(await loadPolicy([rows[0], backdated], operator.address, NOW), null);
+
+  const badCalls = await sign(doc(1, null, { allowedCalls: [{ target: 1 as unknown as Hex, selector: "0x", label: "kuru-router" }] }));
+  assert.equal(await loadPolicy([badCalls], operator.address, NOW), null);
 
   const future = await sign({ ...doc(1, null), schemaVersion: 2 as 1 });
   assert.equal(await loadPolicy([future], operator.address, NOW), null);

@@ -14,7 +14,7 @@ function normalize(value: unknown): unknown {
   return value;
 }
 
-// ponytail: sorted-key JSON.stringify is RFC 8785 in JavaScript; check against the RFC vectors if a non-JS implementation appears
+// Sorted-key JSON.stringify is RFC 8785 in JavaScript; check against the RFC vectors if a non-JS implementation appears
 export function canonicalJson(value: unknown): string {
   return JSON.stringify(normalize(value));
 }
