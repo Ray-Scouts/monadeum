@@ -33,7 +33,7 @@ function setup(paid = okResponse(), challenge?: unknown) {
   const payer: Payer = { authorize: async (t) => { authorized.push(t); return "signed"; } };
   const log = new MemoryPaymentLog();
   const s = server(paid, challenge);
-  return { client: new X402Client(endpoints, USDC, payer, log, s.http), log, calls: s.calls, authorized };
+  return { client: new X402Client(endpoints, USDC, "monad-testnet", payer, log, s.http), log, calls: s.calls, authorized };
 }
 const purchase: Purchase = { tickKey: "agent-1:7", provider: "nansen", resource: "/signal?pair=MON", maxPrice: 10000n };
 
@@ -46,6 +46,7 @@ test("a paid response is validated, logged with its outcome, and every request i
   for (const c of calls) {
     assert.equal(c.init.cache, "no-store");
     assert.equal(new Headers(c.init.headers).get("cache-control"), "no-store");
+    assert.equal(c.init.redirect, "error");
   }
   client.recordInfluence(result.paymentRef, true);
   const entry = log.get(result.paymentRef);
@@ -73,7 +74,7 @@ test("an unlisted provider or an off-host resource is refused before any request
 });
 
 test("terms over budget, for another asset, or to another payee are not paid", async () => {
-  for (const challenge of [terms({ maxAmountRequired: "10001" }), terms({ asset: "0xdead" }), terms({ payTo: "0xdead" }), { junk: true }]) {
+  for (const challenge of [terms({ maxAmountRequired: "10001" }), terms({ asset: "0xdead" }), terms({ payTo: "0xdead" }), terms({ network: "base" }), { junk: true }]) {
     const { client, authorized } = setup(okResponse(), challenge);
     assert.deepEqual(await client.buy(purchase), { ok: false, reason: "terms" });
     assert.equal(authorized.length, 0);
@@ -91,4 +92,27 @@ test("a malformed or failed paid response is no information, never partially tru
 
   const noRef = setup(() => Response.json(quote, { status: 200 }));
   assert.deepEqual(await noRef.client.buy(purchase), { ok: false, reason: "anomaly" });
+});
+
+test("concurrent buys for the same purchase reach the payer once", async () => {
+  const { client, authorized } = setup();
+  const results = await Promise.all([client.buy(purchase), client.buy(purchase)]);
+  assert.deepEqual(results.map((r) => r.ok).sort(), [false, true]);
+  assert.equal(authorized.length, 1);
+});
+
+test("a payer failure is an anomaly result with no payment recorded, not an exception", async () => {
+  const log = new MemoryPaymentLog();
+  const payer: Payer = { authorize: async () => { throw new Error("wallet down"); } };
+  const client = new X402Client(endpoints, USDC, "monad-testnet", payer, log, server(okResponse()).http);
+  assert.deepEqual(await client.buy(purchase), { ok: false, reason: "anomaly" });
+  const entry = log.get("agent-1:7:nansen:/signal?pair=MON");
+  assert.equal(entry?.anomaly, "authorize-failed");
+  assert.equal(entry?.price, 0n);
+});
+
+test("a quote from another provider than the one paid is malformed", async () => {
+  const { client, log } = setup(okResponse("s", { ...quote, provider: "defillama" }));
+  assert.deepEqual(await client.buy(purchase), { ok: false, reason: "malformed" });
+  assert.equal(log.get("agent-1:7:nansen:/signal?pair=MON")?.anomaly, "provider-mismatch");
 });
