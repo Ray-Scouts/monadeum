@@ -79,7 +79,8 @@ Agent smart account spends on:
 
 Agent smart account never spends on:
   - transfers to arbitrary addresses (contract allowlist excludes anything but
-    the x402 facilitator, Kuru's router, and the reproduction contract)
+    Kuru's router, the reproduction contract, and the settlement asset; see
+    section 16.3 for the recipient check the on-chain layer does not yet make)
   - withdrawals back to the user above the user's own configured limits
     (protects against a compromised agent silently draining back "to the user"
     as a laundering step, see THREAT-MODEL.md)
@@ -391,6 +392,8 @@ export interface ExecutionPlan {
 - **Execution phase** (`record`, called from a pre-execution hook): the rolling daily cap. ERC-7562's validation rules forbid the `TIMESTAMP` opcode during validation, so a check that needs "the last 24 hours" cannot run there. This is a constraint of the ERC-4337 validation rules as documented, to be confirmed against the bundlers actually used on Monad in issue #18. Its consequence is stated plainly: a daily-cap breach surfaces as a reverted execution that still pays gas, not as an operation rejected before inclusion.
 
 **How an amount is counted**: only calls that move the settlement asset count. `transfer(to, amount)` and `approve(spender, amount)` on the settlement asset count `amount` in full, at the moment of the call. A call to the Kuru router or the reproduction contract counts 0, on the assumption that each pulls funds only through an allowance the account set with a counted `approve`. That assumption is not yet verified for Kuru's router, and is checked in issue #20. Counting an approval in full when it is set is conservative: an unbounded approval exceeds `perTxCap` and is rejected, and unused allowance only reduces headroom.
+
+**Known gap, recipients are not checked on-chain**: the allowlist works at `(target, selector)` granularity, so allowing `transfer` and `approve` on the settlement asset allows them to any recipient or spender. A compromised session key could therefore send up to `perTxCap` per operation, and up to `dailyCap` inside the window, to an address of its choosing, and the chain would accept it. Only the RiskModule's `recipient-not-allowed` rule in 16.1 blocks that today, and the RiskModule is off-chain. The caps bound the loss; they do not prevent it. The fix under consideration is a per-account recipient allowlist that `check` applies to the first argument of `transfer` and `approve` on the settlement asset. It is not in the draft interface below, and issue #21 decides whether it is added before issue #25 implements the contract.
 
 **The policy contract protects itself**: `setLimits` and `setAllowed` read the account from `msg.sender`, and a call a session key makes also executes from the account, so the contract alone cannot tell the owner from a session key. Two rules close that gap, and neither depends on the allowlist being configured correctly. `check` rejects any call whose target is the policy contract itself, whatever the allowlist says, so a session-key operation can never reach the owner functions. The owner reaches them only through the root-wallet validator, whose operations do not run the session key's hook or policy. Without both rules, one mistaken allowlist entry would let a compromised session key raise its own caps.
 
