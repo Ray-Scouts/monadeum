@@ -306,25 +306,32 @@ export type Violation =
   | "per-action-cap" | "session-daily-cap" | "information-cap" | "position-fraction" | "plan-hash-mismatch" | "policy-unverified";
 
 export type Decision =
-  | { approved: true; policyVersion: number; policyHash: Hex; planHash: Hex }
+  | { approved: true; policyVersion: number; policyHash: Hex; planHash: Hex | null }  // null for information requests
   | { approved: false; policyVersion: number; policyHash: Hex; violations: Violation[] };
 
-export function evaluateInformation(policy: PolicyDocument, request: InformationRequest, ledger: Ledger): Decision;
-export function evaluateTrade(policy: PolicyDocument, proposal: ActionProposal, plan: ExecutionPlan, ledger: Ledger): Decision;
+/** A document whose signature and hash chain were verified on load. null when verification failed. */
+export interface VerifiedPolicy { document: PolicyDocument; hash: Hex }
+
+export function evaluateInformation(policy: VerifiedPolicy | null, request: InformationRequest, ledger: Ledger): Decision;
+export function evaluateTrade(policy: VerifiedPolicy | null, proposal: ActionProposal, plan: ExecutionPlan, ledger: Ledger): Decision;
 ```
 
 A rejection returns every violation it found, not only the first, so monitoring (`SECURITY.md` section 12) sees the full shape of a bad proposal.
 
-The RiskModule derives how much each call spends from its calldata, and never from a figure the plan declares. A `transfer` or `approve` on the settlement asset spends its `amount`, and its recipient or spender must itself be an allowlisted target (`recipient-not-allowed` otherwise): an `approve` naming an attacker's address is the drain pattern of `THREAT-MODEL.md` scenario A, even though the call itself targets an allowlisted token. Every other allowlisted call spends 0, the same counting rule as the on-chain validator in 16.3. `perActionCap` is compared with the sum over every call in the plan, not with each call alone, so splitting one action into several calls does not multiply the cap. `session-daily-cap` compares `spentInWindow` plus that sum with `sessionDailyCap`, over the same rolling window the chain enforces: a calendar-day counter would reset while the on-chain window still holds the previous hours, and every approval in that gap would revert on-chain and still pay gas. An information request is capped by the lowest of the genome's `informationBudget`, `perTickInformationCap`, and `dailyInformationCap`; the strategy plugin checking its own budget is not the enforcement, because the plugin sits on the proposal side of `SECURITY.md` section 4. A pair must be both in `allowedPairs` and in the agent's own `assetUniverse`.
+The RiskModule derives how much each call spends from its calldata, and never from a figure the plan declares. A `transfer` or `approve` on the settlement asset spends its `amount`, and its recipient or spender must itself be an allowlisted target (`recipient-not-allowed` otherwise): an `approve` naming an attacker's address is the drain pattern of `THREAT-MODEL.md` scenario A, even though the call itself targets an allowlisted token. Every other allowlisted call spends 0, the same counting rule as the on-chain validator in 16.3. `perActionCap` is compared with the sum over every call in the plan, not with each call alone, so splitting one action into several calls does not multiply the cap. `session-daily-cap` compares `spentInWindow` plus that sum with `sessionDailyCap`, over the same rolling window the chain enforces: a calendar-day counter would reset while the on-chain window still holds the previous hours, and every approval in that gap would revert on-chain and still pay gas. An information request is capped per tick by the lower of the genome's `informationBudget` and `perTickInformationCap`, and per day by `dailyInformationCap`; the strategy plugin checking its own budget is not the enforcement, because the plugin sits on the proposal side of `SECURITY.md` section 4. A pair must be both in `allowedPairs` and in the agent's own `assetUniverse`.
+
+**Known gap, the pair and the position size are declared**: the pair check and `maxPositionFraction` read `pair` and `notional` from the proposal's `TradeIntent`, not from the router calldata, because router calls are not decoded (they count 0, as above). A plan could therefore trade a different pair or size than it declares, up to the settlement-asset `approve` the plan also carries, which is counted and capped. Closing this requires decoding the Kuru router's calldata, which waits on issue #20 confirming the router interface. Until then, the spend caps bound this gap and the pair and position checks do not.
 
 **How a rule change is authorized and audited, separately from genome mutation**:
 
 - Policy documents live in an append-only table, one row per version: the document, its 16.4 hash, the signer address, and the signature. No application database role has `UPDATE` or `DELETE` on it. The worker's role can only `SELECT`. The role that writes genomes (ReproductionModule) has no grant on it at all. Only a separate operator role can `INSERT`.
 - Each version is signed by an operator key over its 16.4 hash (EIP-191). That key is distinct from every session key and from any key a worker process holds. The allowed signer address is pinned in the worker's deployment configuration.
-- On load, the RiskModule verifies the signature and the `previousHash` chain back to version 1. If either check fails, it evaluates nothing and returns `policy-unverified` for every request. That is the fail-closed behavior of `SECURITY.md` section 8.
+- On load, the RiskModule verifies the signature and the `previousHash` chain back to version 1, and that `effectiveFrom` never moves backward from one version to the next. If either check fails, it evaluates nothing and returns `policy-unverified` for every request. That is the fail-closed behavior of `SECURITY.md` section 8.
 - Every `Decision` is logged with `policyVersion` and `policyHash`, so any past approval can be replayed against the exact document that produced it.
 
 This is what gives the opening constraint of `EVOLUTION.md` a concrete home: the evolutionary process writes genomes, and it holds no credential that can write a policy version.
+
+The checks above are implemented in `libs/risk`. The append-only table and its database grants arrive with the first Postgres schema, because no database layer exists yet. Until then, `libs/risk` verifies whatever rows it is given, and the grants are a requirement on that later work, not something the library can enforce.
 
 **How the schema versions**: `version` changes when a threshold changes. That is data, signed, and deployed without code. `schemaVersion` changes when a field or a check is added or removed. That is a code change, reviewed in a pull request that updates this section. The RiskModule accepts only the `schemaVersion` values it was built for, and treats any other as `policy-unverified`.
 
