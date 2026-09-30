@@ -1,6 +1,7 @@
 // Issue #18 spike. Throwaway code: it answers one question on Monad testnet and is not imported by anything.
 // Question: does a ZeroDev session key with call policy (per-call cap X) plus the reset rate limit
-// (N UserOps per window) bound native spend at N * X per window, and does a batched UserOp break that bound?
+// (N UserOps per window) bound native spend at N * X per window, does a batched UserOp break that bound,
+// and how much can move inside any window-length span, not only inside one fixed window?
 import {
   createKernelAccount,
   createKernelAccountClient,
@@ -24,40 +25,86 @@ const env = (name: string, fallback?: string): string => {
 const bundlerUrl = env("ZERODEV_RPC");
 if (!bundlerUrl.includes("/chain/10143")) throw new Error("ZERODEV_RPC must target Monad testnet, chain 10143");
 const rpcUrl = env("MONAD_RPC", "https://testnet-rpc.monad.xyz");
+const positiveInt = (name: string, fallback: string): number => {
+  const value = Number(env(name, fallback));
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`${name} must be a positive integer`);
+  return value;
+};
 const capPerCall = parseEther(env("CAP_PER_CALL_MON", "0.001"));
-const count = Number(env("RATE_LIMIT_COUNT", "3"));
-const windowSeconds = Number(env("WINDOW_SECONDS", "120"));
+if (capPerCall <= 0n) throw new Error("CAP_PER_CALL_MON must be positive");
+const count = positiveInt("RATE_LIMIT_COUNT", "3");
+const windowSeconds = positiveInt("WINDOW_SECONDS", "120");
+const pollSeconds = positiveInt("POLL_SECONDS", "5");
 const fundTarget = parseEther(env("FUND_MON", "0.05"));
 
 const chain = monadTestnet;
 const entryPoint = getEntryPoint("0.7");
 const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
 const owner = privateKeyToAccount(env("OWNER_PRIVATE_KEY") as Hex);
-// ponytail: the session key is generated per run and never persisted, which is enough for a spike
+// Generated per run and never persisted. Revocation is out of scope here, see issue #19.
 const sessionKey = privateKeyToAccount(generatePrivateKey());
 const recipient = owner.address;
 
-type Outcome = { step: string; expected: "ok" | "reject"; actual: "ok" | "reject"; moved: bigint; detail: string };
+// "observe" marks a step whose outcome is the finding itself, not a pass or fail.
+type Expected = "ok" | "reject" | "observe";
+type Outcome = { step: string; expected: Expected; actual: "ok" | "reject"; moved: bigint; at: bigint | null; detail: string };
 const outcomes: Outcome[] = [];
+
+async function chainTime(): Promise<bigint> {
+  return (await publicClient.getBlock({ blockTag: "latest" })).timestamp;
+}
 
 async function attempt(
   client: KernelAccountClient,
   step: string,
-  expected: "ok" | "reject",
+  expected: Expected,
   calls: { to: Hex; value: bigint; data: Hex }[],
-) {
-  const moved = calls.reduce((sum, call) => sum + call.value, 0n);
+): Promise<Outcome> {
+  // Moved is measured as the recipient's on-chain balance change, not taken from the requested values.
+  // The recipient only receives during the run, so any change is spend from the agent account.
+  const before = await publicClient.getBalance({ address: recipient });
+  let outcome: Outcome;
   try {
     const hash = await client.sendUserOperation({ callData: await client.account!.encodeCalls(calls) });
     const receipt = await client.waitForUserOperationReceipt({ hash });
-    const ok = receipt.success;
-    outcomes.push({ step, expected, actual: ok ? "ok" : "reject", moved: ok ? moved : 0n, detail: receipt.receipt.transactionHash });
+    const block = await publicClient.getBlock({ blockNumber: receipt.receipt.blockNumber });
+    const moved = (await publicClient.getBalance({ address: recipient, blockNumber: receipt.receipt.blockNumber })) - before;
+    const actual = receipt.success ? "ok" : "reject";
+    outcome = { step, expected, actual, moved, at: block.timestamp, detail: receipt.receipt.transactionHash };
   } catch (error) {
     const detail = error instanceof Error ? error.message.split("\n")[0]!.slice(0, 160) : String(error);
-    outcomes.push({ step, expected, actual: "reject", moved: 0n, detail });
+    outcome = { step, expected, actual: "reject", moved: 0n, at: null, detail };
   }
-  const last = outcomes.at(-1)!;
-  console.log(`${last.actual === expected ? "PASS" : "UNEXPECTED"} ${step}: ${last.actual} (${last.detail})`);
+  outcomes.push(outcome);
+  const verdict = expected === "observe" ? "OBSERVED" : outcome.actual === expected ? "PASS" : "UNEXPECTED";
+  console.log(`${verdict} ${step}: ${outcome.actual}, moved ${formatEther(outcome.moved)} MON (${outcome.detail})`);
+  return outcome;
+}
+
+/** Retries one capped transfer until the chain accepts it, which marks a window reset in chain time, not local time. */
+async function untilReset(client: KernelAccountClient, label: string, single: (v: bigint) => { to: Hex; value: bigint; data: Hex }[]) {
+  const polls = Math.ceil((2 * windowSeconds) / pollSeconds);
+  for (let i = 0; i < polls; i++) {
+    const before = outcomes.length;
+    const o = await attempt(client, `${label}, reset probe ${i + 1}`, "observe", single(capPerCall));
+    if (o.actual === "ok") return o;
+    // A rejected probe is kept out of the table unless it moved funds, which would itself be a finding.
+    if (o.moved === 0n) outcomes.splice(before, 1);
+    await new Promise((resolve) => setTimeout(resolve, pollSeconds * 1000));
+  }
+  throw new Error(`${label}: no reset observed within ${2 * windowSeconds}s of chain time`);
+}
+
+/** Largest amount moved inside any span of windowSeconds, over the chain timestamps of accepted operations. */
+function maxInAnySpan(rows: Outcome[]): bigint {
+  const timed = rows.filter((o) => o.at !== null && o.moved > 0n).sort((a, b) => Number(a.at! - b.at!));
+  let best = 0n;
+  for (let i = 0; i < timed.length; i++) {
+    let sum = 0n;
+    for (let j = i; j < timed.length && timed[j]!.at! - timed[i]!.at! < BigInt(windowSeconds); j++) sum += timed[j]!.moved;
+    if (sum > best) best = sum;
+  }
+  return best;
 }
 
 async function main() {
@@ -96,26 +143,51 @@ async function main() {
   }
 
   const single = (value: bigint) => [{ to: recipient, value, data: "0x" as Hex }];
-
-  // 1. Per-call cap. Validation failures should not consume the rate limit.
-  await attempt(session, "single transfer above per-call cap", "reject", single(capPerCall + 1n));
-  // 2. The open question: does one batched UserOp with two capped calls count once against the rate limit?
-  await attempt(session, "batch of two capped calls in one UserOp", "reject", [...single(capPerCall), ...single(capPerCall)]);
-  // 3. Exhaust the window with capped single calls, then one more that must be rejected.
-  for (let i = 1; i <= count; i++) await attempt(session, `capped single transfer ${i}`, "ok", single(capPerCall));
-  await attempt(session, "single transfer after window exhausted", "reject", single(capPerCall));
-  // 4. Reset: after the interval, the allowance should refill.
-  console.log(`waiting ${windowSeconds + 5}s for the window to reset`);
-  await new Promise((resolve) => setTimeout(resolve, (windowSeconds + 5) * 1000));
-  await attempt(session, "single transfer after window reset", "ok", single(capPerCall));
-
-  const firstWindow = outcomes.slice(0, -1).reduce((sum, outcome) => sum + outcome.moved, 0n);
   const bound = capPerCall * BigInt(count);
-  console.log("\n| step | expected | actual | detail |\n|---|---|---|---|");
-  for (const o of outcomes) console.log(`| ${o.step} | ${o.expected} | ${o.actual} | ${o.detail} |`);
-  console.log(`\nmoved in first window: ${formatEther(firstWindow)} MON, bound N * X: ${formatEther(bound)} MON`);
-  console.log(firstWindow > bound ? "RESULT: bound broken, the workaround does not cap daily spend" : "RESULT: bound held");
-  process.exit(outcomes.every((o) => o.actual === o.expected) ? 0 : 1);
+
+  // Phase 1, batching, in its own window so its result cannot disturb the count in phase 2.
+  await attempt(session, "single transfer above per-call cap", "reject", single(capPerCall + 1n));
+  const batch = await attempt(session, "batch of two capped calls in one UserOp", "observe", [...single(capPerCall), ...single(capPerCall)]);
+  let remaining = 0;
+  while (remaining <= count) {
+    const o = await attempt(session, `phase 1 capped single ${remaining + 1}`, "observe", single(capPerCall));
+    if (o.actual !== "ok") break;
+    remaining++;
+  }
+  const phase1 = outcomes.slice();
+
+  // Phase 2, the per-window bound. The reset probe is the window's first accepted operation.
+  const reset1 = await untilReset(session, "phase 2", single);
+  for (let i = 2; i <= count; i++) await attempt(session, `phase 2 capped single ${i}`, "ok", single(capPerCall));
+  await attempt(session, "phase 2 single after window exhausted", "reject", single(capPerCall));
+
+  // Phase 3, the boundary. Spend the next window's allowance late in it, then the one after that as soon as it
+  // resets. A rolling cap would reject the second burst; a fixed window allows both inside one window-length span.
+  console.log(`phase 2 window opened at chain time ${reset1.at}, waiting for the next reset`);
+  const reset2 = await untilReset(session, "phase 3 late", single);
+  while ((await chainTime()) < reset2.at! + BigInt(Math.floor(windowSeconds / 2))) {
+    await new Promise((resolve) => setTimeout(resolve, pollSeconds * 1000));
+  }
+  for (let i = 2; i <= count; i++) await attempt(session, `phase 3 late capped single ${i}`, "ok", single(capPerCall));
+  await untilReset(session, "phase 3 early", single);
+  for (let i = 2; i <= count; i++) await attempt(session, `phase 3 early capped single ${i}`, "ok", single(capPerCall));
+
+  const phase1Moved = phase1.reduce((sum, o) => sum + o.moved, 0n);
+  const perWindow = outcomes.slice(phase1.length);
+  const phase2 = perWindow.filter((o) => o.step.startsWith("phase 2"));
+  const phase2Moved = phase2.reduce((sum, o) => sum + o.moved, 0n);
+  const rolling = maxInAnySpan(perWindow);
+
+  console.log("\n| step | expected | actual | moved (MON) | block time | detail |\n|---|---|---|---:|---:|---|");
+  for (const o of outcomes) {
+    console.log(`| ${o.step} | ${o.expected} | ${o.actual} | ${formatEther(o.moved)} | ${o.at ?? "-"} | ${o.detail} |`);
+  }
+  console.log(`\nbound N * X per window: ${formatEther(bound)} MON`);
+  console.log(`batch: ${batch.actual}, moved ${formatEther(batch.moved)} MON; singles accepted after it in the same window: ${remaining}`);
+  console.log(`phase 1 window moved ${formatEther(phase1Moved)} MON: ${phase1Moved > bound ? "BATCH BREAKS the per-window bound" : "per-window bound held with batching"}`);
+  console.log(`phase 2 window moved ${formatEther(phase2Moved)} MON: ${phase2Moved > bound ? "per-window bound BROKEN" : "per-window bound held"}`);
+  console.log(`max moved in any ${windowSeconds}s span: ${formatEther(rolling)} MON: ${rolling > bound ? "the window is FIXED, not rolling" : "no boundary burst observed"}`);
+  process.exit(outcomes.every((o) => o.expected === "observe" || o.actual === o.expected) ? 0 : 1);
 }
 
 main().catch((error) => {
