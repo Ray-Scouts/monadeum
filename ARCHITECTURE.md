@@ -259,7 +259,7 @@ Priority order for the dashboard, matching the brief's own list: onboarding and 
 
 Sections 1 to 15 describe components and what each one is responsible for. This section fixes the four seams where two components built in parallel could each look correct in review and still fail to fit: the Policy/Risk Engine's rule schema (16.1), the proposal type that crosses from strategy to risk to trading (16.2), the on-chain validator interface (16.3), and genome hash canonicalization (16.4). The types below are written in TypeScript and Solidity because a type is harder to misread than a paragraph. They are the contract, not an implementation.
 
-Status: 16.1, 16.2, and 16.4 are decided. 16.3 is a draft. Its daily-cap mechanism is finalized in issue #21 once the rolling-daily-cap spike (issue #18) records its testnet run, and its coverage of x402 payments waits on the open question stated in 16.3.
+Status: 16.1, 16.2, and 16.4 are decided. 16.3 is a draft. The rolling-daily-cap spike (issue #18) has recorded its testnet run, and its result confirms the custom daily-cap mechanism in 16.3; the exact interface is finalized in issue #21. Its coverage of x402 payments waits on the open question stated in 16.3.
 
 **One rule applies across every seam: money crosses a boundary as an integer in the settlement asset's base units, never as a float.** The on-chain validator compares `uint256` values. An application-layer check done in floating point can place an amount on the other side of a cap from the chain's own check, and then the two layers disagree about the same transaction. Floats stay acceptable inside a strategy's own arithmetic. The conversion to base units happens once, when the proposal is built, rounding down. The settlement asset's `decimals` value is read from the token contract, not assumed.
 
@@ -396,7 +396,7 @@ export interface ExecutionPlan {
 **Decision, provisional**: one spend-policy contract holds per-account limits and the call allowlist, keyed by smart account address. Its checks are split across the two phases of an ERC-4337 operation, because they have different needs:
 
 - **Validation phase** (`check`): the call allowlist at `(target, selector)` granularity, a zero native value, and the per-transaction cap. `check` receives every call the operation executes, single or batched, and the per-transaction cap applies to their sum: a check that saw one call at a time would let one batched operation of `k` calls move `k` times the cap. None of these needs the current time, so all of them can reject an operation before it is included.
-- **Execution phase** (`record`, called from a pre-execution hook): the rolling daily cap. ERC-7562's validation rules forbid the `TIMESTAMP` opcode during validation, so a check that needs "the last 24 hours" cannot run there. This is a constraint of the ERC-4337 validation rules as documented, to be confirmed against the bundlers actually used on Monad in issue #18. Its consequence is stated plainly: a daily-cap breach surfaces as a reverted execution that still pays gas, not as an operation rejected before inclusion.
+- **Execution phase** (`record`, called from a pre-execution hook): the rolling daily cap. ERC-7562's validation rules forbid the `TIMESTAMP` opcode during validation, so a check that needs "the last 24 hours" cannot run there. This is a constraint of the ERC-4337 validation rules as documented. The issue #18 spike did not exercise it, so it remains to be confirmed against the bundlers actually used on Monad. Its consequence is stated plainly: a daily-cap breach surfaces as a reverted execution that still pays gas, not as an operation rejected before inclusion.
 
 **How an amount is counted**: only calls that move the settlement asset count. `transfer(to, amount)` and `approve(spender, amount)` on the settlement asset count `amount` in full, at the moment of the call. A call to the Kuru router or the reproduction contract counts 0, on the assumption that each pulls funds only through an allowance the account set with a counted `approve`. That assumption is not yet verified for Kuru's router, and is checked in issue #20. Counting an approval in full when it is set is conservative: an unbounded approval exceeds `perTxCap` and is rejected, and unused allowance only reduces headroom.
 
@@ -406,11 +406,13 @@ export interface ExecutionPlan {
 
 **Rolling window rule**: spend is stored in 25 one-hour buckets per account. The window total at hour `h` is the sum of buckets `h - 24` through `h`. That span covers between 24 and 25 hours, so it can over-count by up to one hour of spend but never under-counts. The chain therefore never allows more than `dailyCap` inside any 24-hour period. Storage is fixed-size per account.
 
+**Why a custom contract and not ZeroDev's native policies**: the closest native combination, a call policy with a per-call value cap `X` plus the reset rate limit policy at `N` operations per window, was run on Monad testnet in issue #18 (`spikes/rolling-daily-cap`, 120 second windows, `X` = 0.001 MON, `N` = 3, so a nominal bound of 0.003 MON per window). It failed as a value cap in two independent ways. First, the rate limit counts operations, not calls: one batched operation of two capped transfers took one slot, and that window moved 0.004 MON. A call policy permission left at its default call type still accepted the batch, so nothing native bounded the number of calls per operation in this run. Second, the window is fixed, not rolling: each window opened with the first operation accepted after the previous one expired, and spending late in one window and early in the next moved 0.005 MON within 65 seconds. Rotating the session key daily, the other alternative considered, keeps both failures and adds a failure mode for an operation in flight during rotation, so it is rejected. The run used native MON and minute-long windows, and the reset rate limit policy is deployed on Monad testnet but not on mainnet, so the result describes the mechanism, not a mainnet configuration.
+
 ```solidity
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.24;
 
-/// Draft. The daily-cap state assumes no native rolling cap, which is what issue #18's research found.
+/// Draft. The daily-cap state exists because no native rolling cap does, which issue #18's testnet run confirmed.
 interface IAgentSpendPolicy {
     struct Limits {
         uint128 perTxCap;   // settlement-asset base units
