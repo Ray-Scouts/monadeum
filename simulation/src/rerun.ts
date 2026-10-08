@@ -1,4 +1,4 @@
-import { mean, welch } from "./aggregate.js";
+import { mean, sampleStdev, welch, welchP } from "./aggregate.js";
 import { createReproductionModule, median } from "./reproduction.js";
 import { run } from "./runner.js";
 import type { Regime, RunMode, RunResult } from "./types.js";
@@ -10,6 +10,8 @@ export interface Arm {
   /** Undefined keeps the `DEFAULT_COSTS` price. */
   x402Usd?: number;
   informationPurchases: boolean;
+  /** Skill heritability `h` (issue #80). Undefined keeps the runner default of 0. */
+  skillHeritability?: number;
 }
 
 export const ARMS: Record<string, Arm> = {
@@ -32,6 +34,12 @@ export interface SeedOutcome {
   childRoiPctSum: number;
   childCapitalSum: number;
   childPrincipalSum: number;
+  /** Mean hidden skill of the founders at tick 0. */
+  skillStart: number;
+  /** Mean hidden skill of the agents still active at the end. Null when none are. */
+  skillEndActive: number | null;
+  /** Capital-weighted mean hidden skill over every agent at the end, active or retired. */
+  skillEndWeighted: number;
 }
 
 export interface RerunCell {
@@ -44,6 +52,9 @@ export interface RerunCell {
 
 export function outcome(result: RunResult): SeedOutcome {
   const children = result.agents.filter((agent) => agent.id.startsWith("c"));
+  const founders = result.agents.filter((agent) => agent.id.startsWith("a"));
+  const active = result.agents.filter((agent) => agent.status === "active");
+  const capital = result.agents.reduce((sum, agent) => sum + agent.capital, 0);
   return {
     seed: result.seed,
     roiPct: result.roiPct,
@@ -56,6 +67,10 @@ export function outcome(result: RunResult): SeedOutcome {
     ),
     childCapitalSum: children.reduce((sum, agent) => sum + agent.capital, 0),
     childPrincipalSum: children.reduce((sum, agent) => sum + agent.principal, 0),
+    skillStart: mean(founders.map((agent) => agent.skill)),
+    skillEndActive: active.length === 0 ? null : mean(active.map((agent) => agent.skill)),
+    skillEndWeighted:
+      capital > 0 ? result.agents.reduce((sum, agent) => sum + agent.capital * agent.skill, 0) / capital : 0,
   };
 }
 
@@ -78,6 +93,7 @@ export function runRerunCell(arm: Arm, population: number, regime: Regime, seeds
             costs,
             reproduction,
             informationPurchases: arm.informationPurchases,
+            ...(arm.skillHeritability === undefined ? {} : { skillHeritability: arm.skillHeritability }),
           }),
         ),
       );
@@ -104,6 +120,28 @@ export interface RerunRow {
   childRoiMean: number | null;
   childCapitalMean: number | null;
   childPrincipalMean: number | null;
+  /** Mean over seeds of the founders' mean skill, evolving mode. Founders are identical in both modes. */
+  skillStart: number;
+  /** Mean over seeds of the end-of-run active mean skill, evolving and static. */
+  skillEndActiveEvolving: number;
+  skillEndActiveStatic: number;
+  /** Mean over seeds of the end-of-run capital-weighted mean skill, evolving and static. */
+  skillEndWeightedEvolving: number;
+  skillEndWeightedStatic: number;
+  /**
+   * Secondary observation only, not the pre-registered statistic: two-sided paired t-test p-value on the per-seed
+   * evolving minus static ROI, pairing runs that share a seed and so a market path.
+   */
+  pairedP: number;
+}
+
+/** Two-sided paired t-test p-value. Secondary to the Welch test that the decision rule uses. */
+export function pairedP(a: readonly number[], b: readonly number[]): number {
+  const diffs = a.map((value, index) => value - (b[index] ?? 0));
+  const sd = sampleStdev(diffs);
+  const avg = mean(diffs);
+  if (sd === 0) return avg === 0 ? 1 : 0;
+  return welchP(avg / (sd / Math.sqrt(diffs.length)), diffs.length - 1);
 }
 
 export function compareCell(cell: RerunCell): RerunRow {
@@ -130,6 +168,15 @@ export function compareCell(cell: RerunCell): RerunRow {
     childRoiMean: pooled("childRoiPctSum"),
     childCapitalMean: pooled("childCapitalSum"),
     childPrincipalMean: pooled("childPrincipalSum"),
+    skillStart: mean(cell.evolving.map((item) => item.skillStart)),
+    skillEndActiveEvolving: mean(cell.evolving.flatMap((item) => (item.skillEndActive === null ? [] : [item.skillEndActive]))),
+    skillEndActiveStatic: mean(cell.static.flatMap((item) => (item.skillEndActive === null ? [] : [item.skillEndActive]))),
+    skillEndWeightedEvolving: mean(cell.evolving.map((item) => item.skillEndWeighted)),
+    skillEndWeightedStatic: mean(cell.static.map((item) => item.skillEndWeighted)),
+    pairedP: pairedP(
+      cell.evolving.map((item) => item.roiPct),
+      cell.static.map((item) => item.roiPct),
+    ),
   };
 }
 
@@ -175,6 +222,21 @@ export function formatRows(rows: readonly RerunRow[]): string {
   for (const row of rows) {
     lines.push(
       `| ${row.population} | ${row.regime} | ${row.seeds} | ${row.evolvingMean.toFixed(2)} | ${row.staticMean.toFixed(2)} | ${row.gap.toFixed(2)} | ${pFmt(row.p)} | ${row.reproductionsMean.toFixed(2)} | ${(row.reproducingShare * 100).toFixed(0)} | ${row.children} | ${fmt(row.childActiveShare === null ? null : row.childActiveShare * 100, 1)} | ${fmt(row.childRoiMean, 1)} | ${fmt(row.childCapitalMean, 3)} | ${fmt(row.childPrincipalMean, 3)} |`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/** Mean hidden skill, in basis points per tick, at the start and the end, plus the secondary paired p-value. */
+export function formatSkillRows(rows: readonly RerunRow[]): string {
+  const bp = (value: number): string => (value * 10_000).toFixed(2);
+  const lines = [
+    "| pop | regime | skill start | evolving end active | static end active | evolving end weighted | static end weighted | paired p (secondary) |",
+    "|---:|---|---:|---:|---:|---:|---:|---:|",
+  ];
+  for (const row of rows) {
+    lines.push(
+      `| ${row.population} | ${row.regime} | ${bp(row.skillStart)} | ${bp(row.skillEndActiveEvolving)} | ${bp(row.skillEndActiveStatic)} | ${bp(row.skillEndWeightedEvolving)} | ${bp(row.skillEndWeightedStatic)} | ${pFmt(row.pairedP)} |`,
     );
   }
   return lines.join("\n");

@@ -65,6 +65,12 @@ const row = (gap: number, p: number): RerunRow => ({
   childRoiMean: null,
   childCapitalMean: null,
   childPrincipalMean: null,
+  skillStart: 0,
+  skillEndActiveEvolving: 0,
+  skillEndActiveStatic: 0,
+  skillEndWeightedEvolving: 0,
+  skillEndWeightedStatic: 0,
+  pairedP: 1,
 });
 
 test("the decision rule follows the pre-registered section 8 wording", () => {

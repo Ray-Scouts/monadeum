@@ -147,6 +147,10 @@ export interface AgentSummary {
   status: "active" | "retired";
   descendants: number;
   niche: string;
+  /** Hidden per-agent skill, a harness device with no production counterpart. */
+  skill: number;
+  /** Id of the parent for a child, null for a founder. */
+  parent: string | null;
 }
 
 /** Reproduction gate outcomes over every evaluation of an active parent in evolving mode. */
@@ -196,4 +200,9 @@ export interface RunConfig {
   spreadNiches?: boolean;
   /** Whether agents may buy information at all. Defaults to on. Off means no x402 spend and no information edge. */
   informationPurchases?: boolean;
+  /**
+   * Heritability `h` of the hidden skill, in [0, 1]. A child's skill is `h * parent.skill + (1 - h) * fresh draw`,
+   * where the fresh draw uses the founder distribution. Defaults to 0, a fresh draw, which is the original behavior.
+   */
+  skillHeritability?: number;
 }
