@@ -156,3 +156,39 @@ This document defines a mechanism, not a proven one. The specific numeric consta
 3. The capital-conservation and parent-survival invariants in section 3.2 hold under every simulated condition, including adversarial ones (a simulated agent deliberately trying to trigger rapid, repeated reproduction).
 
 **Requirement to verify, not a settled fact (issue #80).** `simulation/results/heritability.md` found that, in the simulation harness, making the main driver of performance fully heritable did not make a reproducing population outperform a static one under the `ECONOMICS.md` section 8 rule, because children carry too little capital for an inherited advantage to reach the population's return. Two conditions therefore have to be shown, not assumed, before item 1 above can pass: first, that reproduction moves enough capital into children for their performance to matter at the population level (the next experiment, on `max_child_capital`, the reproduction fraction, and gas); second, that the genome actually carries a strategy's source of advantage, so that a child inherits what made its parent fit. The harness models the second condition with a hidden skill value that has no production counterpart. In production, heritable advantage can only come from genome fields (section 1), and whether any real strategy's advantage is captured by those fields is an open question.
+
+## 8. Proposed alternative under evaluation: fixed slots with replacement and reallocation
+
+**Status: hypothesis, not a decision.** Sections 3 and 4 remain the documented mechanism until the experiment below reports. Nothing in this section changes a protocol constant, the reproduction contract scope in issue #31, or the invariants in `THREAT-MODEL.md`.
+
+### 8.1 Why an alternative is on the table
+
+Four simulation runs tested the section 3 mechanism against a static population under the `ECONOMICS.md` section 8 rule: the profit threshold (issue #74), the twelve-cell re-run at a reproducing threshold (PR #79), heritable skill (issue #80), and child capital with and without a treasury (issue #82). None produced a cell where the evolving mean beat the static mean. Taken together they point to a structural reason rather than a tuning problem, stated here as a hypothesis the runs are consistent with but did not isolate:
+
+- Every reproduction creates a new account, and every account pays a fixed per-tick cost (gas, plus x402 when it buys information). Splitting capital across more accounts therefore costs more than keeping it together.
+- Children never hold enough of the population's capital to move its return, even when a treasury funds them.
+- Selection already happens without reproduction: retirement removes weak agents, and the active population's mean skill rises in static runs too.
+- What drives the population's return is capital-weighted skill, how much capital the better strategies control, not how many of them exist.
+
+### 8.2 The proposal
+
+1. **Fixed slots.** The population has a fixed number of accounts. Selection never creates a new account.
+2. **Replacement.** When an agent retires under section 6, or stays in the bottom of its niche, its slot receives a mutated copy of a fit agent's genome (section 3.3 mutation, section 5 niche rules) and continues with the capital the slot already holds. Lineage is recorded as descent from the donor genome, so the lineage view in `ARCHITECTURE.md` section 15 still has a tree to show.
+3. **Bounded reallocation.** At each evaluation, a capped fraction of capital moves from the lowest-fitness slots to the highest, never below a slot's capital floor and never above a per-slot ceiling. This targets capital-weighted skill directly.
+4. **Paper evaluation before capital.** A mutated genome first trades on paper, off-chain and at no gas cost, for a fixed number of ticks, and takes over a slot only if its paper fitness clears a threshold.
+
+### 8.3 Constraints this must satisfy before it can replace section 3
+
+These are stated now so the experiment does not produce a mechanism the product cannot ship.
+
+- **Ownership.** Each agent's account is owned by its user's embedded wallet (`ARCHITECTURE.md` section 6), and retirement never seizes capital (section 6). Reallocation can therefore move capital only between accounts with the same owner, under a policy that owner has approved. Moving capital across owners is out of scope.
+- **Consent to replacement.** Adopting another agent's genome changes what an owner's agent does. Whether that happens automatically, by opt-in, or only among one owner's own agents is a product decision this section does not make. Whether a genome may be copied across owners is a separate open question.
+- **Capital conservation.** Replacement moves no capital. Reallocation moves capital between existing accounts and creates none, so the invariant that reproduction cannot create capital becomes a property of a transfer rather than of an allocation formula.
+- **Fewer accounts and keys.** No smart account or session key is created per descendant, which bounds the account, gas, and key-management surface in `SECURITY.md` sections 1, 2, and 11.
+
+### 8.4 What must be true in simulation first
+
+1. **The genome must drive performance.** In the current harness, performance comes mostly from a hidden per-agent skill value, and under the legal policy the genome fields that matter most are pinned. No selection mechanism can work under that model, including this one. The harness must first model a regime-dependent link between genome fields and returns, which is also what production would rely on. Tracked in issue #84.
+2. **The comparison must be fair.** The control is not only a static population. It also includes replacement with random genomes, so the test shows that selection beats chance, not only that refilling slots helps.
+
+The experiment, tracked in issue #85, compares four arms under the unchanged `ECONOMICS.md` section 8 decision rule: static; replacement with random genomes; replacement with mutated genomes from fit donors; and replacement plus bounded reallocation. If the last arm beats both controls, this section becomes the candidate mechanism for issue #28 and sections 3 and 4 are revised. If it does not, the honest conclusion is that evolution does not add value in this model, and the product should rest on well-calibrated static agents.
