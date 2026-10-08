@@ -79,8 +79,9 @@ Agent smart account spends on:
 
 Agent smart account never spends on:
   - transfers to arbitrary addresses (contract allowlist excludes anything but
-    Kuru's router, the reproduction contract, and the settlement asset; see
-    section 16.3 for the recipient check the on-chain layer does not yet make)
+    Kuru's router, the reproduction contract, and the settlement asset, and a
+    settlement-asset transfer or approval must name one of the first two; see
+    section 16.3)
   - withdrawals back to the user above the user's own configured limits
     (protects against a compromised agent silently draining back "to the user"
     as a laundering step, see THREAT-MODEL.md)
@@ -259,7 +260,7 @@ Priority order for the dashboard, matching the brief's own list: onboarding and 
 
 Sections 1 to 15 describe components and what each one is responsible for. This section fixes the four seams where two components built in parallel could each look correct in review and still fail to fit: the Policy/Risk Engine's rule schema (16.1), the proposal type that crosses from strategy to risk to trading (16.2), the on-chain validator interface (16.3), and genome hash canonicalization (16.4). The types below are written in TypeScript and Solidity because a type is harder to misread than a paragraph. They are the contract, not an implementation.
 
-Status: 16.1, 16.2, and 16.4 are decided. 16.3 is a draft. The rolling-daily-cap spike (issue #18) has recorded its testnet run, and its result confirms the custom daily-cap mechanism in 16.3; the exact interface is finalized in issue #21. Its coverage of x402 payments waits on the open question stated in 16.3.
+Status: 16.1, 16.2, and 16.4 are decided. The 16.3 interface is finalized (issue #21), reconciled with the rolling-daily-cap spike's testnet result (issue #18), and lives in `contracts/src/IAgentSpendPolicy.sol`; its implementation is issue #25. Its coverage of x402 payments waits on the open question stated in 16.3, and its Kernel v3.1 integration is an assumption until #25 verifies it.
 
 **One rule applies across every seam: money crosses a boundary as an integer in the settlement asset's base units, never as a float.** The on-chain validator compares `uint256` values. An application-layer check done in floating point can place an amount on the other side of a cap from the chain's own check, and then the two layers disagree about the same transaction. Floats stay acceptable inside a strategy's own arithmetic. The conversion to base units happens once, when the proposal is built, rounding down. The settlement asset's `decimals` value is read from the token contract, not assumed.
 
@@ -318,7 +319,7 @@ export function evaluateTrade(policy: VerifiedPolicy | null, proposal: ActionPro
 
 A rejection returns every violation it found, not only the first, so monitoring (`SECURITY.md` section 12) sees the full shape of a bad proposal.
 
-The RiskModule derives how much each call spends from its calldata, and never from a figure the plan declares. A `transfer` or `approve` on the settlement asset spends its `amount`, and its recipient or spender must itself be an allowlisted target (`recipient-not-allowed` otherwise): an `approve` naming an attacker's address is the drain pattern of `THREAT-MODEL.md` scenario A, even though the call itself targets an allowlisted token. Every other allowlisted call spends 0, the same counting rule as the on-chain validator in 16.3. `perActionCap` is compared with the sum over every call in the plan, not with each call alone, so splitting one action into several calls does not multiply the cap. `session-daily-cap` compares `spentInWindow` plus that sum with `sessionDailyCap`, over the same rolling window the chain enforces: a calendar-day counter would reset while the on-chain window still holds the previous hours, and every approval in that gap would revert on-chain and still pay gas. An information request is capped per tick by the lower of the genome's `informationBudget` and `perTickInformationCap`, and per day by `dailyInformationCap`; the strategy plugin checking its own budget is not the enforcement, because the plugin sits on the proposal side of `SECURITY.md` section 4. A pair must be both in `allowedPairs` and in the agent's own `assetUniverse`.
+The RiskModule derives how much each call spends from its calldata, and never from a figure the plan declares. A `transfer` or `approve` on the settlement asset spends its `amount`, and its recipient or spender must itself be an allowlisted target (`recipient-not-allowed` otherwise): an `approve` naming an attacker's address is the drain pattern of `THREAT-MODEL.md` scenario A, even though the call itself targets an allowlisted token. The on-chain validator applies the same recipient rule in 16.3. Every other allowlisted call spends 0, the same counting rule as the on-chain validator in 16.3. `perActionCap` is compared with the sum over every call in the plan, not with each call alone, so splitting one action into several calls does not multiply the cap. `session-daily-cap` compares `spentInWindow` plus that sum with `sessionDailyCap`, over the same rolling window the chain enforces: a calendar-day counter would reset while the on-chain window still holds the previous hours, and every approval in that gap would revert on-chain and still pay gas. An information request is capped per tick by the lower of the genome's `informationBudget` and `perTickInformationCap`, and per day by `dailyInformationCap`; the strategy plugin checking its own budget is not the enforcement, because the plugin sits on the proposal side of `SECURITY.md` section 4. A pair must be both in `allowedPairs` and in the agent's own `assetUniverse`.
 
 **Known gap, the pair and the position size are declared**: the pair check and `maxPositionFraction` read `pair` and `notional` from the proposal's `TradeIntent`, not from the router calldata, because router calls are not decoded (they count 0, as above). A plan could therefore trade a different pair or size than it declares, up to the settlement-asset `approve` the plan also carries, which is counted and capped. Closing this requires decoding the Kuru router's calldata, which waits on issue #20 confirming the router interface. Until then, the spend caps bound this gap and the pair and position checks do not.
 
@@ -391,70 +392,65 @@ export interface ExecutionPlan {
 
 **Where the current code differs**: `libs/strategy` computes `notional` as a `number` and folds the information decision into `Action.buyInformation`, `libs/tick` passes that `Action` to `policy` rather than a built plan, and the genome's `informationBudget` is a float in the simulation and in `libs/strategy`, not base units. Those are implementation gaps against this section, to be closed by the M2 and M3 work that consumes it. This section does not describe them as done.
 
-### 16.3 On-chain validator interface (draft)
+### 16.3 On-chain validator interface
 
-**Decision, provisional**: one spend-policy contract holds per-account limits and the call allowlist, keyed by smart account address. Its checks are split across the two phases of an ERC-4337 operation, because they have different needs:
+**Decision**: one spend-policy contract holds per-account limits and the call allowlist, keyed by smart account address, with the settlement asset fixed at deployment. Its checks are split across the two phases of an ERC-4337 operation, because they have different needs:
 
-- **Validation phase** (`check`): the call allowlist at `(target, selector)` granularity, a zero native value, and the per-transaction cap. `check` receives every call the operation executes, single or batched, and the per-transaction cap applies to their sum: a check that saw one call at a time would let one batched operation of `k` calls move `k` times the cap. None of these needs the current time, so all of them can reject an operation before it is included.
+- **Validation phase** (`check`): the call allowlist at `(target, selector)` granularity, the recipient rule below, a zero native value, and the per-transaction cap. `check` receives every call the operation executes, single or batched, and the per-transaction cap applies to their sum: a check that saw one call at a time would let one batched operation of `k` calls move `k` times the cap. None of these needs the current time, so all of them can reject an operation before it is included.
 - **Execution phase** (`record`, called from a pre-execution hook): the rolling daily cap. ERC-7562's validation rules forbid the `TIMESTAMP` opcode during validation, so a check that needs "the last 24 hours" cannot run there. This is a constraint of the ERC-4337 validation rules as documented. The issue #18 spike did not exercise it, so it remains to be confirmed against the bundlers actually used on Monad. Its consequence is stated plainly: a daily-cap breach surfaces as a reverted execution that still pays gas, not as an operation rejected before inclusion.
 
-**How an amount is counted**: only calls that move the settlement asset count. `transfer(to, amount)` and `approve(spender, amount)` on the settlement asset count `amount` in full, at the moment of the call. A call to the Kuru router or the reproduction contract counts 0, on the assumption that each pulls funds only through an allowance the account set with a counted `approve`. That assumption is not yet verified for Kuru's router, and is checked in issue #20. Counting an approval in full when it is set is conservative: an unbounded approval exceeds `perTxCap` and is rejected, and unused allowance only reduces headroom.
+**How an amount is counted**: only calls that move the settlement asset count. `transfer(to, amount)` and `approve(spender, amount)` on the settlement asset count `amount` in full, at the moment of the call. A call to the Kuru router or the reproduction contract counts 0, on the assumption that each pulls funds only through an allowance the account set with a counted `approve`. That assumption is not yet verified for Kuru's router, and is checked in issue #20. Counting an approval in full when it is set is conservative: an unbounded approval exceeds `perTxCap` and is rejected, and unused allowance only reduces headroom. `setAllowed` refuses any selector on the settlement asset other than `transfer` and `approve` (`UncountedSettlementSelector`), so no allowlist entry, mistaken or not, can move the settlement asset through a call that counts 0, such as `transferFrom` or `increaseAllowance`. This is the same counting rule as `libs/risk` (16.1), which rejects a settlement-asset call it cannot decode as `transfer` or `approve`.
 
-**Known gap, recipients are not checked on-chain**: the allowlist works at `(target, selector)` granularity, so allowing `transfer` and `approve` on the settlement asset allows them to any recipient or spender. A compromised session key could therefore send up to `perTxCap` per operation, and up to `dailyCap` inside the window, to an address of its choosing, and the chain would accept it. Only the RiskModule's `recipient-not-allowed` rule in 16.1 blocks that today, and the RiskModule is off-chain. The caps bound the loss; they do not prevent it. The fix under consideration is a per-account recipient allowlist that `check` applies to the first argument of `transfer` and `approve` on the settlement asset. It is not in the draft interface below, and issue #21 decides whether it is added before issue #25 implements the contract.
+**Recipients are checked on-chain** (decided in issue #21): the first argument of a counted call, the `to` of `transfer` or the `spender` of `approve`, must be an address on which the account has at least one allowed selector, and must not be the settlement asset, the policy contract, or the account itself (`RecipientNotAllowed` otherwise). With the MVP allowlist that leaves Kuru's router and the reproduction contract, which is exactly the set the RiskModule's `recipient-not-allowed` rule in 16.1 derives from `allowedCalls`. The rule is derived from the call allowlist rather than kept as a second list, so there is nothing extra to configure and the on-chain and off-chain recipient sets cannot drift apart.
 
-**The policy contract protects itself**: `setLimits` and `setAllowed` read the account from `msg.sender`, and a call a session key makes also executes from the account, so the contract alone cannot tell the owner from a session key. Two rules close that gap, and neither depends on the allowlist being configured correctly. `check` rejects any call whose target is the policy contract itself, whatever the allowlist says, so a session-key operation can never reach the owner functions. The owner reaches them only through the root-wallet validator, whose operations do not run the session key's hook or policy. Without both rules, one mistaken allowlist entry would let a compromised session key raise its own caps.
+Why it is added before issue #25 rather than deferred: the attacker this control answers is a compromised session key, which by definition bypasses the RiskModule, the only place the recipient was checked before. Without the rule, that key can send up to `perTxCap` per operation, and up to `dailyCap` inside any window, to an address of its choosing, every day until the owner notices. With it, every counted call pays an allowlisted contract, so a compromised key can still make bad trades through the router or misdirect a reproduction, within the caps, but it cannot pay itself directly. The cost is one decoded argument and one storage read per counted call, all in validation, with no time dependence. What the rule does not close: router and reproduction calls count 0 and are not decoded (16.1, known gap on declared pairs), so whether the router can be made to forward funds to an arbitrary address is a property of the router, checked in issue #20. x402 payments do not pass through `check` at all (open question below).
 
-**Rolling window rule**: spend is stored in 25 one-hour buckets per account. The window total at hour `h` is the sum of buckets `h - 24` through `h`. That span covers between 24 and 25 hours, so it can over-count by up to one hour of spend but never under-counts. The chain therefore never allows more than `dailyCap` inside any 24-hour period. Storage is fixed-size per account.
+**The policy contract protects itself**: `setLimits` and `setAllowed` read the account from `msg.sender`, and a call a session key makes also executes from the account, so the contract alone cannot tell the owner from a session key. Two rules close that gap, and neither depends on the allowlist being configured correctly. `check` rejects any call whose target is the policy contract itself or the account itself, whatever the allowlist says, so a session-key operation can never reach the owner functions or the account's own module-management functions. The owner reaches them only through the root-wallet validator, whose operations do not run the session key's hook or policy. Without both rules, one mistaken allowlist entry would let a compromised session key raise its own caps. An account whose limits were never set has both caps at 0, so any counted call fails closed.
+
+**Rolling window rule**: spend is stored in 25 one-hour buckets per account. The window total at hour `h` is the sum of buckets `h - 24` through `h`. That span covers between 24 and 25 hours, so it can over-count by up to one hour of spend but never under-counts. The chain therefore never allows more than `dailyCap` inside any 24-hour period. Storage is fixed-size per account. `windowTotal` is the value the RiskModule reads as `Ledger.spentInWindow`, so both layers compare against the same window.
+
+**Integration with ZeroDev Kernel v3.1, an assumption to verify in issue #25**: no spike has installed a custom policy or hook on Kernel v3.1, so the mapping below is the expected shape, not a tested one.
+
+- The implementation is installed on the session key's permission validator as a policy, and as that validator's hook.
+- The policy entry point, Kernel's user-operation policy check, decodes `userOp.callData` into `Call[]` and calls `check(account, calls)`. It accepts only `execute` with call type single or batch, optionally wrapped in `executeUserOp` when a hook is set. It rejects delegatecall, every other call type, and every other account selector (module installation, upgrade, fallback), because each of those can run code the policy never sees.
+- The hook entry point, Kernel's pre-execution check, is called by the account, so `msg.sender` is the account. It decodes the same calldata into `Call[]` and calls `record(calls)`, which recomputes the total rather than trusting one carried over from validation.
+- Every per-account mapping `check` reads uses the account address as its innermost key, to satisfy ERC-7562's associated-storage rule for validation-phase reads.
 
 **Why a custom contract and not ZeroDev's native policies**: the closest native combination, a call policy with a per-call value cap `X` plus the reset rate limit policy at `N` operations per window, was run on Monad testnet in issue #18 (`spikes/rolling-daily-cap`, 120 second windows, `X` = 0.001 MON, `N` = 3, so a nominal bound of 0.003 MON per window). It failed as a value cap in two independent ways. First, the rate limit counts operations, not calls: one batched operation of two capped transfers took one slot, and that window moved 0.004 MON. A call policy permission left at its default call type still accepted the batch, so nothing native bounded the number of calls per operation in this run. Second, the window is fixed, not rolling: each window opened with the first operation accepted after the previous one expired, and spending late in one window and early in the next moved 0.005 MON within 65 seconds. Rotating the session key daily, the other alternative considered, keeps both failures and adds a failure mode for an operation in flight during rotation, so it is rejected. The run used native MON and minute-long windows, and the reset rate limit policy is deployed on Monad testnet but not on mainnet, so the result describes the mechanism, not a mainnet configuration.
 
+**How the interface reconciles with that result**: each failure maps to one part of the interface. The batched-operation failure is why `check` and `record` take the whole `Call[]` of an operation and apply `perTxCap` to the sum, and why the Kernel integration rejects call types it cannot decode into that array. The fixed-window failure is why the daily cap is the 25-bucket rolling window above, held in this contract's own state rather than delegated to a native policy. The run moved native MON, and this interface rejects any nonzero native value outright, so the only asset it counts is the settlement asset.
+
+**What issue #18 settled**: ZeroDev ships no native resetting cap on value. Its reset rate limit counts operations, not amounts; its spending limit hook is a lifetime allowance with no reset and, as of 2026-09-27, is not deployed on Monad testnet or mainnet; and its gas, rate limit, and timestamp policies are deployed on Monad testnet but not on mainnet. The custom execution-phase window above therefore stands, rather than a reference to a native policy. Daily session-key rotation is not adopted. Issue #21 finalized this interface against that result, and issue #25 implements it.
+
+**Where the interface lives**: `contracts/src/IAgentSpendPolicy.sol` is authoritative, including its NatSpec on the phases, the counting and recipient rules, and the Kernel integration. The excerpt below is the part other components depend on. A change to either the file or this excerpt updates both in the same pull request. The file compiles with solc 0.8.24 (`bunx --bun solc@0.8.24 --abi contracts/src/IAgentSpendPolicy.sol`). There is no Foundry project yet; issue #25 adds one with the implementation.
+
 ```solidity
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
-
-/// Draft. The daily-cap state exists because no native rolling cap does, which issue #18's testnet run confirmed.
 interface IAgentSpendPolicy {
-    struct Limits {
-        uint128 perTxCap;   // settlement-asset base units
-        uint128 dailyCap;   // over any 24 hour period, per the window rule
-    }
+    struct Limits { uint128 perTxCap; uint128 dailyCap; }   // settlement-asset base units
+    struct Call { address target; uint256 value; bytes data; }
 
-    event LimitsSet(address indexed account, uint128 perTxCap, uint128 dailyCap);
-    event CallAllowed(address indexed account, address indexed target, bytes4 indexed selector, bool allowed);
-    event Spent(address indexed account, uint256 amount, uint256 windowTotal);
-
-    struct Call {
-        address target;
-        uint256 value;
-        bytes data;
-    }
-
-    error CallNotAllowed(address target, bytes4 selector);   // also raised for target == address(this)
+    error CallNotAllowed(address target, bytes4 selector);   // also for target == address(this) or the account
+    error RecipientNotAllowed(address recipient);
     error NativeValueNotAllowed(uint256 value);
     error PerTxCapExceeded(uint256 amount, uint256 cap);
     error DailyCapExceeded(uint256 windowTotal, uint256 cap);
+    error UncountedSettlementSelector(bytes4 selector);
 
-    /// Validation phase. No time-dependent reads. Every call in the operation, single or batched.
-    /// Returns the total the operation counts; perTxCap applies to that total.
-    function check(address account, Call[] calldata calls) external view returns (uint256 total);
+    function check(address account, Call[] calldata calls) external view returns (uint256 total);   // validation
+    function record(Call[] calldata calls) external;   // execution, msg.sender is the account
 
-    /// Execution phase, from the account's pre-execution hook. msg.sender is the account.
-    /// Recomputes the total from the calls, never trusts a caller-supplied amount.
-    function record(Call[] calldata calls) external;
-
+    function settlementAsset() external view returns (address);
     function limits(address account) external view returns (Limits memory);
     function isAllowed(address account, address target, bytes4 selector) external view returns (bool);
+    function isRecipientAllowed(address account, address recipient) external view returns (bool);
     function windowTotal(address account) external view returns (uint256);
 
-    /// Owner only: reachable through the root-wallet validator, never a session key, per the self-protection rule.
-    function setLimits(Limits calldata newLimits) external;
-    function setAllowed(address target, bytes4 selector, bool allowed) external;
+    function setLimits(Limits calldata newLimits) external;                         // owner only
+    function setAllowed(address target, bytes4 selector, bool allowed) external;   // owner only
 }
 ```
 
-**What issue #18 has settled, and what it has not**: ZeroDev ships no native resetting cap on value. Its reset rate limit counts operations, not amounts; its spending limit hook is a lifetime allowance with no reset and, as of 2026-09-27, is not deployed on Monad testnet or mainnet; and its gas, rate limit, and timestamp policies are deployed on Monad testnet but not on mainnet. The custom execution-phase window above therefore stands, rather than a reference to a native policy. Daily session-key rotation is not adopted: without the rate limit on mainnet, rotation alone gives no cumulative bound inside a day. Still open in #18: the recorded testnet run, including whether a batched operation breaks the native call-policy bound. Issue #21 finalizes this interface once #18 closes, and issue #25 implements it.
-
-**Open question, x402 coverage**: the working assumption is that x402's `exact` scheme on EVM settles through an EIP-3009 `transferWithAuthorization` that the payer signs and the facilitator submits. This is not verified against the x402 version and facilitator this project will use. If it holds, an x402 payment never passes through the account's user-operation validation. It is authorized through the account's ERC-1271 `isValidSignature` instead, and the interface above does not see it. Until the policy has an entry point on that signature path, the on-chain daily cap does not bound x402 spend, and only the application-layer information caps in 16.1 do. The same assumption means the x402 facilitator is not a call target the account makes, which is why `allowedCalls` in 16.1 does not list it.
+**Open question, x402 coverage**: the working assumption is that x402's `exact` scheme on EVM settles through an EIP-3009 `transferWithAuthorization` that the payer signs and the facilitator submits. This is not verified against the x402 version and facilitator this project will use. If it holds, an x402 payment never passes through the account's user-operation validation. It is authorized through the account's ERC-1271 `isValidSignature` instead, and the interface above does not see it, so neither the caps nor the recipient rule apply to it. Until the policy has an entry point on that signature path, the on-chain daily cap does not bound x402 spend, and only the application-layer information caps in 16.1 do. The same assumption means the x402 facilitator is not a call target the account makes, which is why `allowedCalls` in 16.1 does not list it.
 
 ### 16.4 Genome hash canonicalization
 
