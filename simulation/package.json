@@ -9,7 +9,8 @@
     "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js",
     "sweep": "tsc -p tsconfig.json && node dist/src/cli-sweep.js",
     "diversity": "tsc -p tsconfig.json && node dist/src/cli-diversity.js",
-    "threshold": "tsc -p tsconfig.json && node dist/src/cli-threshold.js"
+    "threshold": "tsc -p tsconfig.json && node dist/src/cli-threshold.js",
+    "rerun": "tsc -p tsconfig.json && node dist/src/cli-rerun.js"
   },
   "dependencies": {
     "@monadeum/fitness": "workspace:*",
