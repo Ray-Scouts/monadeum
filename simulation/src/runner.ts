@@ -1,5 +1,6 @@
 import { createExecutionBackend, DEFAULT_COSTS } from "./execution.js";
 import { createFitnessModule, sortinoParts } from "./fitness.js";
+import { assertGenomeModel, genomeDistance, genomeEdge, randomGenome } from "./genome-model.js";
 import { generateMarket } from "./market.js";
 import { experimentPopulationCap, PROTOCOL } from "./protocol.js";
 import { createReproductionModule, median, nicheKey, nichePressure, percentile } from "./reproduction.js";
@@ -13,6 +14,7 @@ import type {
   CostModel,
   GateCounts,
   Genome,
+  GenomeTracePoint,
   RunConfig,
   RunResult,
 } from "./types.js";
@@ -35,9 +37,14 @@ interface Agent {
   rawSortino: number | null;
   lowFitnessWindows: number;
   skill: number;
+  /** Per-tick edge from the genome under `RunConfig.genomeModel`, 0 when the model is off. */
+  genomeEdge: number;
   infoThisTick: boolean;
   parent: string | null;
 }
+
+/** Ticks between points of `RunResult.genomeTrace`. */
+export const GENOME_TRACE_EVERY = 60;
 
 const DEFAULT_GENOME: Genome = {
   strategyType: "trading",
@@ -122,9 +129,16 @@ export function run(config: RunConfig): RunResult {
   // Experiment-only treasury (issue #82). In evolving mode it tops children up to minChildCapital. In static mode it
   // is never spent, so both modes start and are measured on the same total capital.
   const treasury = { initial: treasuryStart, remaining: treasuryStart, spent: 0, topUps: 0 };
+  // Experiment-only genome performance model (issue #84). Off by default, which leaves every code path below as it was.
+  const genomeModel = config.genomeModel;
+  if (genomeModel) assertGenomeModel(genomeModel);
+  const edgeOf = (genome: Genome): number => (genomeModel ? genomeEdge(genome, config.regime, genomeModel) : 0);
+  // Separate stream so drawing random founders leaves the market and agent streams unchanged.
+  const genomeRng = saltedRng(config.seed, 3);
   const bandMids = [0.03, 0.07, 0.12, 0.17, 0.22];
   const pairSets = [["PAIR_A"], ["PAIR_B"], ["PAIR_C"], ["PAIR_A", "PAIR_B"], ["PAIR_A", "PAIR_C"]];
   const startingGenome = (index: number): Genome => {
+    if (config.randomGenomes) return randomGenome(genomeRng, baseGenome, risk);
     if (!config.spreadNiches) {
       return {
         ...baseGenome,
@@ -142,9 +156,12 @@ export function run(config: RunConfig): RunResult {
 
   const agents: Agent[] = [];
   for (let i = 0; i < config.population; i++) {
+    const genome = startingGenome(i);
+    // The skill draw is always made so the agent RNG stream does not depend on the genome model.
+    const skill = -0.002 + agentRng() * 0.006;
     agents.push({
       id: `a${String(i).padStart(4, "0")}`,
-      genome: startingGenome(i),
+      genome,
       capital: principal,
       principal,
       status: "active",
@@ -159,7 +176,8 @@ export function run(config: RunConfig): RunResult {
       adjustedFitness: null,
       rawSortino: null,
       lowFitnessWindows: 0,
-      skill: -0.002 + agentRng() * 0.006,
+      skill: genomeModel ? 0 : skill,
+      genomeEdge: edgeOf(genome),
       infoThisTick: false,
       parent: null,
     });
@@ -177,6 +195,23 @@ export function run(config: RunConfig): RunResult {
   };
   let nextChild = 0;
   const marketReturns: number[] = [];
+  const genomeTrace: GenomeTracePoint[] = [];
+  const traceGenomes = (tick: number): void => {
+    let capital = 0;
+    let weighted = 0;
+    let sum = 0;
+    let count = 0;
+    for (const agent of agents) {
+      if (agent.status !== "active") continue;
+      const distance = genomeDistance(agent.genome, config.regime);
+      capital += agent.capital;
+      weighted += agent.capital * distance;
+      sum += distance;
+      count += 1;
+    }
+    genomeTrace.push({ tick, weighted: capital > 0 ? weighted / capital : 0, mean: count > 0 ? sum / count : 0 });
+  };
+  if (genomeModel) traceGenomes(0);
 
   for (const bar of bars) {
     let capitalBefore = 0;
@@ -201,7 +236,9 @@ export function run(config: RunConfig): RunResult {
         net -= costs.x402Usd;
         agent.infoThisTick = true;
       }
-      const edge = agent.skill + (agent.infoThisTick ? costs.infoEdge : 0);
+      // With the model off the base edge is the hidden skill, exactly as before issue #84.
+      const base = genomeModel ? agent.genomeEdge : agent.skill;
+      const edge = base + (agent.infoThisTick ? costs.infoEdge : 0);
       if (risk.allowsTrade(bar.tick, agent.lastTradeTick, agent.genome)) {
         const proposal = propose({ marketReturns, genome: agent.genome, edge });
         if (proposal) {
@@ -342,7 +379,8 @@ export function run(config: RunConfig): RunResult {
             adjustedFitness: null,
             rawSortino: null,
             lowFitnessWindows: 0,
-            skill: heritability * parent.skill + (1 - heritability) * freshSkill,
+            skill: genomeModel ? 0 : heritability * parent.skill + (1 - heritability) * freshSkill,
+            genomeEdge: edgeOf(childGenome),
             infoThisTick: false,
             parent: parent.id,
           });
@@ -351,6 +389,7 @@ export function run(config: RunConfig): RunResult {
         }
       }
     }
+    if (genomeModel && bar.tick % GENOME_TRACE_EVERY === 0) traceGenomes(bar.tick);
   }
 
   const populationSortino = sortinoParts(portfolioReturns, portfolioReturns.map(() => 1));
@@ -372,6 +411,7 @@ export function run(config: RunConfig): RunResult {
       niche: nicheKey(agent.genome),
       skill: agent.skill,
       parent: agent.parent,
+      ...(genomeModel ? { genomeDistance: genomeDistance(agent.genome, config.regime) } : {}),
     }));
 
   return {
@@ -392,5 +432,6 @@ export function run(config: RunConfig): RunResult {
     ledger,
     prices: bars.map((bar) => bar.price),
     agents: summaries,
+    ...(genomeModel ? { genomeTrace } : {}),
   };
 }
