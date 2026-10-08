@@ -107,6 +107,21 @@ export function run(config: RunConfig): RunResult {
   if (!(heritability >= 0 && heritability <= 1)) {
     throw new RangeError(`skillHeritability must be in [0, 1], got ${heritability}`);
   }
+  const reproductionFraction = config.reproductionFraction ?? PROTOCOL.reproductionFraction;
+  if (!(reproductionFraction > 0 && reproductionFraction <= 1)) {
+    throw new RangeError(`reproductionFraction must be in (0, 1], got ${reproductionFraction}`);
+  }
+  const minChildCapital = config.minChildCapital ?? 0;
+  const treasuryStart = config.treasury ?? 0;
+  if (!(Number.isFinite(minChildCapital) && minChildCapital >= 0)) {
+    throw new RangeError(`minChildCapital must be a finite number >= 0, got ${minChildCapital}`);
+  }
+  if (!(Number.isFinite(treasuryStart) && treasuryStart >= 0)) {
+    throw new RangeError(`treasury must be a finite number >= 0, got ${treasuryStart}`);
+  }
+  // Experiment-only treasury (issue #82). In evolving mode it tops children up to minChildCapital. In static mode it
+  // is never spent, so both modes start and are measured on the same total capital.
+  const treasury = { initial: treasuryStart, remaining: treasuryStart, spent: 0, topUps: 0 };
   const bandMids = [0.03, 0.07, 0.12, 0.17, 0.22];
   const pairSets = [["PAIR_A"], ["PAIR_B"], ["PAIR_C"], ["PAIR_A", "PAIR_B"], ["PAIR_A", "PAIR_C"]];
   const startingGenome = (index: number): Genome => {
@@ -274,18 +289,32 @@ export function run(config: RunConfig): RunResult {
             nowTick: bar.tick,
             requiredPercentile: pressure.requiredPercentile,
           });
-          const allocation = decision.eligible
-            ? reproduction.allocate({
-                capital: parent.capital,
-                principal: parent.principal,
-                fraction: PROTOCOL.reproductionFraction,
-                maxChildCapital: parent.principal,
-              })
-            : null;
-          const funded =
-            allocation !== null && allocation.childCapital > 0 && allocation.parentCapitalAfter >= parent.principal;
-          if (parent.status === "active") countGates(decision.eligible && !funded ? ["allocation"] : decision.failed);
-          if (!allocation || !funded) continue;
+          // Allocation is a pure function of the parent's balance, so computing it for every parent changes nothing
+          // when the eligibility gates fail. It lets the minimum child capital gate be counted beside them.
+          const allocation = reproduction.allocate({
+            capital: parent.capital,
+            principal: parent.principal,
+            fraction: reproductionFraction,
+            maxChildCapital: parent.principal,
+          });
+          const funded = allocation.childCapital > 0 && allocation.parentCapitalAfter >= parent.principal;
+          // Top-up to minChildCapital from the treasury, all or nothing. When the treasury cannot cover it, the child
+          // must be funded to minChildCapital from profit alone, which is the plain minimum child capital gate.
+          const shortfall = Math.max(0, minChildCapital - allocation.childCapital);
+          const topUp = shortfall > 0 && shortfall <= treasury.remaining ? shortfall : 0;
+          const belowMinimum = allocation.childCapital + topUp < minChildCapital;
+          let failed: string[];
+          if (!decision.eligible) failed = belowMinimum ? [...decision.failed, "min_child_capital"] : decision.failed;
+          else if (!funded) failed = ["allocation"];
+          else failed = belowMinimum ? ["min_child_capital"] : [];
+          if (parent.status === "active") countGates(failed);
+          if (!decision.eligible || !funded || belowMinimum) continue;
+          if (topUp > 0) {
+            treasury.remaining -= topUp;
+            treasury.spent += topUp;
+            treasury.topUps += 1;
+          }
+          const childCapital = allocation.childCapital + topUp;
           parent.capital = allocation.parentCapitalAfter;
           parent.descendants += 1;
           parent.lastReproductionTick = bar.tick;
@@ -299,8 +328,8 @@ export function run(config: RunConfig): RunResult {
           agents.push({
             id: `c${String(nextChild).padStart(4, "0")}`,
             genome: childGenome,
-            capital: allocation.childCapital,
-            principal: allocation.childCapital,
+            capital: childCapital,
+            principal: childCapital,
             status: "active",
             trades: 0,
             lastTradeTick: -1,
@@ -326,8 +355,9 @@ export function run(config: RunConfig): RunResult {
 
   const populationSortino = sortinoParts(portfolioReturns, portfolioReturns.map(() => 1));
   const livingCapital = agents.map((agent) => agent.capital);
-  const totalCapital = livingCapital.reduce((sum, value) => sum + value, 0);
-  const startingCapital = config.population * principal;
+  // The treasury balance counts toward total capital in both modes, so ROI is measured over the same base.
+  const totalCapital = livingCapital.reduce((sum, value) => sum + value, 0) + treasury.remaining;
+  const startingCapital = config.population * principal + treasury.initial;
   const summaries: AgentSummary[] = agents
     .slice()
     .sort((a, b) => (a.id < b.id ? -1 : 1))
@@ -358,6 +388,7 @@ export function run(config: RunConfig): RunResult {
     gini: gini(livingCapital),
     reproductions,
     gates,
+    treasury,
     ledger,
     prices: bars.map((bar) => bar.price),
     agents: summaries,

@@ -29,6 +29,7 @@ test("child outcome pools only agents whose id marks them as children", () => {
     seed: 1,
     roiPct: 0,
     reproductions: 2,
+    treasury: { initial: 0, remaining: 0, spent: 0, topUps: 0 },
     agents: [
       { id: "a0000", capital: 20, principal: 10, status: "active" },
       { id: "c0000", capital: 0.5, principal: 1, status: "active" },
@@ -71,6 +72,9 @@ const row = (gap: number, p: number): RerunRow => ({
   skillEndWeightedEvolving: 0,
   skillEndWeightedStatic: 0,
   pairedP: 1,
+  childCapitalShare: 0,
+  treasuryInitial: 0,
+  treasurySpentMean: 0,
 });
 
 test("the decision rule follows the pre-registered section 8 wording", () => {
