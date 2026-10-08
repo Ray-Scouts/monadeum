@@ -19,3 +19,5 @@ npm test
 ```
 
 `npm test` typechecks and runs the short suite. It does not run the 1,000-agent sweeps.
+
+`bun run threshold` prints the profit threshold and x402 price grid in `results/reproduction-threshold.md`. Environment variables `POPS`, `REGIMES`, `FRACTIONS`, `X402`, and `SEEDS` narrow or widen it.

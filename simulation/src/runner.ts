@@ -11,6 +11,7 @@ import type {
   AgentSummary,
   CostLedger,
   CostModel,
+  GateCounts,
   Genome,
   RunConfig,
   RunResult,
@@ -145,6 +146,13 @@ export function run(config: RunConfig): RunResult {
   const ledger: CostLedger = { gas: 0, x402: 0, fees: 0, slippage: 0, grossPnl: 0 };
   const portfolioReturns: number[] = [];
   let reproductions = 0;
+  const gates: GateCounts = { evaluations: 0, failed: {}, sole: {} };
+  const countGates = (failed: readonly string[]): void => {
+    gates.evaluations += 1;
+    for (const gate of failed) gates.failed[gate] = (gates.failed[gate] ?? 0) + 1;
+    const only = failed[0];
+    if (failed.length === 1 && only !== undefined) gates.sole[only] = (gates.sole[only] ?? 0) + 1;
+  };
   let nextChild = 0;
   const marketReturns: number[] = [];
 
@@ -256,15 +264,18 @@ export function run(config: RunConfig): RunResult {
             nowTick: bar.tick,
             requiredPercentile: pressure.requiredPercentile,
           });
-          if (!decision.eligible) continue;
-          const allocation = reproduction.allocate({
-            capital: parent.capital,
-            principal: parent.principal,
-            fraction: PROTOCOL.reproductionFraction,
-            maxChildCapital: parent.principal,
-          });
-          if (allocation.childCapital <= 0) continue;
-          if (allocation.parentCapitalAfter < parent.principal) continue;
+          const allocation = decision.eligible
+            ? reproduction.allocate({
+                capital: parent.capital,
+                principal: parent.principal,
+                fraction: PROTOCOL.reproductionFraction,
+                maxChildCapital: parent.principal,
+              })
+            : null;
+          const funded =
+            allocation !== null && allocation.childCapital > 0 && allocation.parentCapitalAfter >= parent.principal;
+          if (parent.status === "active") countGates(decision.eligible && !funded ? ["allocation"] : decision.failed);
+          if (!allocation || !funded) continue;
           parent.capital = allocation.parentCapitalAfter;
           parent.descendants += 1;
           parent.lastReproductionTick = bar.tick;
@@ -331,6 +342,7 @@ export function run(config: RunConfig): RunResult {
     sortino: populationSortino.flagged ? null : populationSortino.raw,
     gini: gini(livingCapital),
     reproductions,
+    gates,
     ledger,
     prices: bars.map((bar) => bar.price),
     agents: summaries,

@@ -149,6 +149,15 @@ export interface AgentSummary {
   niche: string;
 }
 
+/** Reproduction gate outcomes over every evaluation of an active parent in evolving mode. */
+export interface GateCounts {
+  evaluations: number;
+  /** How many evaluations failed each gate. One evaluation can fail several. */
+  failed: Record<string, number>;
+  /** How many evaluations failed only that gate, so removing it alone would have opened eligibility. */
+  sole: Record<string, number>;
+}
+
 export interface RunResult {
   seed: number;
   regime: Regime;
@@ -162,6 +171,7 @@ export interface RunResult {
   sortino: number | null;
   gini: number;
   reproductions: number;
+  gates: GateCounts;
   ledger: CostLedger;
   prices: number[];
   agents: AgentSummary[];
