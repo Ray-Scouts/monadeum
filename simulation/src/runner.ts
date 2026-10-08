@@ -2,6 +2,7 @@ import { createExecutionBackend, DEFAULT_COSTS } from "./execution.js";
 import { createFitnessModule, sortinoParts } from "./fitness.js";
 import { assertGenomeModel, genomeDistance, genomeEdge, randomGenome } from "./genome-model.js";
 import { generateMarket } from "./market.js";
+import { planReallocation } from "./reallocation.js";
 import { experimentPopulationCap, PROTOCOL } from "./protocol.js";
 import { createReproductionModule, median, nicheKey, nichePressure, percentile } from "./reproduction.js";
 import { createRiskModule } from "./risk.js";
@@ -17,6 +18,7 @@ import type {
   GenomeTracePoint,
   RunConfig,
   RunResult,
+  SlotLedger,
 } from "./types.js";
 
 interface Agent {
@@ -135,6 +137,21 @@ export function run(config: RunConfig): RunResult {
   const edgeOf = (genome: Genome): number => (genomeModel ? genomeEdge(genome, config.regime, genomeModel) : 0);
   // Separate stream so drawing random founders leaves the market and agent streams unchanged.
   const genomeRng = saltedRng(config.seed, 3);
+  // Experiment-only fixed slots (issue #85). Their own stream, so every arm shares founders and information draws.
+  const slotConfig = config.mode === "slots" ? config.slots : undefined;
+  if (config.mode === "slots") {
+    if (!slotConfig || (slotConfig.refill !== "random" && slotConfig.refill !== "mutant")) {
+      throw new RangeError("slots mode needs RunConfig.slots with refill 'random' or 'mutant'");
+    }
+    const cap = slotConfig.reallocationCap ?? 0;
+    if (!(cap >= 0 && cap <= 1)) throw new RangeError(`slots.reallocationCap must be in [0, 1], got ${cap}`);
+    const ceiling = slotConfig.slotCeiling;
+    if (cap > 0 && !(ceiling !== undefined && Number.isFinite(ceiling) && ceiling >= 1)) {
+      throw new RangeError(`slots.slotCeiling must be a finite multiple >= 1 when reallocating, got ${String(ceiling)}`);
+    }
+  }
+  const slotRng = saltedRng(config.seed, 4);
+  const slotLedger: SlotLedger = { replacements: 0, noDonor: 0, capitalMoved: 0, reallocations: 0 };
   const bandMids = [0.03, 0.07, 0.12, 0.17, 0.22];
   const pairSets = [["PAIR_A"], ["PAIR_B"], ["PAIR_C"], ["PAIR_A", "PAIR_B"], ["PAIR_A", "PAIR_C"]];
   const startingGenome = (index: number): Genome => {
@@ -212,6 +229,93 @@ export function run(config: RunConfig): RunResult {
     genomeTrace.push({ tick, weighted: capital > 0 ? weighted / capital : 0, mean: count > 0 ? sum / count : 0 });
   };
   if (genomeModel) traceGenomes(0);
+
+  /**
+   * Issue #85 replacement. Each starved slot keeps its account, capital, and principal, and receives a new genome: a
+   * random one, or a section 3.3 mutation of a donor drawn uniformly from the active agents that would pass the section
+   * 3.1 fitness gates (no zero-downside flag, `N_min` trades, niche percentile at or above the section 5 requirement,
+   * which rises to the 75th percentile in a crowded niche, where `p_mut` also doubles). The capital gates do not apply,
+   * because replacement moves no capital. The slot's fitness history restarts, as a child's would.
+   */
+  const replaceSlots = (starved: Agent[], active: Agent[], matesOf: (agent: Agent) => Agent[], tick: number): void => {
+    if (!slotConfig || starved.length === 0) return;
+    const starvedSet = new Set(starved);
+    const donors: { agent: Agent; pMut: number }[] = [];
+    if (slotConfig.refill === "mutant") {
+      for (const agent of active) {
+        if (starvedSet.has(agent) || agent.adjustedFitness === null || agent.flaggedZeroDownside) continue;
+        if (agent.tradeMarks.reduce((sum, mark) => sum + mark, 0) < PROTOCOL.nMin) continue;
+        const mates = matesOf(agent);
+        const pressure = nichePressure(active.length === 0 ? 0 : mates.length / active.length, diversity);
+        const scores = mates.map((item) => item.adjustedFitness).filter((value): value is number => value !== null);
+        if (percentile(agent.adjustedFitness, scores) < pressure.requiredPercentile) continue;
+        donors.push({ agent, pMut: pressure.pMut });
+      }
+    }
+    for (const slot of starved) {
+      let genome: Genome;
+      let parent: string | null = null;
+      if (slotConfig.refill === "random") {
+        genome = randomGenome(slotRng, baseGenome, risk);
+      } else {
+        if (donors.length === 0) {
+          slotLedger.noDonor += 1;
+          continue;
+        }
+        const donor = donors[Math.min(donors.length - 1, Math.floor(slotRng() * donors.length))];
+        if (!donor) continue;
+        genome = reproduction.mutate({ genome: donor.agent.genome, rng: slotRng, pMut: donor.pMut });
+        donor.agent.descendants += 1;
+        parent = donor.agent.id;
+      }
+      slot.genome = genome;
+      slot.genomeEdge = edgeOf(genome);
+      slot.parent = parent;
+      slot.birthTick = tick;
+      slot.returns = [];
+      slot.tradeMarks = [];
+      slot.flaggedZeroDownside = false;
+      slot.adjustedFitness = null;
+      slot.rawSortino = null;
+      slot.lowFitnessWindows = 0;
+      slotLedger.replacements += 1;
+    }
+  };
+
+  /**
+   * Issue #85 bounded reallocation. Active slots with a fitness are ranked by adjusted fitness. Each bottom-decile slot
+   * offers `reallocationCap` of its capital, never going below the capital floor. The top-decile slots take the offers,
+   * each up to `slotCeiling` times its principal. When the room is smaller than the offers, every offer is scaled down
+   * by the same factor. Total capital is unchanged: the debits and credits are the same amount.
+   */
+  const reallocate = (): void => {
+    const cap = slotConfig?.reallocationCap ?? 0;
+    const ceiling = slotConfig?.slotCeiling ?? 1;
+    if (cap <= 0) return;
+    const ranked = agents
+      .filter((agent) => agent.status === "active" && agent.adjustedFitness !== null)
+      .sort((a, b) => (b.adjustedFitness ?? 0) - (a.adjustedFitness ?? 0) || (a.id < b.id ? -1 : 1));
+    const q = Math.floor(ranked.length / 10);
+    if (q < 1) return;
+    const sinks = ranked.slice(0, q);
+    const sources = ranked.slice(ranked.length - q);
+    const plan = planReallocation(
+      sources.map((slot) => slot.capital),
+      sinks.map((slot) => ({ capital: slot.capital, principal: slot.principal })),
+      cap,
+      ceiling,
+      PROTOCOL.capitalFloor,
+    );
+    if (!(plan.moved > 0)) return;
+    sources.forEach((slot, index) => {
+      slot.capital -= plan.debits[index] ?? 0;
+    });
+    sinks.forEach((slot, index) => {
+      slot.capital += plan.credits[index] ?? 0;
+    });
+    slotLedger.capitalMoved += plan.moved;
+    slotLedger.reallocations += 1;
+  };
 
   for (const bar of bars) {
     let capitalBefore = 0;
@@ -295,6 +399,7 @@ export function run(config: RunConfig): RunResult {
         const mates = active.filter((item) => nicheKey(item.genome) === key);
         return mates.length > 0 ? mates : active;
       };
+      const starved: Agent[] = [];
       for (const agent of active) {
         if (agent.adjustedFitness === null) continue;
         const scores = matesOf(agent)
@@ -303,7 +408,16 @@ export function run(config: RunConfig): RunResult {
         const rank = percentile(agent.adjustedFitness, scores);
         if (rank <= 0.1) agent.lowFitnessWindows += 1;
         else agent.lowFitnessWindows = 0;
-        if (agent.lowFitnessWindows >= PROTOCOL.retirementWindows) agent.status = "retired";
+        if (agent.lowFitnessWindows >= PROTOCOL.retirementWindows) {
+          // In slots mode the starvation rule of section 6 is a replacement trigger, not a retirement (issue #85).
+          if (slotConfig) starved.push(agent);
+          else agent.status = "retired";
+        }
+      }
+
+      if (slotConfig) {
+        replaceSlots(starved, active, matesOf, bar.tick);
+        reallocate();
       }
 
       if (config.mode === "evolving") {
@@ -432,6 +546,7 @@ export function run(config: RunConfig): RunResult {
     ledger,
     prices: bars.map((bar) => bar.price),
     agents: summaries,
+    ...(slotConfig ? { slots: slotLedger } : {}),
     ...(genomeModel ? { genomeTrace } : {}),
   };
 }

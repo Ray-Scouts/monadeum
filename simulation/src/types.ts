@@ -1,6 +1,36 @@
 export type Regime = "trending" | "mean_reverting" | "choppy" | "stress_flash_crash";
 
-export type RunMode = "evolving" | "static";
+/** `slots` is the experiment-only fixed-slot mechanism of issue #85 (`EVOLUTION.md` section 8), configured by `RunConfig.slots`. */
+export type RunMode = "evolving" | "static" | "slots";
+
+/** Experiment-only fixed-slot selection (issue #85). No mode that uses it creates an account. */
+export interface SlotConfig {
+  /**
+   * What a slot that meets a replacement trigger receives: a random genome (`randomGenome`) or a section 3.3 mutation of
+   * a fit donor's genome chosen under the section 5 niche rules.
+   */
+  refill: "random" | "mutant";
+  /**
+   * Bounded reallocation. At each evaluation every bottom-decile slot by adjusted fitness offers this fraction of its
+   * capital, never going below the capital floor, and the offer is shared among the top-decile slots up to the ceiling.
+   * 0 or unset disables reallocation.
+   */
+  reallocationCap?: number;
+  /** Per-slot capital ceiling for reallocation, as a multiple of the slot's principal. Required when the cap is above 0. */
+  slotCeiling?: number;
+}
+
+/** What the fixed-slot mechanism did over a run. */
+export interface SlotLedger {
+  /** Slots that received a new genome. */
+  replacements: number;
+  /** Replacement triggers that found no eligible donor, so the slot kept its genome until the next evaluation. */
+  noDonor: number;
+  /** Total capital moved by reallocation. */
+  capitalMoved: number;
+  /** Evaluations at which reallocation moved a positive amount. */
+  reallocations: number;
+}
 
 export interface Genome {
   strategyType: "trading";
@@ -201,6 +231,8 @@ export interface RunResult {
   ledger: CostLedger;
   prices: number[];
   agents: AgentSummary[];
+  /** Present only in `slots` mode. */
+  slots?: SlotLedger;
   /** Present only when `RunConfig.genomeModel` is set: tick 0, then every `GENOME_TRACE_EVERY` ticks. */
   genomeTrace?: GenomeTracePoint[];
 }
@@ -257,4 +289,6 @@ export interface RunConfig {
    * by `randomGenome` from a separate RNG stream, every other field from `genome`. Defaults to off.
    */
   randomGenomes?: boolean;
+  /** Required in `slots` mode and ignored otherwise (issue #85). */
+  slots?: SlotConfig;
 }
