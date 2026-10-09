@@ -2,8 +2,11 @@ import { writeFileSync } from "node:fs";
 import { ARMS, compareCell, runRerunCell } from "./rerun.js";
 import type { Regime } from "./types.js";
 
-const arm = ARMS[process.env.ARM ?? ""];
-if (!arm) throw new Error(`ARM must be one of ${Object.keys(ARMS).join(", ")}`);
+const baseArm = ARMS[process.env.ARM ?? ""];
+if (!baseArm) throw new Error(`ARM must be one of ${Object.keys(ARMS).join(", ")}`);
+// H sets skill heritability (issue #80) and suffixes the arm name, for example A-h0.5.
+const h = process.env.H === undefined ? undefined : Number(process.env.H);
+const arm = h === undefined ? baseArm : { ...baseArm, name: `${baseArm.name}-h${h}`, skillHeritability: h };
 const populations = (process.env.POPS ?? "10,100,1000").split(",").map((item) => Number(item.trim()));
 const regimes = (process.env.REGIMES ?? "trending,mean_reverting,choppy,stress_flash_crash")
   .split(",")

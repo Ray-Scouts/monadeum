@@ -36,6 +36,7 @@ interface Agent {
   lowFitnessWindows: number;
   skill: number;
   infoThisTick: boolean;
+  parent: string | null;
 }
 
 const DEFAULT_GENOME: Genome = {
@@ -102,6 +103,10 @@ export function run(config: RunConfig): RunResult {
   const cap = experimentPopulationCap(config.population);
   const diversity = config.diversity !== false;
   const informationPurchases = config.informationPurchases !== false;
+  const heritability = config.skillHeritability ?? 0;
+  if (!(heritability >= 0 && heritability <= 1)) {
+    throw new RangeError(`skillHeritability must be in [0, 1], got ${heritability}`);
+  }
   const bandMids = [0.03, 0.07, 0.12, 0.17, 0.22];
   const pairSets = [["PAIR_A"], ["PAIR_B"], ["PAIR_C"], ["PAIR_A", "PAIR_B"], ["PAIR_A", "PAIR_C"]];
   const startingGenome = (index: number): Genome => {
@@ -141,6 +146,7 @@ export function run(config: RunConfig): RunResult {
       lowFitnessWindows: 0,
       skill: -0.002 + agentRng() * 0.006,
       infoThisTick: false,
+      parent: null,
     });
   }
 
@@ -288,6 +294,8 @@ export function run(config: RunConfig): RunResult {
             rng: agentRng,
             pMut: pressure.pMut,
           });
+          // Same draw, in the same order, as before heritability existed, so h = 0 leaves the RNG stream unchanged.
+          const freshSkill = -0.002 + agentRng() * 0.006;
           agents.push({
             id: `c${String(nextChild).padStart(4, "0")}`,
             genome: childGenome,
@@ -305,8 +313,9 @@ export function run(config: RunConfig): RunResult {
             adjustedFitness: null,
             rawSortino: null,
             lowFitnessWindows: 0,
-            skill: -0.002 + agentRng() * 0.006,
+            skill: heritability * parent.skill + (1 - heritability) * freshSkill,
             infoThisTick: false,
+            parent: parent.id,
           });
           nextChild += 1;
           reproductions += 1;
@@ -331,6 +340,8 @@ export function run(config: RunConfig): RunResult {
       status: agent.status,
       descendants: agent.descendants,
       niche: nicheKey(agent.genome),
+      skill: agent.skill,
+      parent: agent.parent,
     }));
 
   return {
