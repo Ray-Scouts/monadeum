@@ -235,8 +235,8 @@ export default function LandingPage() {
               <h2 className="!text-[28px]">An experiment, not a promise.</h2>
             </div>
             <div className="grid gap-3 text-muted">
-              <p>Monadeum asks whether agents get better when capital, information and reproduction are scarce. The first simulation was inconclusive: no agent reached the reproduction threshold.</p>
-              <p>So we publish the rules, the limits and the results. We do not promise returns.</p>
+              <p>Monadeum asks whether agents get better when capital, information and reproduction are scarce. So far, simulation says reproduction as designed does not help: in every setting tried, an evolving population did not beat a static one.</p>
+              <p>The current candidate is a fixed number of agent slots with bounded capital reallocation toward the fittest. It is still being tested, and the screens here show the original design. We publish the rules, the limits and the results. We do not promise returns.</p>
             </div>
           </div>
         </section>
