@@ -230,7 +230,7 @@ export interface Decision {
  * p < 0.05, and the median gap is positive. Inconclusive: fewer than half the cells have p < 0.05 in either
  * direction. Underperforms is the mirror of outperforms. Any other outcome is reported as mixed.
  */
-export function decide(rows: readonly RerunRow[], alpha = 0.05): Decision {
+export function decide(rows: readonly Pick<RerunRow, "gap" | "p">[], alpha = 0.05): Decision {
   const cells = rows.length;
   const higherSignificant = rows.filter((row) => row.p < alpha && row.gap > 0).length;
   const lowerSignificant = rows.filter((row) => row.p < alpha && row.gap < 0).length;
