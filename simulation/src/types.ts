@@ -33,6 +33,20 @@ export interface SlotConfig {
    * to `population`.
    */
   donorScope?: "population" | "owner";
+  /**
+   * Experiment-only source and sink share for population-wide reallocation (issue #92, exploratory matched-aggressiveness
+   * arm). When set, a population-wide pool of `n` ranked slots uses the bottom and top `max(1, floor(n * share))` slots
+   * as sources and sinks, from 2 ranked slots up, instead of the decile rule. It must be in (0, 0.5] and cannot be
+   * combined with `owners`. Unset keeps the issue #85 decile rule.
+   */
+  quotaShare?: number;
+  /**
+   * Experiment-only recycling of retired capital (issue #92, exploratory). At each evaluation, after reallocation, the
+   * capital of every retired slot moves to the highest-fitness active slot of the same owner (of the whole population
+   * when `owners` is unset), up to that slot's `slotCeiling`. What does not fit stays in the retired slot and is
+   * offered again at the next evaluation. Unset or false leaves retired capital idle, as before.
+   */
+  recycleRetired?: boolean;
 }
 
 /** What the fixed-slot mechanism did over a run. */
@@ -45,6 +59,8 @@ export interface SlotLedger {
   capitalMoved: number;
   /** Evaluations at which reallocation moved a positive amount. */
   reallocations: number;
+  /** Capital moved from retired slots to active slots (issue #92). Present only with `slots.recycleRetired`. */
+  capitalRecycled?: number;
 }
 
 export interface Genome {

@@ -30,6 +30,10 @@ export interface SlotArm {
   owners?: OwnerSpec;
   /** Issue #89 owner-scoped arms with mutant refill only. */
   donorScope?: "population" | "owner";
+  /** Issue #92 exploratory matched-aggressiveness arms only: population-wide source and sink share. */
+  quotaShare?: number;
+  /** Issue #92 exploratory recycling arm only. */
+  recycleRetired?: boolean;
 }
 
 /**
@@ -85,6 +89,24 @@ function scopeArms(): Record<string, SlotArm> {
   return arms;
 }
 
+/**
+ * Issue #92 exploratory arms, not used for the pre-registered H1 to H3 calls. The primary arm, `Omix-RT-c0.2-x4`, and
+ * the owner-size and population-wide retirement arms are the issue #89 arms above.
+ *
+ * - `RTs3-c0.2-x4`, `RTs5-c0.2-x4`: retirement with population-wide ranking whose source and sink share is 1/3 and 1/5,
+ *   the share the small-pool rule gives an owner of 3 and of 5. They separate pool size from how much capital moves.
+ * - `Omix-RTr-c0.2-x4`: the primary arm, plus recycling of each retired slot's capital to the same owner's
+ *   highest-fitness active slot, under the same ceiling.
+ */
+function confirmationArms(): Record<string, SlotArm> {
+  const base = { kind: "retire" as const, reallocationCap: 0.2, slotCeiling: 4 };
+  return {
+    "RTs3-c0.2-x4": { name: "RTs3-c0.2-x4", ...base, quotaShare: 1 / 3 },
+    "RTs5-c0.2-x4": { name: "RTs5-c0.2-x4", ...base, quotaShare: 1 / 5 },
+    "Omix-RTr-c0.2-x4": { name: "Omix-RTr-c0.2-x4", ...base, owners: "mixed", recycleRetired: true },
+  };
+}
+
 export const SLOT_ARMS: Record<string, SlotArm> = {
   C1: { name: "C1", kind: "static" },
   C2: { name: "C2", kind: "random" },
@@ -97,6 +119,7 @@ export const SLOT_ARMS: Record<string, SlotArm> = {
   "R-c0.2-x4": { name: "R-c0.2-x4", kind: "random", reallocationCap: 0.2, slotCeiling: 4 },
   S3: { name: "S3", kind: "evolving" },
   ...scopeArms(),
+  ...confirmationArms(),
 };
 
 export const SLOT_TICKS = 300;
@@ -134,6 +157,8 @@ export function slotRunConfig(arm: SlotArm, magnitude: number, population: numbe
           ...(arm.slotCeiling === undefined ? {} : { slotCeiling: arm.slotCeiling }),
           ...(arm.owners === undefined ? {} : { owners: ownerSizes(population, arm.owners) }),
           ...(arm.donorScope === undefined ? {} : { donorScope: arm.donorScope }),
+          ...(arm.quotaShare === undefined ? {} : { quotaShare: arm.quotaShare }),
+          ...(arm.recycleRetired === undefined ? {} : { recycleRetired: arm.recycleRetired }),
         },
       };
     default: {
@@ -159,6 +184,8 @@ export interface SlotOutcome {
   effectiveNiches: number;
   /** Largest single niche's share of active capital at the end. */
   topNicheShare: number;
+  /** Capital moved from retired to active slots (issue #92). Present only for arms that recycle retired capital. */
+  capitalRecycled?: number;
 }
 
 export function slotOutcome(result: RunResult): SlotOutcome {
@@ -187,6 +214,7 @@ export function slotOutcome(result: RunResult): SlotOutcome {
     activeNiches: byNiche.size,
     effectiveNiches: Math.exp(entropy),
     topNicheShare: top,
+    ...(result.slots?.capitalRecycled === undefined ? {} : { capitalRecycled: result.slots.capitalRecycled }),
   };
 }
 
@@ -198,9 +226,21 @@ export interface SlotCell {
   seeds: SlotOutcome[];
 }
 
-export function runSlotCell(arm: SlotArm, magnitude: number, population: number, regime: Regime, seeds: number): SlotCell {
+/**
+ * Runs `seeds` consecutive seeds starting at `firstSeed`. The default 1 gives seeds 1 to `seeds`, as in issues #85 and
+ * #89; issue #92 uses `firstSeed` 51 for out-of-sample seeds 51 to 100.
+ */
+export function runSlotCell(
+  arm: SlotArm,
+  magnitude: number,
+  population: number,
+  regime: Regime,
+  seeds: number,
+  firstSeed = 1,
+): SlotCell {
+  if (!(Number.isInteger(firstSeed) && firstSeed >= 1)) throw new RangeError(`firstSeed must be an integer >= 1, got ${firstSeed}`);
   const out: SlotOutcome[] = [];
-  for (let seed = 1; seed <= seeds; seed++) out.push(slotOutcome(run(slotRunConfig(arm, magnitude, population, regime, seed))));
+  for (let seed = firstSeed; seed < firstSeed + seeds; seed++) out.push(slotOutcome(run(slotRunConfig(arm, magnitude, population, regime, seed))));
   return { arm: arm.name, magnitude, population, regime, seeds: out };
 }
 

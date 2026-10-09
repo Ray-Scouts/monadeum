@@ -2,7 +2,7 @@ import { createExecutionBackend, DEFAULT_COSTS } from "./execution.js";
 import { createFitnessModule, sortinoParts } from "./fitness.js";
 import { assertGenomeModel, genomeDistance, genomeEdge, randomGenome } from "./genome-model.js";
 import { generateMarket } from "./market.js";
-import { planReallocation, reallocationQuota } from "./reallocation.js";
+import { planReallocation, reallocationQuota, recycleAmount, sharedQuota } from "./reallocation.js";
 import { experimentPopulationCap, PROTOCOL } from "./protocol.js";
 import { createReproductionModule, median, nicheKey, nichePressure, percentile } from "./reproduction.js";
 import { createRiskModule } from "./risk.js";
@@ -165,6 +165,17 @@ export function run(config: RunConfig): RunResult {
     if (slotConfig.donorScope === "owner" && slotConfig.owners === undefined) {
       throw new RangeError("slots.donorScope 'owner' needs slots.owners");
     }
+    if (slotConfig.quotaShare !== undefined) {
+      const share = slotConfig.quotaShare;
+      if (!(share > 0 && share <= 0.5)) throw new RangeError(`slots.quotaShare must be in (0, 0.5], got ${share}`);
+      if (slotConfig.owners !== undefined) throw new RangeError("slots.quotaShare cannot be combined with slots.owners");
+    }
+    if (slotConfig.recycleRetired !== undefined && typeof slotConfig.recycleRetired !== "boolean") {
+      throw new RangeError("slots.recycleRetired must be a boolean");
+    }
+    if (slotConfig.recycleRetired && !(slotConfig.slotCeiling !== undefined && Number.isFinite(slotConfig.slotCeiling))) {
+      throw new RangeError("slots.recycleRetired needs a finite slots.slotCeiling");
+    }
     const cap = slotConfig.reallocationCap ?? 0;
     if (!(cap >= 0 && cap <= 1)) throw new RangeError(`slots.reallocationCap must be in [0, 1], got ${cap}`);
     const ceiling = slotConfig.slotCeiling;
@@ -173,7 +184,13 @@ export function run(config: RunConfig): RunResult {
     }
   }
   const slotRng = saltedRng(config.seed, 4);
-  const slotLedger: SlotLedger = { replacements: 0, noDonor: 0, capitalMoved: 0, reallocations: 0 };
+  const slotLedger: SlotLedger = {
+    replacements: 0,
+    noDonor: 0,
+    capitalMoved: 0,
+    reallocations: 0,
+    ...(slotConfig?.recycleRetired ? { capitalRecycled: 0 } : {}),
+  };
   const bandMids = [0.03, 0.07, 0.12, 0.17, 0.22];
   const pairSets = [["PAIR_A"], ["PAIR_B"], ["PAIR_C"], ["PAIR_A", "PAIR_B"], ["PAIR_A", "PAIR_C"]];
   const startingGenome = (index: number): Genome => {
@@ -346,7 +363,8 @@ export function run(config: RunConfig): RunResult {
     }
     let movedThisEvaluation = 0;
     for (const pool of pools) {
-      const q = reallocationQuota(pool.length, owners !== undefined);
+      const share = slotConfig?.quotaShare;
+      const q = share === undefined ? reallocationQuota(pool.length, owners !== undefined) : sharedQuota(pool.length, share);
       if (q < 1) continue;
       const sinks = pool.slice(0, q);
       const sources = pool.slice(pool.length - q);
@@ -373,6 +391,34 @@ export function run(config: RunConfig): RunResult {
     if (!(movedThisEvaluation > 0)) return;
     slotLedger.capitalMoved += movedThisEvaluation;
     slotLedger.reallocations += 1;
+  };
+
+  /**
+   * Issue #92 exploratory recycling. Every retired slot's capital moves to the highest-fitness active slot of the same
+   * owner (of the whole population without owners), up to that slot's ceiling. Bookkept as reallocation in and out, so
+   * the owner boundary checks cover it.
+   */
+  const recycle = (): void => {
+    if (!slotConfig?.recycleRetired) return;
+    const ceiling = slotConfig.slotCeiling ?? 1;
+    const best = new Map<number, Agent>();
+    for (const agent of agents) {
+      if (agent.status !== "active" || agent.adjustedFitness === null) continue;
+      const current = best.get(agent.owner);
+      if (!current || agent.adjustedFitness > (current.adjustedFitness ?? -Infinity)) best.set(agent.owner, agent);
+    }
+    for (const agent of agents) {
+      if (agent.status !== "retired" || !(agent.capital > 0)) continue;
+      const sink = best.get(agent.owner);
+      if (!sink) continue;
+      const amount = recycleAmount(agent.capital, sink, ceiling);
+      if (!(amount > 0)) continue;
+      agent.capital -= amount;
+      agent.reallocatedIn -= amount;
+      sink.capital += amount;
+      sink.reallocatedIn += amount;
+      slotLedger.capitalRecycled = (slotLedger.capitalRecycled ?? 0) + amount;
+    }
   };
 
   for (const bar of bars) {
@@ -478,6 +524,7 @@ export function run(config: RunConfig): RunResult {
       if (slotConfig) {
         replaceSlots(starved, active, matesOf, bar.tick);
         reallocate();
+        recycle();
       }
 
       if (config.mode === "evolving") {
