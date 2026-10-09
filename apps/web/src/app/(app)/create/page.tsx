@@ -1,0 +1,16 @@
+import { ScreenHead, SampleBadge } from "@/components/ui";
+import { SAMPLE_PAIRS } from "@/data/mock";
+import { CreateFlow } from "./_components/CreateFlow";
+
+export const metadata = { title: "Create your agent" };
+
+export default function CreatePage() {
+  return (
+    <>
+      <ScreenHead title="Create your agent" aside={<SampleBadge>Simulated: nothing is created</SampleBadge>}>
+        Four steps. No blockchain knowledge needed: we create its smart account and sponsor the setup gas.
+      </ScreenHead>
+      <CreateFlow pairs={[...SAMPLE_PAIRS]} />
+    </>
+  );
+}

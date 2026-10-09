@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+/* Design tokens. Monad purple is one accent among five niche hues on near-neutral grounds. Dark-first; light via system preference or data-theme. */
+:root{
+  /* neutrals: near-neutral ink with a faint cool bias; Monad purple is one accent among five niche hues */
+  --bg:#0A0A10; --surface:#13131B; --surface-2:#1B1B26; --line:#2B2A3A; --line-soft:#20202C;
+  --fg:#F6F5F2; --muted:#A4A3B6; --faint:#6D6C80;
+  --accent:#836EF9; --accent-hi:#A898FF; --accent-ink:#200052; --accent-wash:rgba(131,110,249,.14);
+  --berry:#E0428F; --berry-wash:rgba(224,66,143,.14);
+  --mint:#34D6A6; --sky:#45C2F0; --sun:#FFB547;
+  --good:#3FD69A; --good-wash:rgba(63,214,154,.13); --warn:#F5BE4A; --warn-wash:rgba(245,190,74,.14); --bad:#FF6680; --bad-wash:rgba(255,102,128,.14);
+  --ink-btn:#F6F5F2; --ink-btn-fg:#0A0A10;
+  --shadow:0 18px 50px -20px rgba(0,0,0,.6);
+  --f-display:var(--nf-display), ui-sans-serif, system-ui, sans-serif;
+  --f-body:var(--nf-body), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:var(--nf-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  --r-sm:8px; --r:14px; --r-lg:22px;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){
+  --bg:#FBFAF9; --surface:#FFFFFF; --surface-2:#F3F2EE; --line:#E1DFD8; --line-soft:#ECEAE4;
+  --fg:#15131F; --muted:#5B5968; --faint:#8E8C9A;
+  --accent:#6A50F2; --accent-hi:#5238E0; --accent-ink:#200052; --accent-wash:rgba(106,80,242,.10);
+  --berry:#B8126A; --berry-wash:rgba(184,18,106,.09);
+  --mint:#0C9E74; --sky:#0B8BC0; --sun:#C77A00;
+  --good:#0E9A62; --good-wash:rgba(14,154,98,.10); --warn:#A86A00; --warn-wash:rgba(168,106,0,.10); --bad:#D22B4C; --bad-wash:rgba(210,43,76,.09);
+  --ink-btn:#15131F; --ink-btn-fg:#FBFAF9;
+  --shadow:0 18px 40px -24px rgba(20,18,31,.30); color-scheme:light;
+}}
+:root[data-theme="light"]{
+  --bg:#FBFAF9; --surface:#FFFFFF; --surface-2:#F3F2EE; --line:#E1DFD8; --line-soft:#ECEAE4;
+  --fg:#15131F; --muted:#5B5968; --faint:#8E8C9A;
+  --accent:#6A50F2; --accent-hi:#5238E0; --accent-ink:#200052; --accent-wash:rgba(106,80,242,.10);
+  --berry:#B8126A; --berry-wash:rgba(184,18,106,.09);
+  --mint:#0C9E74; --sky:#0B8BC0; --sun:#C77A00;
+  --good:#0E9A62; --good-wash:rgba(14,154,98,.10); --warn:#A86A00; --warn-wash:rgba(168,106,0,.10); --bad:#D22B4C; --bad-wash:rgba(210,43,76,.09);
+  --ink-btn:#15131F; --ink-btn-fg:#FBFAF9;
+  --shadow:0 18px 40px -24px rgba(20,18,31,.30); color-scheme:light;
+}
+:root[data-theme="dark"]{color-scheme:dark}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-hi: var(--accent-hi);
+  --color-accent-wash: var(--accent-wash);
+  --color-berry: var(--berry);
+  --color-berry-wash: var(--berry-wash);
+  --color-mint: var(--mint);
+  --color-sky: var(--sky);
+  --color-sun: var(--sun);
+  --color-good: var(--good);
+  --color-good-wash: var(--good-wash);
+  --color-warn: var(--warn);
+  --color-warn-wash: var(--warn-wash);
+  --color-bad: var(--bad);
+  --color-bad-wash: var(--bad-wash);
+  --color-ink: var(--ink-btn);
+  --color-ink-fg: var(--ink-btn-fg);
+  --font-display: var(--f-display);
+  --font-sans: var(--f-body);
+  --font-mono: var(--f-mono);
+  --radius-card: 22px;
+  --shadow-lift: var(--shadow);
+}
+
+@layer base {
+  html, body { min-height: 100%; }
+  body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--f-body); -webkit-font-smoothing: antialiased; margin: 0; }
+  h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; letter-spacing: -0.02em; margin: 0; }
+  :focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; border-radius: 6px; }
+  button { cursor: pointer; }
+}
+
+@utility tabular { font-variant-numeric: tabular-nums; }
+@utility eyebrow { font: 500 11px/1 var(--f-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* Buttons: one shape, four roles. */
+@utility btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--line); background: var(--surface-2); padding: 10px 16px; border-radius: 999px; font-weight: 500; transition: transform .15s, background .15s, border-color .15s, box-shadow .15s; &:hover { border-color: var(--accent); } &:active { transform: scale(.98); } &:disabled { opacity: .45; cursor: not-allowed; } }
+@utility btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; &:hover { background: var(--accent-hi); } }
+@utility btn-ink { background: var(--ink-btn); border-color: var(--ink-btn); color: var(--ink-btn-fg); &:hover { box-shadow: 0 0 0 4px var(--accent-wash); } }
+@utility btn-ghost { background: transparent; border-color: transparent; }
+@utility btn-danger { background: var(--bad-wash); border-color: transparent; color: var(--bad); }
+@utility btn-lg { padding: 14px 22px; font-size: 16px; }
+
+/* Theme toggle shows the icon of the theme you would switch away from. */
+.theme-sun { display: none; }
+:root[data-theme="light"] .theme-moon { display: none; }
+:root[data-theme="light"] .theme-sun { display: contents; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .theme-moon { display: none; }
+  :root:not([data-theme="dark"]) .theme-sun { display: contents; }
+}

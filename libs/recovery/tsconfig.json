@@ -9,7 +9,7 @@
     "skipLibCheck": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "declaration": false
+    "declaration": true
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }
