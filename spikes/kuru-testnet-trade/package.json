@@ -1,0 +1,17 @@
+{
+  "name": "spike-kuru-testnet-trade",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "start": "bun run spike.ts",
+    "dry-run": "DRY_RUN=1 bun run spike.ts"
+  },
+  "dependencies": {
+    "viem": "^2.56.9"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2"
+  }
+}
