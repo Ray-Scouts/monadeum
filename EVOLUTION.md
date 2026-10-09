@@ -192,3 +192,15 @@ These are stated now so the experiment does not produce a mechanism the product 
 2. **The comparison must be fair.** The control is not only a static population. It also includes replacement with random genomes, so the test shows that selection beats chance, not only that refilling slots helps.
 
 The experiment, tracked in issue #85, compares four arms under the unchanged `ECONOMICS.md` section 8 decision rule: static; replacement with random genomes; replacement with mutated genomes from fit donors; and replacement plus bounded reallocation. If the last arm beats both controls, this section becomes the candidate mechanism for issue #28 and sections 3 and 4 are revised. If it does not, the honest conclusion is that evolution does not add value in this model, and the product should rest on well-calibrated static agents.
+
+### 8.5 Result (issue #85)
+
+**Status: candidate mechanism for issue #28, not yet a decision.** `simulation/results/fixed-slot.md` ran the four arms on the issue #84 genome model. Under the unchanged `ECONOMICS.md` section 8 rule, arm B (replacement with mutated donors plus bounded reallocation) beats both the static control and the random-replacement control at genome edge magnitude 0.009 with a reallocation cap of 0.2, and not at magnitude 0.006 or cap 0.05. Arm A (replacement alone) is inconclusive against both. A diagnostic arm shows reallocation does most of the work. The section 3 mechanism remains inconclusive on the same model. No arm collapsed into a monoculture.
+
+Before sections 3 and 4 are revised and issue #28 proceeds, these follow-ups are open:
+
+1. Test reallocation with no replacement, to decide whether replacement earns its consent and product cost.
+2. Test reallocation restricted to one owner's agents, per section 8.3, since that pool is smaller than the population-wide ranking used here.
+3. Establish whether real strategies' genomes carry an edge of the assumed size (section 7).
+4. If the mechanism is adopted: revise sections 3 and 4, re-scope the reproduction contract in issue #31, and update the reproduction invariants in `THREAT-MODEL.md`.
+

@@ -15,9 +15,9 @@ export type SlotArmKind = "static" | "random" | "mutant" | "evolving";
 export interface SlotArm {
   name: string;
   kind: SlotArmKind;
-  /** Arm B only. */
+  /** Arm B and the reallocation diagnostic only. */
   reallocationCap?: number;
-  /** Arm B only, a multiple of the slot principal. */
+  /** Arm B and the reallocation diagnostic only, a multiple of the slot principal. */
   slotCeiling?: number;
 }
 
@@ -29,6 +29,8 @@ export const SLOT_ARMS: Record<string, SlotArm> = {
   "B-c0.05-x4": { name: "B-c0.05-x4", kind: "mutant", reallocationCap: 0.05, slotCeiling: 4 },
   "B-c0.2-x2": { name: "B-c0.2-x2", kind: "mutant", reallocationCap: 0.2, slotCeiling: 2 },
   "B-c0.2-x4": { name: "B-c0.2-x4", kind: "mutant", reallocationCap: 0.2, slotCeiling: 4 },
+  /** Diagnostic, not one of the four pre-registered arms: Control 2 plus arm B's reallocation at cap 0.2, ceiling 4. */
+  "R-c0.2-x4": { name: "R-c0.2-x4", kind: "random", reallocationCap: 0.2, slotCeiling: 4 },
   S3: { name: "S3", kind: "evolving" },
 };
 
@@ -55,13 +57,12 @@ export function slotRunConfig(arm: SlotArm, magnitude: number, population: numbe
     case "evolving":
       return { ...common, mode: "evolving", reproduction: createReproductionModule({ profitThresholdFraction: 0.1 }) };
     case "random":
-      return { ...common, mode: "slots", slots: { refill: "random" } };
     case "mutant":
       return {
         ...common,
         mode: "slots",
         slots: {
-          refill: "mutant",
+          refill: arm.kind,
           ...(arm.reallocationCap === undefined ? {} : { reallocationCap: arm.reallocationCap }),
           ...(arm.slotCeiling === undefined ? {} : { slotCeiling: arm.slotCeiling }),
         },

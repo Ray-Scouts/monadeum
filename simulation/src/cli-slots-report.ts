@@ -13,7 +13,7 @@ for (const file of readdirSync(dir).filter((name) => name.endsWith(".json"))) {
 
 const pops = [10, 100, 1000];
 const regimes = ["trending", "mean_reverting", "choppy", "stress_flash_crash"];
-const armOrder = ["C1", "C2", "A", "B-c0.05-x2", "B-c0.05-x4", "B-c0.2-x2", "B-c0.2-x4", "S3"];
+const armOrder = ["C1", "C2", "A", "B-c0.05-x2", "B-c0.05-x4", "B-c0.2-x2", "B-c0.2-x4", "R-c0.2-x4", "S3"];
 const order = (cell: { population: number; regime: string }): number =>
   pops.indexOf(cell.population) * 10 + regimes.indexOf(cell.regime);
 const pFmt = (p: number): string => (p < 0.0001 ? "<0.0001" : p.toFixed(4));
