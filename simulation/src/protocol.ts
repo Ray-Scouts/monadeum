@@ -1,4 +1,4 @@
-import { RISK_CUTS, SHRINKAGE_K, TRAILING_WINDOW } from "@monadeum/fitness";
+import { RISK_CUTS, SHRINKAGE_K, TRAILING_WINDOW } from "@monadeum/fitness/math";
 
 /** Proposed defaults from EVOLUTION.md. The simulation tunes these. It does not treat them as final. */
 export const PROTOCOL = {
