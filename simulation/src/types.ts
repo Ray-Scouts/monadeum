@@ -151,6 +151,17 @@ export interface AgentSummary {
   skill: number;
   /** Id of the parent for a child, null for a founder. */
   parent: string | null;
+  /** Genome distance from the regime optimum (issue #84). Present only when `RunConfig.genomeModel` is set. */
+  genomeDistance?: number;
+}
+
+/** Capital-weighted genome distance from the regime optimum over the active agents at one tick (issue #84). */
+export interface GenomeTracePoint {
+  tick: number;
+  /** Capital-weighted mean distance over active agents. */
+  weighted: number;
+  /** Unweighted mean distance over active agents. */
+  mean: number;
 }
 
 /** Reproduction gate outcomes over every evaluation of an active parent in evolving mode. */
@@ -190,6 +201,8 @@ export interface RunResult {
   ledger: CostLedger;
   prices: number[];
   agents: AgentSummary[];
+  /** Present only when `RunConfig.genomeModel` is set: tick 0, then every `GENOME_TRACE_EVERY` ticks. */
+  genomeTrace?: GenomeTracePoint[];
 }
 
 export interface RunConfig {
@@ -233,4 +246,15 @@ export interface RunConfig {
    * and ending capital. Defaults to 0.
    */
   treasury?: number;
+  /**
+   * Experiment-only genome performance model (issue #84, `src/genome-model.ts`). When set, an agent's per-tick edge
+   * comes from its genome and the hidden skill is 0 for every agent (its draw is still made, so the agent RNG stream is
+   * unchanged). Unset by default, which keeps the hidden skill model.
+   */
+  genomeModel?: { magnitude: number };
+  /**
+   * Experiment-only random founders (issue #84). Each founder's `timeHorizon`, `entryThreshold`, and pair set are drawn
+   * by `randomGenome` from a separate RNG stream, every other field from `genome`. Defaults to off.
+   */
+  randomGenomes?: boolean;
 }
