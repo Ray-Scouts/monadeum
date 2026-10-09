@@ -5,9 +5,11 @@ export { PROTOCOL, experimentPopulationCap } from "./protocol.js";
 export { createReproductionModule, median, nicheKey, nichePressure, percentile, riskBand } from "./reproduction.js";
 export { createRiskModule } from "./risk.js";
 export { gini, run } from "./runner.js";
+export type { ReproductionOptions } from "./reproduction.js";
 export type {
   AgentSnapshot,
   CostModel,
+  GateCounts,
   FitnessModule,
   Genome,
   Regime,

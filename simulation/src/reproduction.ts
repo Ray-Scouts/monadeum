@@ -43,7 +43,13 @@ export function nichePressure(share: number, diversity: boolean): { requiredPerc
   };
 }
 
-export function createReproductionModule(): ReproductionModule {
+export interface ReproductionOptions {
+  /** Overrides `PROTOCOL.profitThresholdFraction` for an experiment. The protocol default is unchanged. */
+  profitThresholdFraction?: number;
+}
+
+export function createReproductionModule(options: ReproductionOptions = {}): ReproductionModule {
+  const profitThresholdFraction = options.profitThresholdFraction ?? PROTOCOL.profitThresholdFraction;
   return {
     evaluate(input: ReproductionInput): ReproductionDecision {
       const failed: string[] = [];
@@ -59,7 +65,7 @@ export function createReproductionModule(): ReproductionModule {
       const rank = agent.adjustedFitness === null ? 0 : percentile(agent.adjustedFitness, scores);
       if (agent.adjustedFitness === null || rank < input.requiredPercentile) failed.push("percentile");
       const profit = agent.capital - agent.principal;
-      if (profit < PROTOCOL.profitThresholdFraction * agent.principal) failed.push("profit");
+      if (profit < profitThresholdFraction * agent.principal) failed.push("profit");
       if (agent.descendants >= PROTOCOL.maxDescendants) failed.push("descendants");
       if (input.populationSize >= input.populationCap) failed.push("population_cap");
       return { eligible: failed.length === 0, failed };
