@@ -8,9 +8,10 @@ export interface SlotConfig {
   /**
    * What a slot that meets a replacement trigger receives: a random genome (`randomGenome`) or a section 3.3 mutation of
    * a fit donor's genome chosen under the section 5 niche rules. `none` (issue #89) is no replacement: a triggered slot
-   * keeps its genome and keeps trading, and is not retired.
+   * keeps its genome and keeps trading, and is not retired. `retire` (issue #89 diagnostic) is no replacement with the
+   * section 6 starvation retirement of a static run: the slot stops trading and its capital stays in it, idle.
    */
-  refill: "random" | "mutant" | "none";
+  refill: "random" | "mutant" | "none" | "retire";
   /**
    * Bounded reallocation. At each evaluation every bottom-decile slot by adjusted fitness offers this fraction of its
    * capital, never going below the capital floor, and the offer is shared among the top-decile slots up to the ceiling.

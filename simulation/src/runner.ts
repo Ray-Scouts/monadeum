@@ -146,8 +146,8 @@ export function run(config: RunConfig): RunResult {
   // Experiment-only fixed slots (issue #85). Their own stream, so every arm shares founders and information draws.
   const slotConfig = config.mode === "slots" ? config.slots : undefined;
   if (config.mode === "slots") {
-    if (!slotConfig || !["random", "mutant", "none"].includes(slotConfig.refill)) {
-      throw new RangeError("slots mode needs RunConfig.slots with refill 'random', 'mutant', or 'none'");
+    if (!slotConfig || !["random", "mutant", "none", "retire"].includes(slotConfig.refill)) {
+      throw new RangeError("slots mode needs RunConfig.slots with refill 'random', 'mutant', 'none', or 'retire'");
     }
     if (slotConfig.owners !== undefined) {
       const sizes = slotConfig.owners;
@@ -469,7 +469,8 @@ export function run(config: RunConfig): RunResult {
         else agent.lowFitnessWindows = 0;
         if (agent.lowFitnessWindows >= PROTOCOL.retirementWindows) {
           // In slots mode the starvation rule of section 6 is a replacement trigger, not a retirement (issue #85).
-          if (slotConfig) starved.push(agent);
+          // With refill "retire" (issue #89 diagnostic) the slot retires as in a static run and keeps its capital idle.
+          if (slotConfig && slotConfig.refill !== "retire") starved.push(agent);
           else agent.status = "retired";
         }
       }

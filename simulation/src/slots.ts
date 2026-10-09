@@ -10,8 +10,11 @@ import type { Regime, RunConfig, RunResult } from "./types.js";
  * seeds 1 to 50. The profit threshold 0.1 matters only to the section 3 reference arm.
  */
 
-/** `fixed` (issue #89) is fixed slots with no replacement: a triggered slot keeps its genome. */
-export type SlotArmKind = "static" | "random" | "mutant" | "fixed" | "evolving";
+/**
+ * `fixed` (issue #89) is fixed slots with no replacement: a triggered slot keeps its genome and keeps trading. `retire`
+ * (issue #89 diagnostic) is no replacement with the static starvation retirement: a triggered slot stops trading.
+ */
+export type SlotArmKind = "static" | "random" | "mutant" | "fixed" | "retire" | "evolving";
 
 /** Owner size for issue #89: every owner holds `k` slots, or the `mixed` distribution of `MIXED_OWNER_CYCLE`. */
 export type OwnerSpec = number | "mixed";
@@ -72,6 +75,13 @@ function scopeArms(): Record<string, SlotArm> {
       arms[`${prefix}-Mp-${tail}`] = { name: `${prefix}-Mp-${tail}`, kind: "mutant", donorScope: "population", ...base };
     }
   }
+  // Diagnostic added after the first batch: no replacement, but a starved slot retires as in Control 1 instead of
+  // trading on. Ceiling 4 only.
+  arms["RT-c0.2-x4"] = { name: "RT-c0.2-x4", kind: "retire", reallocationCap: 0.2, slotCeiling: 4 };
+  for (const owners of [3, 5, 10, "mixed"] as const) {
+    const name = `O${owners === "mixed" ? "mix" : owners}-RT-c0.2-x4`;
+    arms[name] = { name, kind: "retire", reallocationCap: 0.2, slotCeiling: 4, owners };
+  }
   return arms;
 }
 
@@ -114,6 +124,7 @@ export function slotRunConfig(arm: SlotArm, magnitude: number, population: numbe
     case "random":
     case "mutant":
     case "fixed":
+    case "retire":
       return {
         ...common,
         mode: "slots",

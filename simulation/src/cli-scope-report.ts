@@ -18,7 +18,7 @@ const cells: SlotCell[] = [...load(dir, () => true), ...load(baseDir, (arm) => b
 
 const pops = [10, 100, 1000];
 const regimes = ["trending", "mean_reverting", "choppy", "stress_flash_crash"];
-const armOrder = [...baselines, ...Object.keys(SLOT_ARMS).filter((name) => name === "N" || /^(RO|O)/.test(name))];
+const armOrder = [...baselines, ...Object.keys(SLOT_ARMS).filter((name) => name === "N" || /^(RO|RT|O)/.test(name))];
 const order = (cell: { population: number; regime: string }): number =>
   pops.indexOf(cell.population) * 10 + regimes.indexOf(cell.regime);
 const pFmt = (p: number): string => (p < 0.0001 ? "<0.0001" : p.toFixed(4));
@@ -27,6 +27,16 @@ const pFmt = (p: number): string => (p < 0.0001 ? "<0.0001" : p.toFixed(4));
 const armBFor = (arm: string): string | null => {
   if (arm.startsWith("B-") || arm === "C1" || arm === "C2") return null;
   return arm.endsWith("-x2") ? "B-c0.2-x2" : "B-c0.2-x4";
+};
+
+/**
+ * The population-wide arm with the same replacement setting and ceiling, so the comparison isolates owner scope. For
+ * mutant arms that is arm B itself (population-wide donors and ranking), already in the arm B column.
+ */
+const wideFor = (arm: string): string | null => {
+  const match = /^O[^-]+-(N|RT)-(c0\.2-x\d)$/.exec(arm);
+  if (!match) return null;
+  return `${match[1] === "N" ? "RO" : "RT"}-${match[2]}`;
 };
 
 const find = (magnitude: number, arm: string, population: number, regime: string): SlotCell | undefined =>
@@ -68,6 +78,20 @@ for (const magnitude of [...new Set(load(dir, () => true).map((cell) => cell.mag
     out.push(
       `| ${arm} | ${verdict(arm, "C1")} | ${verdict(arm, "C2")} | ${b ?? "n/a"} | ${verdict(arm, b)} | ${moved.toFixed(2)} |`,
     );
+  }
+  out.push("");
+
+  out.push(
+    "Owner scope against population-wide ranking with the same replacement setting and ceiling (no-replacement and retire arms; for mutant arms the counterpart is arm B, above):",
+    "",
+    "| arm | counterpart | cells p < 0.05 | median gap pp | stress | call |",
+    "|---|---|---|---:|---|---|",
+  );
+  for (const arm of arms) {
+    const wide = wideFor(arm);
+    if (wide && cells.some((cell) => cell.magnitude === magnitude && cell.arm === wide)) {
+      out.push(`| ${arm} | ${wide} | ${verdict(arm, wide)} |`);
+    }
   }
   out.push("");
 

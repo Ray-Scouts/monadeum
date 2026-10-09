@@ -127,6 +127,17 @@ test("no replacement keeps every genome: no replacement, no donor, no lineage", 
   assert.equal(run(slotRunConfig(SLOT_ARMS.N!, 0.009, 100, "choppy", 1)).slots?.capitalMoved, 0);
 });
 
+test("the retire diagnostic retires starved slots, replaces none, and still reallocates within owners", () => {
+  for (const name of ["RT-c0.2-x4", "O3-RT-c0.2-x4"]) {
+    const result = run(slotRunConfig(SLOT_ARMS[name]!, 0.009, 100, "choppy", 1));
+    assert.equal(result.slots?.replacements, 0);
+    assert.ok(result.agents.some((agent) => agent.status === "retired"));
+    assert.ok(result.agents.every((agent) => agent.parent === null));
+    assert.ok((result.slots?.capitalMoved ?? 0) > 0);
+    assertConserved(result);
+  }
+});
+
 test("one owner holding every slot matches population-wide reallocation once the pool is 10 or more", () => {
   const base = slotRunConfig(SLOT_ARMS["B-c0.2-x4"]!, 0.009, 100, "trending", 4);
   const wide = run(base);
