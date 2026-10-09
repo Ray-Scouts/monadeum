@@ -37,3 +37,17 @@ export function planReallocation(
     moved,
   };
 }
+
+/**
+ * How many slots are sources, and how many are sinks, in a pool of `ranked` slots that have a fitness.
+ *
+ * - Population-wide (issue #85): the bottom and top decile, `floor(ranked / 10)`, and none below 10 ranked slots.
+ * - Owner pool (issue #89, `smallPool`): a decile does not exist in a pool of 3 or 5, so the rule is the bottom one and
+ *   the top one in a pool of 2 to 19 ranked slots, the bottom and top decile from 20 up, and none in a pool of 0 or 1.
+ *   The two rules agree from 10 ranked slots up.
+ */
+export function reallocationQuota(ranked: number, smallPool: boolean): number {
+  const decile = Math.floor(ranked / 10);
+  if (!smallPool) return decile;
+  return ranked >= 2 ? Math.max(1, decile) : 0;
+}

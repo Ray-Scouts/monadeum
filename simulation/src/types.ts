@@ -7,9 +7,10 @@ export type RunMode = "evolving" | "static" | "slots";
 export interface SlotConfig {
   /**
    * What a slot that meets a replacement trigger receives: a random genome (`randomGenome`) or a section 3.3 mutation of
-   * a fit donor's genome chosen under the section 5 niche rules.
+   * a fit donor's genome chosen under the section 5 niche rules. `none` (issue #89) is no replacement: a triggered slot
+   * keeps its genome and keeps trading, and is not retired.
    */
-  refill: "random" | "mutant";
+  refill: "random" | "mutant" | "none";
   /**
    * Bounded reallocation. At each evaluation every bottom-decile slot by adjusted fitness offers this fraction of its
    * capital, never going below the capital floor, and the offer is shared among the top-decile slots up to the ceiling.
@@ -18,11 +19,24 @@ export interface SlotConfig {
   reallocationCap?: number;
   /** Per-slot capital ceiling for reallocation, as a multiple of the slot's principal. Required when the cap is above 0. */
   slotCeiling?: number;
+  /**
+   * Experiment-only ownership partition (issue #89). Owner sizes in slot order: the first `owners[0]` slots belong to
+   * owner 0, the next `owners[1]` to owner 1, and so on. The sizes must be integers >= 1 that sum to the population.
+   * When set, reallocation ranks and moves capital only within each owner's slots, with the small-pool rule of
+   * `reallocationQuota` in `src/reallocation.ts`. Unset keeps the population-wide ranking of issue #85.
+   */
+  owners?: number[];
+  /**
+   * Experiment-only donor scope for `refill: "mutant"` when `owners` is set (issue #89). `population` draws the donor
+   * from every eligible slot, as in issue #85. `owner` draws it only from eligible slots with the same owner. Defaults
+   * to `population`.
+   */
+  donorScope?: "population" | "owner";
 }
 
 /** What the fixed-slot mechanism did over a run. */
 export interface SlotLedger {
-  /** Slots that received a new genome. */
+  /** Slots that received a new genome. Always 0 with `refill: "none"`. */
   replacements: number;
   /** Replacement triggers that found no eligible donor, so the slot kept its genome until the next evaluation. */
   noDonor: number;
@@ -183,6 +197,12 @@ export interface AgentSummary {
   parent: string | null;
   /** Genome distance from the regime optimum (issue #84). Present only when `RunConfig.genomeModel` is set. */
   genomeDistance?: number;
+  /** Owner index (issue #89). Present only when `RunConfig.slots.owners` is set in `slots` mode. */
+  owner?: number;
+  /** Net capital received by reallocation over the run (issue #89). Present only when `slots.owners` is set. */
+  reallocatedIn?: number;
+  /** Net trading P&L minus every cost over the run (issue #89). Present only when `slots.owners` is set. */
+  tradingNet?: number;
 }
 
 /** Capital-weighted genome distance from the regime optimum over the active agents at one tick (issue #84). */
