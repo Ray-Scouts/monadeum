@@ -101,6 +101,7 @@ export function run(config: RunConfig): RunResult {
   const bars = generateMarket(config.regime, config.ticks, marketRng);
   const cap = experimentPopulationCap(config.population);
   const diversity = config.diversity !== false;
+  const informationPurchases = config.informationPurchases !== false;
   const bandMids = [0.03, 0.07, 0.12, 0.17, 0.22];
   const pairSets = [["PAIR_A"], ["PAIR_B"], ["PAIR_C"], ["PAIR_A", "PAIR_B"], ["PAIR_A", "PAIR_C"]];
   const startingGenome = (index: number): Genome => {
@@ -166,8 +167,11 @@ export function run(config: RunConfig): RunResult {
       let traded = false;
       let net = 0;
       agent.infoThisTick = false;
+      // Draw before checking the switch so turning purchases off leaves the agent RNG stream unchanged.
+      const infoDraw = agentRng();
       if (
-        agentRng() < costs.infoPurchaseProbability &&
+        informationPurchases &&
+        infoDraw < costs.infoPurchaseProbability &&
         costs.x402Usd <= agent.genome.informationBudget &&
         agent.capital > costs.x402Usd
       ) {

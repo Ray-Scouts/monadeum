@@ -20,4 +20,6 @@ npm test
 
 `npm test` typechecks and runs the short suite. It does not run the 1,000-agent sweeps.
 
+`bun run rerun` runs the evolving versus static comparison for one arm of `results/twelve-cell-rerun.md` (`ARM=A`, `B`, or `C`; `POPS`, `REGIMES`, `SEEDS`, and `OUT` narrow it or write JSON to a file). `node dist/src/cli-rerun-report.js <dir>` turns a directory of those JSON files into the tables and the section 8 call per arm. `RunConfig.informationPurchases: false` turns information purchases off: no x402 spend and no information edge, with the agent RNG stream unchanged.
+
 `bun run threshold` prints the profit threshold and x402 price grid in `results/reproduction-threshold.md`. Environment variables `POPS`, `REGIMES`, `FRACTIONS`, `X402`, and `SEEDS` narrow or widen it.

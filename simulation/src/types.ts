@@ -194,4 +194,6 @@ export interface RunConfig {
   diversity?: boolean;
   /** Spread starting genomes across pairs and risk bands. */
   spreadNiches?: boolean;
+  /** Whether agents may buy information at all. Defaults to on. Off means no x402 spend and no information edge. */
+  informationPurchases?: boolean;
 }
