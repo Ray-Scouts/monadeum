@@ -162,6 +162,15 @@ export interface GateCounts {
   sole: Record<string, number>;
 }
 
+export interface TreasuryLedger {
+  initial: number;
+  /** Unspent balance at the end. Counted in `totalCapital`. */
+  remaining: number;
+  spent: number;
+  /** Number of children that received a top-up. */
+  topUps: number;
+}
+
 export interface RunResult {
   seed: number;
   regime: Regime;
@@ -176,6 +185,8 @@ export interface RunResult {
   gini: number;
   reproductions: number;
   gates: GateCounts;
+  /** Experiment-only treasury (issue #82). All zero when `RunConfig.treasury` is unset. */
+  treasury: TreasuryLedger;
   ledger: CostLedger;
   prices: number[];
   agents: AgentSummary[];
@@ -205,4 +216,21 @@ export interface RunConfig {
    * where the fresh draw uses the founder distribution. Defaults to 0, a fresh draw, which is the original behavior.
    */
   skillHeritability?: number;
+  /**
+   * Experiment-only override of `PROTOCOL.reproductionFraction` (issue #82), in (0, 1]. The invariant
+   * `parent.capital >= parent.principal` still holds at 1. Defaults to the protocol value.
+   */
+  reproductionFraction?: number;
+  /**
+   * Experiment-only minimum child capital `m` (issue #82). A parent reproduces only once its child would start with at
+   * least `m`, counting any treasury top-up; until then profit keeps accumulating. Counted as the `min_child_capital`
+   * gate. Defaults to 0, which never binds.
+   */
+  minChildCapital?: number;
+  /**
+   * Experiment-only treasury balance (issue #82). In evolving mode a child below `minChildCapital` is topped up to it
+   * from this balance, all or nothing. In static mode the balance is idle cash. In both modes it is part of the starting
+   * and ending capital. Defaults to 0.
+   */
+  treasury?: number;
 }

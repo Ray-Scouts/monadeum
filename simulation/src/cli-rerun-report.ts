@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { decide, formatDecision, formatRows, formatSkillRows, type RerunRow } from "./rerun.js";
+import { decide, formatChildCapitalRows, formatDecision, formatRows, formatSkillRows, type RerunRow } from "./rerun.js";
 
 const dir = process.argv[2];
 if (!dir) throw new Error("usage: cli-rerun-report <directory of cli-rerun JSON files>");
@@ -17,6 +17,7 @@ for (const arm of [...new Set(rows.map((row) => row.arm))].sort()) {
   const stress = armRows.filter((row) => row.regime === "stress_flash_crash");
   out.push(`## Arm ${arm}`, "", formatRows(armRows), "", formatDecision(decide(armRows)), "");
   out.push(`Stress cells only: ${formatDecision(decide(stress))}`, "");
-  if (armRows.every((row) => row.skillStart !== undefined)) out.push(formatSkillRows(armRows), "");
+  if (armRows.every((row) => row.childCapitalShare !== undefined)) out.push(formatChildCapitalRows(armRows), "");
+  else if (armRows.every((row) => row.skillStart !== undefined)) out.push(formatSkillRows(armRows), "");
 }
 process.stdout.write(out.join("\n"));

@@ -1,4 +1,5 @@
 import { mean, sampleStdev, welch, welchP } from "./aggregate.js";
+import { experimentPopulationCap } from "./protocol.js";
 import { createReproductionModule, median } from "./reproduction.js";
 import { run } from "./runner.js";
 import type { Regime, RunMode, RunResult } from "./types.js";
@@ -12,6 +13,21 @@ export interface Arm {
   informationPurchases: boolean;
   /** Skill heritability `h` (issue #80). Undefined keeps the runner default of 0. */
   skillHeritability?: number;
+  /** Reproduction fraction (issue #82). Undefined keeps the protocol value of 0.5. */
+  reproductionFraction?: number;
+  /** Minimum child capital `m` (issue #82). Undefined keeps 0, which never binds. */
+  minChildCapital?: number;
+  /** Treasury-funded top-up to `m` (issue #82). The balance is `treasuryFor(m, population)`. */
+  treasury?: boolean;
+}
+
+/**
+ * Treasury balance for the issue #82 top-up arm: `m` for every child slot the population cap allows. A run never
+ * creates more children than `cap - population`, because retired agents keep their slot, and no top-up exceeds `m`,
+ * so this balance cannot run out. The runner still handles an empty treasury by falling back to the plain `m` gate.
+ */
+export function treasuryFor(minChildCapital: number, population: number): number {
+  return minChildCapital * (experimentPopulationCap(population) - population);
 }
 
 export const ARMS: Record<string, Arm> = {
@@ -40,6 +56,10 @@ export interface SeedOutcome {
   skillEndActive: number | null;
   /** Capital-weighted mean hidden skill over every agent at the end, active or retired. */
   skillEndWeighted: number;
+  /** Children's capital as a share of all agent capital at the end, excluding any unspent treasury. */
+  childCapitalShare: number;
+  treasuryInitial: number;
+  treasurySpent: number;
 }
 
 export interface RerunCell {
@@ -71,6 +91,9 @@ export function outcome(result: RunResult): SeedOutcome {
     skillEndActive: active.length === 0 ? null : mean(active.map((agent) => agent.skill)),
     skillEndWeighted:
       capital > 0 ? result.agents.reduce((sum, agent) => sum + agent.capital * agent.skill, 0) / capital : 0,
+    childCapitalShare: capital > 0 ? children.reduce((sum, agent) => sum + agent.capital, 0) / capital : 0,
+    treasuryInitial: result.treasury.initial,
+    treasurySpent: result.treasury.spent,
   };
 }
 
@@ -94,6 +117,9 @@ export function runRerunCell(arm: Arm, population: number, regime: Regime, seeds
             reproduction,
             informationPurchases: arm.informationPurchases,
             ...(arm.skillHeritability === undefined ? {} : { skillHeritability: arm.skillHeritability }),
+            ...(arm.reproductionFraction === undefined ? {} : { reproductionFraction: arm.reproductionFraction }),
+            ...(arm.minChildCapital === undefined ? {} : { minChildCapital: arm.minChildCapital }),
+            ...(arm.treasury ? { treasury: treasuryFor(arm.minChildCapital ?? 0, population) } : {}),
           }),
         ),
       );
@@ -133,6 +159,11 @@ export interface RerunRow {
    * evolving minus static ROI, pairing runs that share a seed and so a market path.
    */
   pairedP: number;
+  /** Mean over seeds of the children's share of agent capital at the end, evolving mode. */
+  childCapitalShare: number;
+  treasuryInitial: number;
+  /** Mean over seeds of the treasury spent on top-ups, evolving mode. */
+  treasurySpentMean: number;
 }
 
 /** Two-sided paired t-test p-value. Secondary to the Welch test that the decision rule uses. */
@@ -177,6 +208,9 @@ export function compareCell(cell: RerunCell): RerunRow {
       cell.evolving.map((item) => item.roiPct),
       cell.static.map((item) => item.roiPct),
     ),
+    childCapitalShare: mean(cell.evolving.map((item) => item.childCapitalShare)),
+    treasuryInitial: cell.evolving[0]?.treasuryInitial ?? 0,
+    treasurySpentMean: mean(cell.evolving.map((item) => item.treasurySpent)),
   };
 }
 
@@ -237,6 +271,21 @@ export function formatSkillRows(rows: readonly RerunRow[]): string {
   for (const row of rows) {
     lines.push(
       `| ${row.population} | ${row.regime} | ${bp(row.skillStart)} | ${bp(row.skillEndActiveEvolving)} | ${bp(row.skillEndActiveStatic)} | ${bp(row.skillEndWeightedEvolving)} | ${bp(row.skillEndWeightedStatic)} | ${pFmt(row.pairedP)} |`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/** Issue #82 columns: capital-weighted skill, child capital share, treasury use, and the secondary paired p-value. */
+export function formatChildCapitalRows(rows: readonly RerunRow[]): string {
+  const bp = (value: number): string => (value * 10_000).toFixed(2);
+  const lines = [
+    "| pop | regime | child start capital | child capital share % | evolving end weighted skill | static end weighted skill | treasury | treasury spent | paired p (secondary) |",
+    "|---:|---|---:|---:|---:|---:|---:|---:|---:|",
+  ];
+  for (const row of rows) {
+    lines.push(
+      `| ${row.population} | ${row.regime} | ${fmt(row.childPrincipalMean, 3)} | ${(row.childCapitalShare * 100).toFixed(2)} | ${bp(row.skillEndWeightedEvolving)} | ${bp(row.skillEndWeightedStatic)} | ${row.treasuryInitial.toFixed(0)} | ${row.treasurySpentMean.toFixed(1)} | ${pFmt(row.pairedP)} |`,
     );
   }
   return lines.join("\n");
