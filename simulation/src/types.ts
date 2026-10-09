@@ -1,6 +1,36 @@
 export type Regime = "trending" | "mean_reverting" | "choppy" | "stress_flash_crash";
 
-export type RunMode = "evolving" | "static";
+/** `slots` is the experiment-only fixed-slot mechanism of issue #85 (`EVOLUTION.md` section 8), configured by `RunConfig.slots`. */
+export type RunMode = "evolving" | "static" | "slots";
+
+/** Experiment-only fixed-slot selection (issue #85). No mode that uses it creates an account. */
+export interface SlotConfig {
+  /**
+   * What a slot that meets a replacement trigger receives: a random genome (`randomGenome`) or a section 3.3 mutation of
+   * a fit donor's genome chosen under the section 5 niche rules.
+   */
+  refill: "random" | "mutant";
+  /**
+   * Bounded reallocation. At each evaluation every bottom-decile slot by adjusted fitness offers this fraction of its
+   * capital, never going below the capital floor, and the offer is shared among the top-decile slots up to the ceiling.
+   * 0 or unset disables reallocation.
+   */
+  reallocationCap?: number;
+  /** Per-slot capital ceiling for reallocation, as a multiple of the slot's principal. Required when the cap is above 0. */
+  slotCeiling?: number;
+}
+
+/** What the fixed-slot mechanism did over a run. */
+export interface SlotLedger {
+  /** Slots that received a new genome. */
+  replacements: number;
+  /** Replacement triggers that found no eligible donor, so the slot kept its genome until the next evaluation. */
+  noDonor: number;
+  /** Total capital moved by reallocation. */
+  capitalMoved: number;
+  /** Evaluations at which reallocation moved a positive amount. */
+  reallocations: number;
+}
 
 export interface Genome {
   strategyType: "trading";
@@ -147,6 +177,39 @@ export interface AgentSummary {
   status: "active" | "retired";
   descendants: number;
   niche: string;
+  /** Hidden per-agent skill, a harness device with no production counterpart. */
+  skill: number;
+  /** Id of the parent for a child, null for a founder. */
+  parent: string | null;
+  /** Genome distance from the regime optimum (issue #84). Present only when `RunConfig.genomeModel` is set. */
+  genomeDistance?: number;
+}
+
+/** Capital-weighted genome distance from the regime optimum over the active agents at one tick (issue #84). */
+export interface GenomeTracePoint {
+  tick: number;
+  /** Capital-weighted mean distance over active agents. */
+  weighted: number;
+  /** Unweighted mean distance over active agents. */
+  mean: number;
+}
+
+/** Reproduction gate outcomes over every evaluation of an active parent in evolving mode. */
+export interface GateCounts {
+  evaluations: number;
+  /** How many evaluations failed each gate. One evaluation can fail several. */
+  failed: Record<string, number>;
+  /** How many evaluations failed only that gate, so removing it alone would have opened eligibility. */
+  sole: Record<string, number>;
+}
+
+export interface TreasuryLedger {
+  initial: number;
+  /** Unspent balance at the end. Counted in `totalCapital`. */
+  remaining: number;
+  spent: number;
+  /** Number of children that received a top-up. */
+  topUps: number;
 }
 
 export interface RunResult {
@@ -162,9 +225,16 @@ export interface RunResult {
   sortino: number | null;
   gini: number;
   reproductions: number;
+  gates: GateCounts;
+  /** Experiment-only treasury (issue #82). All zero when `RunConfig.treasury` is unset. */
+  treasury: TreasuryLedger;
   ledger: CostLedger;
   prices: number[];
   agents: AgentSummary[];
+  /** Present only in `slots` mode. */
+  slots?: SlotLedger;
+  /** Present only when `RunConfig.genomeModel` is set: tick 0, then every `GENOME_TRACE_EVERY` ticks. */
+  genomeTrace?: GenomeTracePoint[];
 }
 
 export interface RunConfig {
@@ -184,4 +254,41 @@ export interface RunConfig {
   diversity?: boolean;
   /** Spread starting genomes across pairs and risk bands. */
   spreadNiches?: boolean;
+  /** Whether agents may buy information at all. Defaults to on. Off means no x402 spend and no information edge. */
+  informationPurchases?: boolean;
+  /**
+   * Heritability `h` of the hidden skill, in [0, 1]. A child's skill is `h * parent.skill + (1 - h) * fresh draw`,
+   * where the fresh draw uses the founder distribution. Defaults to 0, a fresh draw, which is the original behavior.
+   */
+  skillHeritability?: number;
+  /**
+   * Experiment-only override of `PROTOCOL.reproductionFraction` (issue #82), in (0, 1]. The invariant
+   * `parent.capital >= parent.principal` still holds at 1. Defaults to the protocol value.
+   */
+  reproductionFraction?: number;
+  /**
+   * Experiment-only minimum child capital `m` (issue #82). A parent reproduces only once its child would start with at
+   * least `m`, counting any treasury top-up; until then profit keeps accumulating. Counted as the `min_child_capital`
+   * gate. Defaults to 0, which never binds.
+   */
+  minChildCapital?: number;
+  /**
+   * Experiment-only treasury balance (issue #82). In evolving mode a child below `minChildCapital` is topped up to it
+   * from this balance, all or nothing. In static mode the balance is idle cash. In both modes it is part of the starting
+   * and ending capital. Defaults to 0.
+   */
+  treasury?: number;
+  /**
+   * Experiment-only genome performance model (issue #84, `src/genome-model.ts`). When set, an agent's per-tick edge
+   * comes from its genome and the hidden skill is 0 for every agent (its draw is still made, so the agent RNG stream is
+   * unchanged). Unset by default, which keeps the hidden skill model.
+   */
+  genomeModel?: { magnitude: number };
+  /**
+   * Experiment-only random founders (issue #84). Each founder's `timeHorizon`, `entryThreshold`, and pair set are drawn
+   * by `randomGenome` from a separate RNG stream, every other field from `genome`. Defaults to off.
+   */
+  randomGenomes?: boolean;
+  /** Required in `slots` mode and ignored otherwise (issue #85). */
+  slots?: SlotConfig;
 }

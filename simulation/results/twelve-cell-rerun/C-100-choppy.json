@@ -1,0 +1,1 @@
+{"arm":{"name":"C","profitThresholdFraction":0.5,"informationPurchases":true},"rows":[{"arm":"C","population":100,"regime":"choppy","seeds":50,"evolvingMean":-38.6638884355097,"staticMean":-38.6638884355097,"gap":0,"p":1,"reproductionsMean":0,"reproducingShare":0,"children":0,"childActiveShare":null,"childRoiMean":null,"childCapitalMean":null,"childPrincipalMean":null}]}

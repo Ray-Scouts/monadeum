@@ -35,4 +35,4 @@ indexer/
 tests/
 ```
 
-None of these exist yet. They are created once the architecture they depend on has been decided and documented.
+`contracts/` holds only the spend-policy interface (`ARCHITECTURE.md` section 16.3) so far; the other directories do not exist yet. They are created once the architecture they depend on has been decided and documented.

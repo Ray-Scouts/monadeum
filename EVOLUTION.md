@@ -85,7 +85,7 @@ All of the following must hold, evaluated on a fixed cadence (not on every tick,
 2. `n_trades >= N_min` (protocol constant, proposed default 20).
 3. Time since the agent's last reproduction event (or since creation, for an agent that has never reproduced) is at least `cooldown` (protocol constant, proposed default: long enough to span multiple evaluation windows, tuned in simulation before being fixed).
 4. Adjusted fitness percentile within the agent's strategy niche (section 5) is at or above `P_threshold` (protocol constant, proposed default: 50th percentile, meaning an agent must be at or above the median of its own niche, not the global population, which is what makes the niche-based fitness-sharing mechanism in section 5 actually bind).
-5. Accumulated realized profit (capital above the agent's own starting principal) is at least `profit_threshold_fraction * principal` (protocol constant, proposed default 50 percent). This generalizes the brief's original worked example ($5 doubling to $10 before reproducing, a 100 percent threshold) into a named, tunable constant rather than a hard-coded number, because the correct threshold is an empirical question for the simulation engine, not something this document can determine from first principles.
+5. Accumulated realized profit (capital above the agent's own starting principal) is at least `profit_threshold_fraction * principal` (protocol constant, proposed default 50 percent). This generalizes the brief's original worked example ($5 doubling to $10 before reproducing, a 100 percent threshold) into a named, tunable constant rather than a hard-coded number, because the correct threshold is an empirical question for the simulation engine, not something this document can determine from first principles. **Recommendation pending the re-run in issue #28, not a settled decision:** `simulation/results/reproduction-threshold.md` (issue #74) found zero reproductions at 0.5 at every x402 price in the researched range, and a non-zero reproduction count at 0.1 with x402 at $0.01. If the re-run of the evolving versus static comparison at 0.1 shows that evolution earns its complexity, the proposed default should move from 0.5 to 0.1. Until then the default stays 0.5, and `simulation/src/protocol.ts` is unchanged. That re-run (`simulation/results/twelve-cell-rerun.md`) was inconclusive under the `ECONOMICS.md` section 8 rule, with the evolving mean slightly below the static mean in every cell, so the recommendation is to keep 0.5 as the proposed default for now. 0.1 remains the setting at which the mechanism reproduces in this harness, and is the one to use for the next experiment, not a new default.
 
 ### 3.2 Capital allocation
 
@@ -105,6 +105,8 @@ child.principal = child_capital
 **Capital conservation invariant, system-wide**: reproduction is a transfer, never a creation. `child_capital` credited to the child must exactly equal the debit from the parent's smart account, verified on-chain (the transfer is one atomic on-chain operation, not two independent balance updates that could diverge under a partial failure). Total system capital, summed across every agent smart account, only changes due to deposits, withdrawals, and realized trading/cost flows, never due to a reproduction event. This is the concrete, testable form of the brief's own instruction that there must be no mechanism that accidentally creates unlimited capital.
 
 **Treasury-funded reproduction: considered and deferred.** `BRIEF.md` names treasury-funded reproduction, where a platform or population treasury pays for some or all of a child's capital, as a mechanism to investigate beside threshold-based and fitness-weighted reproduction. It was considered as an alternative to, and as a supplement for, the profit-only allocation above, and deferred for the MVP for three reasons. First, a treasury is a shared capital pool, a new custody boundary with its own governance questions (who funds it, who may spend from it, under which rule) that the per-agent account isolation in `ARCHITECTURE.md` section 6 deliberately avoids. Second, capital from outside the parent becomes a new inflow into the population. That does not break the conservation invariant, but it makes the question this mechanism must answer first, whether reproduction is self-funding, impossible to measure, because simulation could no longer separate what evolution earned from what the treasury subsidized. Third, any treasury allocation rule becomes a target in its own right, and agents would be selected for qualifying for subsidy rather than for trading well. Revisit after the profit-only mechanism is validated in simulation and on testnet, and only if the results show populations stalling for lack of reproduction capital.
+
+**Simulation result and recommendation pending a re-run, not a settled decision (issue #82).** `simulation/results/child-capital.md` tested larger children in the harness at fully heritable skill: a reproduction fraction of 1, a minimum child capital of 1, 2.5, or 5 funded from profit, and the same minimums topped up from a treasury. No arm outperformed a static population under the `ECONOMICS.md` section 8 rule. Profit-funded minimums above 1 mostly stopped reproduction, and a treasury reduced the evolving population's shortfall without reversing it. The recommendation is to change nothing in this section on that evidence: keep `reproduction_fraction` at 0.5 and `max_child_capital` at the parent's principal as proposed defaults, keep treasury-funded reproduction deferred, and reconsider the reproduction mechanism as a whole, per `ECONOMICS.md` section 8, before issue #28. `simulation/src/protocol.ts` is unchanged.
 
 ### 3.3 Mutation
 
@@ -152,3 +154,53 @@ This document defines a mechanism, not a proven one. The specific numeric consta
 1. A reproducing population achieves better risk-adjusted, cost-inclusive returns than an equivalently sized population of independently configured static agents with no reproduction, across multiple market regimes (trending, mean-reverting, choppy, and a stress scenario). If it does not, the evolutionary mechanism is not earning its own complexity, and that is a legitimate outcome for this document to report honestly, not a result to suppress.
 2. Niche-based fitness sharing, as specified in section 5, actually prevents collapse into a monoculture at population sizes of 10, 100, and 1,000 agents, within a reasonable number of generations.
 3. The capital-conservation and parent-survival invariants in section 3.2 hold under every simulated condition, including adversarial ones (a simulated agent deliberately trying to trigger rapid, repeated reproduction).
+
+**Requirement to verify, not a settled fact (issue #80).** `simulation/results/heritability.md` found that, in the simulation harness, making the main driver of performance fully heritable did not make a reproducing population outperform a static one under the `ECONOMICS.md` section 8 rule, because children carry too little capital for an inherited advantage to reach the population's return. Two conditions therefore have to be shown, not assumed, before item 1 above can pass: first, that reproduction moves enough capital into children for their performance to matter at the population level (the next experiment, on `max_child_capital`, the reproduction fraction, and gas); second, that the genome actually carries a strategy's source of advantage, so that a child inherits what made its parent fit. The harness models the second condition with a hidden skill value that has no production counterpart. In production, heritable advantage can only come from genome fields (section 1), and whether any real strategy's advantage is captured by those fields is an open question.
+
+## 8. Proposed alternative under evaluation: fixed slots with replacement and reallocation
+
+**Status: hypothesis, not a decision.** Sections 3 and 4 remain the documented mechanism until the experiment below reports. Nothing in this section changes a protocol constant, the reproduction contract scope in issue #31, or the invariants in `THREAT-MODEL.md`.
+
+### 8.1 Why an alternative is on the table
+
+Four simulation runs tested the section 3 mechanism against a static population under the `ECONOMICS.md` section 8 rule: the profit threshold (issue #74), the twelve-cell re-run at a reproducing threshold (PR #79), heritable skill (issue #80), and child capital with and without a treasury (issue #82). None produced a cell where the evolving mean beat the static mean. Taken together they point to a structural reason rather than a tuning problem, stated here as a hypothesis the runs are consistent with but did not isolate:
+
+- Every reproduction creates a new account, and every account pays a fixed per-tick cost (gas, plus x402 when it buys information). Splitting capital across more accounts therefore costs more than keeping it together.
+- Children never hold enough of the population's capital to move its return, even when a treasury funds them.
+- Selection already happens without reproduction: retirement removes weak agents, and the active population's mean skill rises in static runs too.
+- What drives the population's return is capital-weighted skill, how much capital the better strategies control, not how many of them exist.
+
+### 8.2 The proposal
+
+1. **Fixed slots.** The population has a fixed number of accounts. Selection never creates a new account.
+2. **Replacement.** When an agent retires under section 6, or stays in the bottom of its niche, its slot receives a mutated copy of a fit agent's genome (section 3.3 mutation, section 5 niche rules) and continues with the capital the slot already holds. Lineage is recorded as descent from the donor genome, so the lineage view in `ARCHITECTURE.md` section 15 still has a tree to show.
+3. **Bounded reallocation.** At each evaluation, a capped fraction of capital moves from the lowest-fitness slots to the highest, never below a slot's capital floor and never above a per-slot ceiling. This targets capital-weighted skill directly.
+4. **Paper evaluation before capital.** A mutated genome first trades on paper, off-chain and at no gas cost, for a fixed number of ticks, and takes over a slot only if its paper fitness clears a threshold.
+
+### 8.3 Constraints this must satisfy before it can replace section 3
+
+These are stated now so the experiment does not produce a mechanism the product cannot ship.
+
+- **Ownership.** Each agent's account is owned by its user's embedded wallet (`ARCHITECTURE.md` section 6), and retirement never seizes capital (section 6). Reallocation can therefore move capital only between accounts with the same owner, under a policy that owner has approved. Moving capital across owners is out of scope.
+- **Consent to replacement.** Adopting another agent's genome changes what an owner's agent does. Whether that happens automatically, by opt-in, or only among one owner's own agents is a product decision this section does not make. Whether a genome may be copied across owners is a separate open question.
+- **Capital conservation.** Replacement moves no capital. Reallocation moves capital between existing accounts and creates none, so the invariant that reproduction cannot create capital becomes a property of a transfer rather than of an allocation formula.
+- **Fewer accounts and keys.** No smart account or session key is created per descendant, which bounds the account, gas, and key-management surface in `SECURITY.md` sections 1, 2, and 11.
+
+### 8.4 What must be true in simulation first
+
+1. **The genome must drive performance.** In the current harness, performance comes mostly from a hidden per-agent skill value, and under the legal policy the genome fields that matter most are pinned. No selection mechanism can work under that model, including this one. The harness must first model a regime-dependent link between genome fields and returns, which is also what production would rely on. Tracked in issue #84.
+2. **The comparison must be fair.** The control is not only a static population. It also includes replacement with random genomes, so the test shows that selection beats chance, not only that refilling slots helps.
+
+The experiment, tracked in issue #85, compares four arms under the unchanged `ECONOMICS.md` section 8 decision rule: static; replacement with random genomes; replacement with mutated genomes from fit donors; and replacement plus bounded reallocation. If the last arm beats both controls, this section becomes the candidate mechanism for issue #28 and sections 3 and 4 are revised. If it does not, the honest conclusion is that evolution does not add value in this model, and the product should rest on well-calibrated static agents.
+
+### 8.5 Result (issue #85)
+
+**Status: candidate mechanism for issue #28, not yet a decision.** `simulation/results/fixed-slot.md` ran the four arms on the issue #84 genome model. Under the unchanged `ECONOMICS.md` section 8 rule, arm B (replacement with mutated donors plus bounded reallocation) beats both the static control and the random-replacement control at genome edge magnitude 0.009 with a reallocation cap of 0.2, and not at magnitude 0.006 or cap 0.05. Arm A (replacement alone) is inconclusive against both. A diagnostic arm shows reallocation does most of the work. The section 3 mechanism remains inconclusive on the same model. No arm collapsed into a monoculture.
+
+Before sections 3 and 4 are revised and issue #28 proceeds, these follow-ups are open:
+
+1. Test reallocation with no replacement, to decide whether replacement earns its consent and product cost.
+2. Test reallocation restricted to one owner's agents, per section 8.3, since that pool is smaller than the population-wide ranking used here.
+3. Establish whether real strategies' genomes carry an edge of the assumed size (section 7).
+4. If the mechanism is adopted: revise sections 3 and 4, re-scope the reproduction contract in issue #31, and update the reproduction invariants in `THREAT-MODEL.md`.
+
