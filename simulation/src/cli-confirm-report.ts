@@ -105,7 +105,6 @@ const pairs: [string, string][] = [
   ["O5-RT-c0.2-x4", "RT-c0.2-x4"],
   ["O10-RT-c0.2-x4", "RT-c0.2-x4"],
   [PRIMARY, "RT-c0.2-x4"],
-  ["Omix-RTr-c0.2-x4", PRIMARY],
 ];
 for (const magnitude of magnitudes) {
   const present = exploratory.filter((arm) => cells.some((cell) => cell.magnitude === magnitude && cell.arm === arm));
@@ -121,7 +120,6 @@ for (const magnitude of magnitudes) {
     }
   }
   for (const [arm, control] of pairs) {
-    if (arm === PRIMARY && control === "RT-c0.2-x4" && !present.includes(control)) continue;
     const rows = comparisons(magnitude, arm, control);
     if (rows.length > 0) out.push(`| ${arm} | ${control} | ${verdictCells(rows)} |`);
   }
