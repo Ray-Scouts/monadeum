@@ -2,7 +2,7 @@ import { createExecutionBackend, DEFAULT_COSTS } from "./execution.js";
 import { createFitnessModule, sortinoParts } from "./fitness.js";
 import { assertGenomeModel, genomeDistance, genomeEdge, randomGenome } from "./genome-model.js";
 import { generateMarket } from "./market.js";
-import { planReallocation } from "./reallocation.js";
+import { planReallocation, reallocationQuota } from "./reallocation.js";
 import { experimentPopulationCap, PROTOCOL } from "./protocol.js";
 import { createReproductionModule, median, nicheKey, nichePressure, percentile } from "./reproduction.js";
 import { createRiskModule } from "./risk.js";
@@ -43,6 +43,12 @@ interface Agent {
   genomeEdge: number;
   infoThisTick: boolean;
   parent: string | null;
+  /** Owner index under `slots.owners` (issue #89), -1 otherwise. */
+  owner: number;
+  /** Net capital received by reallocation (issue #89 bookkeeping, reported only under `slots.owners`). */
+  reallocatedIn: number;
+  /** Net trading P&L minus costs (issue #89 bookkeeping, reported only under `slots.owners`). */
+  tradingNet: number;
 }
 
 /** Ticks between points of `RunResult.genomeTrace`. */
@@ -140,8 +146,24 @@ export function run(config: RunConfig): RunResult {
   // Experiment-only fixed slots (issue #85). Their own stream, so every arm shares founders and information draws.
   const slotConfig = config.mode === "slots" ? config.slots : undefined;
   if (config.mode === "slots") {
-    if (!slotConfig || (slotConfig.refill !== "random" && slotConfig.refill !== "mutant")) {
-      throw new RangeError("slots mode needs RunConfig.slots with refill 'random' or 'mutant'");
+    if (!slotConfig || !["random", "mutant", "none", "retire"].includes(slotConfig.refill)) {
+      throw new RangeError("slots mode needs RunConfig.slots with refill 'random', 'mutant', 'none', or 'retire'");
+    }
+    if (slotConfig.owners !== undefined) {
+      const sizes = slotConfig.owners;
+      if (!sizes.every((size) => Number.isInteger(size) && size >= 1)) {
+        throw new RangeError("slots.owners must be integers >= 1");
+      }
+      const total = sizes.reduce((sum, size) => sum + size, 0);
+      if (total !== config.population) {
+        throw new RangeError(`slots.owners must sum to the population ${config.population}, got ${total}`);
+      }
+    }
+    if (slotConfig.donorScope !== undefined && !["population", "owner"].includes(slotConfig.donorScope)) {
+      throw new RangeError(`slots.donorScope must be 'population' or 'owner', got ${String(slotConfig.donorScope)}`);
+    }
+    if (slotConfig.donorScope === "owner" && slotConfig.owners === undefined) {
+      throw new RangeError("slots.donorScope 'owner' needs slots.owners");
     }
     const cap = slotConfig.reallocationCap ?? 0;
     if (!(cap >= 0 && cap <= 1)) throw new RangeError(`slots.reallocationCap must be in [0, 1], got ${cap}`);
@@ -171,6 +193,13 @@ export function run(config: RunConfig): RunResult {
     });
   };
 
+  // Issue #89 ownership partition: slot i belongs to the owner whose run of sizes covers it.
+  const owners = slotConfig?.owners;
+  const ownerOfSlot: number[] = [];
+  owners?.forEach((size, owner) => {
+    for (let j = 0; j < size; j++) ownerOfSlot.push(owner);
+  });
+
   const agents: Agent[] = [];
   for (let i = 0; i < config.population; i++) {
     const genome = startingGenome(i);
@@ -197,6 +226,9 @@ export function run(config: RunConfig): RunResult {
       genomeEdge: edgeOf(genome),
       infoThisTick: false,
       parent: null,
+      owner: ownerOfSlot[i] ?? -1,
+      reallocatedIn: 0,
+      tradingNet: 0,
     });
   }
 
@@ -238,8 +270,10 @@ export function run(config: RunConfig): RunResult {
    * because replacement moves no capital. The slot's fitness history restarts, as a child's would.
    */
   const replaceSlots = (starved: Agent[], active: Agent[], matesOf: (agent: Agent) => Agent[], tick: number): void => {
-    if (!slotConfig || starved.length === 0) return;
+    // With refill "none" (issue #89) a triggered slot keeps its genome, its history, and its capital.
+    if (!slotConfig || slotConfig.refill === "none" || starved.length === 0) return;
     const starvedSet = new Set(starved);
+    const ownerDonors = slotConfig.donorScope === "owner";
     const donors: { agent: Agent; pMut: number }[] = [];
     if (slotConfig.refill === "mutant") {
       for (const agent of active) {
@@ -258,11 +292,13 @@ export function run(config: RunConfig): RunResult {
       if (slotConfig.refill === "random") {
         genome = randomGenome(slotRng, baseGenome, risk);
       } else {
-        if (donors.length === 0) {
+        // Issue #89: with donor scope "owner", only eligible slots with the same owner can donate.
+        const pool = ownerDonors ? donors.filter((item) => item.agent.owner === slot.owner) : donors;
+        if (pool.length === 0) {
           slotLedger.noDonor += 1;
           continue;
         }
-        const donor = donors[Math.min(donors.length - 1, Math.floor(slotRng() * donors.length))];
+        const donor = pool[Math.min(pool.length - 1, Math.floor(slotRng() * pool.length))];
         if (!donor) continue;
         genome = reproduction.mutate({ genome: donor.agent.genome, rng: slotRng, pMut: donor.pMut });
         donor.agent.descendants += 1;
@@ -295,25 +331,47 @@ export function run(config: RunConfig): RunResult {
     const ranked = agents
       .filter((agent) => agent.status === "active" && agent.adjustedFitness !== null)
       .sort((a, b) => (b.adjustedFitness ?? 0) - (a.adjustedFitness ?? 0) || (a.id < b.id ? -1 : 1));
-    const q = Math.floor(ranked.length / 10);
-    if (q < 1) return;
-    const sinks = ranked.slice(0, q);
-    const sources = ranked.slice(ranked.length - q);
-    const plan = planReallocation(
-      sources.map((slot) => slot.capital),
-      sinks.map((slot) => ({ capital: slot.capital, principal: slot.principal })),
-      cap,
-      ceiling,
-      PROTOCOL.capitalFloor,
-    );
-    if (!(plan.moved > 0)) return;
-    sources.forEach((slot, index) => {
-      slot.capital -= plan.debits[index] ?? 0;
-    });
-    sinks.forEach((slot, index) => {
-      slot.capital += plan.credits[index] ?? 0;
-    });
-    slotLedger.capitalMoved += plan.moved;
+    // Issue #85 ranks one population-wide pool. Issue #89 ranks each owner's slots as its own pool, in the same order.
+    const pools: Agent[][] = [];
+    if (owners) {
+      const byOwner = new Map<number, Agent[]>();
+      for (const agent of ranked) {
+        const pool = byOwner.get(agent.owner);
+        if (pool) pool.push(agent);
+        else byOwner.set(agent.owner, [agent]);
+      }
+      pools.push(...[...byOwner.entries()].sort((a, b) => a[0] - b[0]).map((entry) => entry[1]));
+    } else {
+      pools.push(ranked);
+    }
+    let movedThisEvaluation = 0;
+    for (const pool of pools) {
+      const q = reallocationQuota(pool.length, owners !== undefined);
+      if (q < 1) continue;
+      const sinks = pool.slice(0, q);
+      const sources = pool.slice(pool.length - q);
+      const plan = planReallocation(
+        sources.map((slot) => slot.capital),
+        sinks.map((slot) => ({ capital: slot.capital, principal: slot.principal })),
+        cap,
+        ceiling,
+        PROTOCOL.capitalFloor,
+      );
+      if (!(plan.moved > 0)) continue;
+      sources.forEach((slot, index) => {
+        const debit = plan.debits[index] ?? 0;
+        slot.capital -= debit;
+        slot.reallocatedIn -= debit;
+      });
+      sinks.forEach((slot, index) => {
+        const credit = plan.credits[index] ?? 0;
+        slot.capital += credit;
+        slot.reallocatedIn += credit;
+      });
+      movedThisEvaluation += plan.moved;
+    }
+    if (!(movedThisEvaluation > 0)) return;
+    slotLedger.capitalMoved += movedThisEvaluation;
     slotLedger.reallocations += 1;
   };
 
@@ -367,6 +425,7 @@ export function run(config: RunConfig): RunResult {
       const denom = before > 0 ? before : 1;
       pushWindow(agent, (agent.capital - before) / denom, traded);
       netPortfolio += agent.capital - before;
+      agent.tradingNet += net;
     }
     marketReturns.push(bar.ret);
     portfolioReturns.push(capitalBefore > 0 ? netPortfolio / capitalBefore : 0);
@@ -410,7 +469,8 @@ export function run(config: RunConfig): RunResult {
         else agent.lowFitnessWindows = 0;
         if (agent.lowFitnessWindows >= PROTOCOL.retirementWindows) {
           // In slots mode the starvation rule of section 6 is a replacement trigger, not a retirement (issue #85).
-          if (slotConfig) starved.push(agent);
+          // With refill "retire" (issue #89 diagnostic) the slot retires as in a static run and keeps its capital idle.
+          if (slotConfig && slotConfig.refill !== "retire") starved.push(agent);
           else agent.status = "retired";
         }
       }
@@ -497,6 +557,9 @@ export function run(config: RunConfig): RunResult {
             genomeEdge: edgeOf(childGenome),
             infoThisTick: false,
             parent: parent.id,
+            owner: -1,
+            reallocatedIn: 0,
+            tradingNet: 0,
           });
           nextChild += 1;
           reproductions += 1;
@@ -526,6 +589,7 @@ export function run(config: RunConfig): RunResult {
       skill: agent.skill,
       parent: agent.parent,
       ...(genomeModel ? { genomeDistance: genomeDistance(agent.genome, config.regime) } : {}),
+      ...(owners ? { owner: agent.owner, reallocatedIn: agent.reallocatedIn, tradingNet: agent.tradingNet } : {}),
     }));
 
   return {

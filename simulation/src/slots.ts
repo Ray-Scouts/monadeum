@@ -10,7 +10,14 @@ import type { Regime, RunConfig, RunResult } from "./types.js";
  * seeds 1 to 50. The profit threshold 0.1 matters only to the section 3 reference arm.
  */
 
-export type SlotArmKind = "static" | "random" | "mutant" | "evolving";
+/**
+ * `fixed` (issue #89) is fixed slots with no replacement: a triggered slot keeps its genome and keeps trading. `retire`
+ * (issue #89 diagnostic) is no replacement with the static starvation retirement: a triggered slot stops trading.
+ */
+export type SlotArmKind = "static" | "random" | "mutant" | "fixed" | "retire" | "evolving";
+
+/** Owner size for issue #89: every owner holds `k` slots, or the `mixed` distribution of `MIXED_OWNER_CYCLE`. */
+export type OwnerSpec = number | "mixed";
 
 export interface SlotArm {
   name: string;
@@ -19,6 +26,63 @@ export interface SlotArm {
   reallocationCap?: number;
   /** Arm B and the reallocation diagnostic only, a multiple of the slot principal. */
   slotCeiling?: number;
+  /** Issue #89 owner-scoped arms only. */
+  owners?: OwnerSpec;
+  /** Issue #89 owner-scoped arms with mutant refill only. */
+  donorScope?: "population" | "owner";
+}
+
+/**
+ * Assumed mixed owner-size distribution for issue #89, not a measured one: owners are laid out over the slots in this
+ * repeating cycle of sizes (9 owners, 50 slots per cycle). Two thirds of owners hold 3 or fewer agents, and half of
+ * the slots belong to owners of 25. The last owner is cut short when the population runs out.
+ */
+export const MIXED_OWNER_CYCLE = [1, 1, 1, 2, 2, 3, 5, 10, 25] as const;
+
+/**
+ * Owner sizes in slot order. With `k`, owners of `k` slots and, when `k` does not divide the population, one last
+ * smaller owner with the remainder. With `mixed`, `MIXED_OWNER_CYCLE` repeated and cut at the population.
+ */
+export function ownerSizes(population: number, spec: OwnerSpec): number[] {
+  const sizes: number[] = [];
+  let left = population;
+  let index = 0;
+  while (left > 0) {
+    const want = spec === "mixed" ? (MIXED_OWNER_CYCLE[index % MIXED_OWNER_CYCLE.length] as number) : spec;
+    if (!(Number.isInteger(want) && want >= 1)) throw new RangeError(`owner size must be an integer >= 1, got ${want}`);
+    const size = Math.min(want, left);
+    sizes.push(size);
+    left -= size;
+    index += 1;
+  }
+  return sizes;
+}
+
+/** Issue #89 arms. Reallocation is always at the issue #85 cap 0.2, at ceilings 2 and 4. */
+function scopeArms(): Record<string, SlotArm> {
+  const arms: Record<string, SlotArm> = {
+    /** Diagnostic: fixed slots, no replacement, no reallocation. Separates "no retirement" from reallocation. */
+    N: { name: "N", kind: "fixed" },
+  };
+  for (const ceiling of [2, 4]) {
+    const tail = `c0.2-x${ceiling}`;
+    arms[`RO-${tail}`] = { name: `RO-${tail}`, kind: "fixed", reallocationCap: 0.2, slotCeiling: ceiling };
+    for (const owners of [3, 5, 10, "mixed"] as const) {
+      const prefix = `O${owners === "mixed" ? "mix" : owners}`;
+      const base = { reallocationCap: 0.2, slotCeiling: ceiling, owners };
+      arms[`${prefix}-N-${tail}`] = { name: `${prefix}-N-${tail}`, kind: "fixed", ...base };
+      arms[`${prefix}-Mo-${tail}`] = { name: `${prefix}-Mo-${tail}`, kind: "mutant", donorScope: "owner", ...base };
+      arms[`${prefix}-Mp-${tail}`] = { name: `${prefix}-Mp-${tail}`, kind: "mutant", donorScope: "population", ...base };
+    }
+  }
+  // Diagnostic added after the first batch: no replacement, but a starved slot retires as in Control 1 instead of
+  // trading on. Ceiling 4 only.
+  arms["RT-c0.2-x4"] = { name: "RT-c0.2-x4", kind: "retire", reallocationCap: 0.2, slotCeiling: 4 };
+  for (const owners of [3, 5, 10, "mixed"] as const) {
+    const name = `O${owners === "mixed" ? "mix" : owners}-RT-c0.2-x4`;
+    arms[name] = { name, kind: "retire", reallocationCap: 0.2, slotCeiling: 4, owners };
+  }
+  return arms;
 }
 
 export const SLOT_ARMS: Record<string, SlotArm> = {
@@ -32,6 +96,7 @@ export const SLOT_ARMS: Record<string, SlotArm> = {
   /** Diagnostic, not one of the four pre-registered arms: Control 2 plus arm B's reallocation at cap 0.2, ceiling 4. */
   "R-c0.2-x4": { name: "R-c0.2-x4", kind: "random", reallocationCap: 0.2, slotCeiling: 4 },
   S3: { name: "S3", kind: "evolving" },
+  ...scopeArms(),
 };
 
 export const SLOT_TICKS = 300;
@@ -58,13 +123,17 @@ export function slotRunConfig(arm: SlotArm, magnitude: number, population: numbe
       return { ...common, mode: "evolving", reproduction: createReproductionModule({ profitThresholdFraction: 0.1 }) };
     case "random":
     case "mutant":
+    case "fixed":
+    case "retire":
       return {
         ...common,
         mode: "slots",
         slots: {
-          refill: arm.kind,
+          refill: arm.kind === "fixed" ? "none" : arm.kind,
           ...(arm.reallocationCap === undefined ? {} : { reallocationCap: arm.reallocationCap }),
           ...(arm.slotCeiling === undefined ? {} : { slotCeiling: arm.slotCeiling }),
+          ...(arm.owners === undefined ? {} : { owners: ownerSizes(population, arm.owners) }),
+          ...(arm.donorScope === undefined ? {} : { donorScope: arm.donorScope }),
         },
       };
     default: {

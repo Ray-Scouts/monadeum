@@ -195,12 +195,23 @@ The experiment, tracked in issue #85, compares four arms under the unchanged `EC
 
 ### 8.5 Result (issue #85)
 
-**Status: candidate mechanism for issue #28, not yet a decision.** `simulation/results/fixed-slot.md` ran the four arms on the issue #84 genome model. Under the unchanged `ECONOMICS.md` section 8 rule, arm B (replacement with mutated donors plus bounded reallocation) beats both the static control and the random-replacement control at genome edge magnitude 0.009 with a reallocation cap of 0.2, and not at magnitude 0.006 or cap 0.05. Arm A (replacement alone) is inconclusive against both. A diagnostic arm shows reallocation does most of the work. The section 3 mechanism remains inconclusive on the same model. No arm collapsed into a monoculture.
+**Status: candidate mechanism for issue #28, not yet a decision, narrowed by issue #89 (below).** `simulation/results/fixed-slot.md` ran the four arms on the issue #84 genome model. Under the unchanged `ECONOMICS.md` section 8 rule, arm B (replacement with mutated donors plus bounded reallocation) beats both the static control and the random-replacement control at genome edge magnitude 0.009 with a reallocation cap of 0.2, and not at magnitude 0.006 or cap 0.05. Arm A (replacement alone) is inconclusive against both. A diagnostic arm shows reallocation does most of the work. The section 3 mechanism remains inconclusive on the same model. No arm collapsed into a monoculture.
 
-Before sections 3 and 4 are revised and issue #28 proceeds, these follow-ups are open:
+Before sections 3 and 4 are revised and issue #28 proceeds, these follow-ups were open; the first two are answered below (issue #89):
 
 1. Test reallocation with no replacement, to decide whether replacement earns its consent and product cost.
 2. Test reallocation restricted to one owner's agents, per section 8.3, since that pool is smaller than the population-wide ranking used here.
 3. Establish whether real strategies' genomes carry an edge of the assumed size (section 7).
 4. If the mechanism is adopted: revise sections 3 and 4, re-scope the reproduction contract in issue #31, and update the reproduction invariants in `THREAT-MODEL.md`.
+
+**Update (issue #89): recommended candidate, not yet a decision.** `simulation/results/reallocation-scope.md` ran follow-ups 1 and 2 on the same model, seeds, policy, and rule, at magnitude 0.009 (and a subset at 0.006).
+
+- **Reallocation with a failing slot left trading does not match arm B.** With no replacement and no retirement, population-wide reallocation is about 1.1 pp below arm B (median gap, every significant cell lower) and beats both controls only at ceiling 4. Leaving a starved slot trading costs about as much as reallocation gains: fixed slots with neither mechanism sit about 1.1 pp below the static control.
+- **Reallocation with section 6 retirement matches arm B.** A diagnostic arm that replaces nothing, but retires a starved slot as a static run does (its capital stays in its own account), beats both controls in 11 and 12 of 12 cells and is indistinguishable from arm B (median gap 0.06 pp). At magnitude 0.006, where arm B does not beat the static control, this arm does (9 of 12 cells against each control), population-wide and within owners of every size. In this model, replacement's value was stopping a failing genome, not copying a fit one. This arm was added after the first batch was read, so it is a post hoc diagnostic that should be confirmed as a pre-registered arm.
+- **Owner scope holds.** Reallocation ranked and moved only within each owner's agents (owners of 3, 5, or 10 agents, and an assumed mixed distribution) beats both controls at every size at magnitude 0.009 when starved slots are retired or replaced (at 0.006, only with retirement), and is inconclusive against arm B. At owners of 10, where the small-pool ranking rule matches the population-wide decile, owner scope costs a median of 0.3 pp or less against population-wide ranking. Smaller owners do better only because the small-pool rule (bottom one and top one below 20 slots) moves two to three times as much capital. A test checks that no capital ever crosses an owner boundary.
+
+The recommended candidate for issue #28 is therefore narrower than section 8.2: fixed slots, bounded reallocation within each owner's agents under a policy that owner approves, and section 6 retirement of starved agents, with no genome replacement (section 8.2 item 2) and no cross-owner genome copying, which removes the consent question in section 8.3 for this candidate. Paper evaluation (item 4) is moot without replacement. Owners with one agent get no benefit from reallocation. Follow-ups 3 and 4 remain open, and two are added:
+
+5. Confirm reallocation with retirement as a pre-registered arm, and test letting the owner's policy reallocate a retired slot's idle capital.
+6. Separate reallocation intensity from pool size: a population-wide arm whose source and sink share matches the small-pool rule.
 
