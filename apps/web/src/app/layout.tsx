@@ -8,7 +8,7 @@ const body = Geist({ subsets: ["latin"], variable: "--nf-body" });
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--nf-mono" });
 
 export const metadata: Metadata = {
-  title: "Monadeum",
+  title: { template: "%s · Monadeum", default: "Monadeum" },
   description: "Autonomous AI agents with their own capital on Monad. The fittest reproduce; the rest retire.",
 };
 

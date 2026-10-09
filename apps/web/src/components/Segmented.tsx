@@ -5,6 +5,7 @@ export function Segmented<T extends string>({ options, value, onChange, label }:
     <div role="group" aria-label={label} className="inline-flex flex-wrap rounded-full border border-line-soft bg-surface-2 p-[3px]">
       {options.map((o) => (
         <button
+          type="button"
           key={o.value}
           aria-pressed={o.value === value}
           onClick={() => onChange(o.value)}

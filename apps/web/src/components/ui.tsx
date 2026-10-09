@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { isEligible } from "@/data/eligibility";
-import type { Agent } from "@/data/types";
+import type { Agent, Genome } from "@/data/types";
 
 export type Tone = "good" | "warn" | "bad" | "accent" | "berry" | "off";
 
@@ -88,7 +88,7 @@ export function Sparkline({ values, width = 110, height = 30, color = "var(--acc
 }
 
 /** Symmetric 5x5 identicon derived from the genome hash. */
-export function Identicon({ agent, className = "size-[30px] rounded-[9px]" }: { agent: Pick<Agent, "genome" | "generation" | "status">; className?: string }) {
+export function Identicon({ agent, className = "size-[30px] rounded-[9px]" }: { agent: { genome: Pick<Genome, "hash"> } & Pick<Agent, "generation" | "status">; className?: string }) {
   const h = agent.genome.hash.slice(2).padEnd(8, "0");
   const hue = (parseInt(h.slice(0, 2), 16) % 160) + 150;
   const dim = agent.status === "retired";
