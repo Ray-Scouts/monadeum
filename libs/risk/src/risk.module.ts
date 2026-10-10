@@ -2,12 +2,15 @@ import { Injectable, Module } from "@nestjs/common";
 import type { Hex } from "viem";
 import {
   evaluateInformation,
+  evaluateReallocation,
   evaluateTrade,
   loadPolicy,
   type ActionProposal,
   type ExecutionPlan,
   type InformationRequest,
   type Ledger,
+  type ReallocationLedger,
+  type ReallocationProposal,
   type SignedPolicy,
   type VerifiedPolicy,
 } from "./policy.js";
@@ -27,6 +30,10 @@ export class RiskService {
 
   trade(proposal: ActionProposal, plan: ExecutionPlan, ledger: Ledger) {
     return evaluateTrade(this.policy, proposal, plan, ledger);
+  }
+
+  reallocation(proposal: ReallocationProposal, plan: ExecutionPlan, ledger: ReallocationLedger) {
+    return evaluateReallocation(this.policy, proposal, plan, ledger);
   }
 }
 

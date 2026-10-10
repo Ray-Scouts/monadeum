@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@monadeum/commitment": "workspace:*",
+    "@monadeum/reallocation": "workspace:*",
     "@nestjs/common": "^11.1.6",
     "viem": "^2.56.9"
   },
