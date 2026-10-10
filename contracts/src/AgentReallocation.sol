@@ -45,6 +45,8 @@ contract AgentReallocation is IAgentReallocation {
     }
 
     address public immutable override settlementAsset;
+    /// Minimum seconds between two evaluation advances (ARCHITECTURE.md section 16.5). Fixed at deployment.
+    uint256 public immutable override minEvaluationInterval;
     uint256 public immutable override capitalFloor;
 
     address public admin;
@@ -52,6 +54,7 @@ contract AgentReallocation is IAgentReallocation {
     address public operator;
 
     uint256 public override currentEvaluation;
+    uint256 public override lastEvaluationAt;
 
     mapping(address account => Agent) internal _agents;
     mapping(address source => uint256) public override lastDebitEvaluation;
@@ -69,8 +72,12 @@ contract AgentReallocation is IAgentReallocation {
         _;
     }
 
-    constructor(address settlementAsset_, address admin_, address operator_) {
+    constructor(address settlementAsset_, address admin_, address operator_, uint256 minEvaluationInterval_) {
         if (settlementAsset_ == address(0) || admin_ == address(0) || operator_ == address(0)) revert ZeroAddress();
+        _requireContract(admin_);
+        _requireContract(operator_);
+        if (minEvaluationInterval_ == 0) revert ZeroEvaluationInterval();
+        minEvaluationInterval = minEvaluationInterval_;
         // The decimals value is read from the token, never assumed (ARCHITECTURE.md section 16).
         (bool ok, bytes memory ret) = settlementAsset_.staticcall(abi.encodeWithSignature("decimals()"));
         if (!ok || ret.length < 32) revert UnsupportedDecimals(0);
@@ -161,6 +168,11 @@ contract AgentReallocation is IAgentReallocation {
 
     /// @inheritdoc IAgentReallocation
     function advanceEvaluation() external override onlyOperator returns (uint256 evaluation) {
+        if (currentEvaluation != 0) {
+            uint256 nextAllowedAt = lastEvaluationAt + minEvaluationInterval;
+            if (block.timestamp < nextAllowedAt) revert EvaluationTooSoon(nextAllowedAt);
+        }
+        lastEvaluationAt = block.timestamp;
         evaluation = ++currentEvaluation;
         emit EvaluationAdvanced(evaluation);
     }
@@ -176,11 +188,14 @@ contract AgentReallocation is IAgentReallocation {
 
     function setOperator(address operator_) external onlyAdmin {
         if (operator_ == address(0)) revert ZeroAddress();
+        _requireContract(operator_);
         operator = operator_;
         emit OperatorSet(operator_);
     }
 
+    /// Proposing address(0) cancels a pending proposal; any other address must be a contract.
     function proposeAdmin(address admin_) external onlyAdmin {
+        if (admin_ != address(0)) _requireContract(admin_);
         pendingAdmin = admin_;
         emit AdminProposed(admin_);
     }
@@ -295,6 +310,12 @@ contract AgentReallocation is IAgentReallocation {
         uint256 ceiling = _agents[c.sink].principal * b.ceilingBps / BPS;
         if (sinkAfter > ceiling) revert AboveCeiling(c.sink, sinkAfter, ceiling);
         emit Reallocated(b.owner, source, c.sink, c.amount, evaluation);
+    }
+
+    /// The operator and admin roles must be held by multisig contracts. Code presence is all the chain can check: it
+    /// refuses a plain key, not a contract with a single signer, so the threshold remains a deployment requirement.
+    function _requireContract(address account) internal view {
+        if (account.code.length == 0) revert RoleNotContract(account);
     }
 
     function _commit(Policy calldata policy) internal returns (bytes32 policyHash) {

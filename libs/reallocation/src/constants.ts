@@ -1,8 +1,9 @@
 /**
  * Protocol constants of the adopted selection mechanism (EVOLUTION.md sections 3.1, 4, and 6). This file is the one
  * source for these values: the simulation's `PROTOCOL` (`simulation/src/protocol.ts`) imports them from here, and the
- * reallocation contract (issue #31) is expected to take the same values. They are proposed defaults, the values the
- * issue #92 confirmation run tested, not measured optima. Changing one is a documented decision in EVOLUTION.md first.
+ * reallocation contract (contracts/src/AgentReallocation.sol) uses the same values, as basis points and base units.
+ * They are proposed defaults, the values the issue #92 confirmation run tested, not measured optima. Changing one is a
+ * documented decision in EVOLUTION.md first.
  */
 
 /** Share of a source's capital it can lose in one evaluation (`reallocation_cap`, EVOLUTION.md section 3.1). */

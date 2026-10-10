@@ -49,7 +49,7 @@ export type Violation =
   | "call-not-allowed" | "recipient-not-allowed" | "pair-not-allowed" | "provider-not-allowed"
   | "per-action-cap" | "session-daily-cap" | "information-cap"
   | "position-fraction" | "plan-hash-mismatch" | "policy-unverified"
-  // Proposed with ReallocationProposal (ARCHITECTURE.md section 16.2), pending the owner's confirmation.
+  // With ReallocationProposal (ARCHITECTURE.md section 16.2), accepted by the owner (section 16.5).
   | "reallocation-party" | "reallocation-policy" | "reallocation-bound";
 
 export type Decision =
@@ -97,8 +97,8 @@ export interface ExecutionPlan {
 }
 
 /**
- * Proposed in ARCHITECTURE.md section 16.2, pending the owner's confirmation: one source's debit at one evaluation,
- * all of its credits in one `reallocate` call, as the reallocation contract of issue #31 accepts (one call per source
+ * ARCHITECTURE.md section 16.2, accepted by the owner (section 16.5): one source's debit at one evaluation,
+ * all of its credits in one `reallocate` call, as contracts/src/AgentReallocation.sol accepts (one call per source
  * per evaluation). Amounts are settlement-asset base units, converted from the planner's floats rounding down.
  */
 export interface ReallocationCredit {
@@ -114,7 +114,7 @@ export interface ReallocationProposal {
   owner: Hex;
   /** Evaluation sequence number. */
   evaluation: number;
-  /** Hash of the owner's reallocation policy the plan was computed against (section 16.4). */
+  /** EIP-712 struct hash of the owner's reallocation policy the plan was computed against (section 16.5). */
   policyHash: Hex;
   sourceAgentId: string;
   source: Hex;
@@ -153,7 +153,7 @@ export interface ReallocationLedger {
   ownerPolicy: CommittedReallocationPolicy | null;
 }
 
-/** The reallocation contract's entry point (issue #31), selector 0x4c329bba. */
+/** The reallocation contract's entry point (contracts/src/AgentReallocation.sol), selector 0x4c329bba. */
 export const REALLOCATE_ABI = parseAbi([
   "function reallocate(uint256 evaluation, bytes32 policyHash, (address sink, uint256 amount)[] credits)",
 ]);
@@ -310,7 +310,7 @@ const PPM = 1_000_000n;
 const ppm = (fraction: number) => BigInt(Math.floor(fraction * 1_000_000));
 
 /**
- * Evaluates one source's reallocation debit (proposed in ARCHITECTURE.md section 16.2). The plan must be exactly
+ * Evaluates one source's reallocation debit (ARCHITECTURE.md section 16.2). The plan must be exactly
  * `approve(reallocation, total)` on the settlement asset, then `reallocate(evaluation, policyHash, credits)` on the
  * same allowlisted contract, encoding this proposal and nothing else. On top of the allowlist, recipient, and spend
  * caps every plan is held to, it re-checks from the ledger what the contract checks on-chain: same owner, Active
@@ -401,7 +401,7 @@ function encodesProposal(d: PolicyDocument, proposal: ReallocationProposal, plan
   if (approved.functionName !== "approve") return false;
   const [spender, amount] = approved.args;
   if (!same(spender, reallocateCall.target) || amount !== proposal.total) return false;
-  if (!d.allowedCalls.some((c) => c.label === "reproduction" && same(c.target, reallocateCall.target))) return false;
+  if (!d.allowedCalls.some((c) => c.label === "reallocation" && same(c.target, reallocateCall.target))) return false;
   const [evaluation, policyHash, credits] = decodeFunctionData({ abi: REALLOCATE_ABI, data: reallocateCall.data }).args;
   return (
     evaluation === BigInt(proposal.evaluation) &&

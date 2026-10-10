@@ -226,7 +226,7 @@ export function policyDocument(overrides: Partial<PolicyDocument> = {}): PolicyD
       { target: M.quote, selector: toFunctionSelector("approve(address,uint256)"), label: "settlement-asset" },
       { target: M.quote, selector: toFunctionSelector("transfer(address,uint256)"), label: "settlement-asset" },
       { target: M.router, selector: SWAP_SELECTOR, label: "kuru-router" },
-      { target: REALLOC, selector: REALLOCATE_SELECTOR, label: "reproduction" },
+      { target: REALLOC, selector: REALLOCATE_SELECTOR, label: "reallocation" },
     ],
     allowedPairs: ["MON/USDC"],
     perActionCap: 50n * UNIT,
@@ -308,9 +308,22 @@ export async function world(options: WorldOptions = {}) {
       status: "active",
     });
   }
+  const registered = await stores.agents.list();
   for (const owner of options.reallocationOwners ?? []) {
-    const agents = specs.filter((s) => s.owner === owner).map((s) => s.agentId);
-    policies.commit({ schemaVersion: 1, owner: owners[owner].address, sequence: 1, agents });
+    const ids = new Set(specs.filter((s) => s.owner === owner).map((s) => s.agentId));
+    const mine = registered.filter((a) => ids.has(a.agentId));
+    // At the protocol bounds, as an owner who does not tighten them would sign (ARCHITECTURE.md section 16.5).
+    policies.commit(
+      {
+        owner: owners[owner].address,
+        agents: mine.map((a) => a.account),
+        capBps: 2_000,
+        slotCeilingBps: 40_000,
+        capitalFloor: (6n * UNIT) / 100n,
+        nonce: 0n,
+      },
+      mine.map((a) => a.agentId),
+    );
   }
 
   const market: MarketSource = {

@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {AgentReallocation} from "../../src/AgentReallocation.sol";
 import {IAgentReallocation} from "../../src/IAgentReallocation.sol";
 import {MockERC20} from "./Mocks.sol";
+import {TEST_EVALUATION_INTERVAL, multisig} from "./Roles.sol";
 
 /// Shared fixture: a six-decimal settlement asset, owner A with agents a1, a2, a3 and owner B with agents b1, b2, all
 /// registered with a principal of 100 units and holding 100 units. Evaluation 1 is open, and owner A has a policy at
@@ -39,9 +40,9 @@ abstract contract ReallocationTestBase is Test {
 
     function setUp() public virtual {
         token = new MockERC20();
-        admin = makeAddr("admin");
-        operator = makeAddr("operator");
-        realloc = new AgentReallocation(address(token), admin, operator);
+        admin = multisig("admin");
+        operator = multisig("operator");
+        realloc = new AgentReallocation(address(token), admin, operator, TEST_EVALUATION_INTERVAL);
 
         (ownerA, ownerAKey) = makeAddrAndKey("ownerA");
         (ownerB, ownerBKey) = makeAddrAndKey("ownerB");
@@ -197,7 +198,9 @@ abstract contract ReallocationTestBase is Test {
         }
     }
 
+    /// Waits out the minimum spacing, then opens the next evaluation.
     function _advance() internal {
+        vm.warp(block.timestamp + TEST_EVALUATION_INTERVAL);
         vm.prank(operator);
         realloc.advanceEvaluation();
     }

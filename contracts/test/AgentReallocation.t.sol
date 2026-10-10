@@ -5,6 +5,7 @@ import {AgentReallocation} from "../src/AgentReallocation.sol";
 import {IAgentReallocation} from "../src/IAgentReallocation.sol";
 import {MockERC20, MockFalseToken, MockFeeToken} from "./utils/Mocks.sol";
 import {ReallocationTestBase} from "./utils/ReallocationTestBase.sol";
+import {TEST_EVALUATION_INTERVAL, multisig} from "./utils/Roles.sol";
 
 contract AgentReallocationTest is ReallocationTestBase {
     // --- constants (EVOLUTION.md sections 3.1 and 6) ---------------------------------------------------------------
@@ -19,23 +20,23 @@ contract AgentReallocationTest is ReallocationTestBase {
     function test_capitalFloorScalesWithTokenDecimals() public {
         MockERC20 t18 = new MockERC20();
         t18.setDecimals(18);
-        assertEq(new AgentReallocation(address(t18), admin, operator).capitalFloor(), 6e16);
+        assertEq(new AgentReallocation(address(t18), admin, operator, TEST_EVALUATION_INTERVAL).capitalFloor(), 6e16);
         MockERC20 t2 = new MockERC20();
         t2.setDecimals(2);
-        assertEq(new AgentReallocation(address(t2), admin, operator).capitalFloor(), 6);
+        assertEq(new AgentReallocation(address(t2), admin, operator, TEST_EVALUATION_INTERVAL).capitalFloor(), 6);
     }
 
     function test_constructorRejectsBadInputs() public {
         MockERC20 t1 = new MockERC20();
         t1.setDecimals(1);
         vm.expectRevert(abi.encodeWithSelector(IAgentReallocation.UnsupportedDecimals.selector, uint8(1)));
-        new AgentReallocation(address(t1), admin, operator);
+        new AgentReallocation(address(t1), admin, operator, TEST_EVALUATION_INTERVAL);
         vm.expectRevert(abi.encodeWithSelector(IAgentReallocation.UnsupportedDecimals.selector, uint8(0)));
-        new AgentReallocation(makeAddr("eoa"), admin, operator);
+        new AgentReallocation(makeAddr("eoa"), admin, operator, TEST_EVALUATION_INTERVAL);
         vm.expectRevert(IAgentReallocation.ZeroAddress.selector);
-        new AgentReallocation(address(token), address(0), operator);
+        new AgentReallocation(address(token), address(0), operator, TEST_EVALUATION_INTERVAL);
         vm.expectRevert(IAgentReallocation.ZeroAddress.selector);
-        new AgentReallocation(address(token), admin, address(0));
+        new AgentReallocation(address(token), admin, address(0), TEST_EVALUATION_INTERVAL);
     }
 
     // --- the happy path ------------------------------------------------------------------------------------------
@@ -225,7 +226,7 @@ contract AgentReallocationTest is ReallocationTestBase {
     }
 
     function test_nothingMovesBeforeTheFirstEvaluation() public {
-        AgentReallocation fresh = new AgentReallocation(address(token), admin, operator);
+        AgentReallocation fresh = new AgentReallocation(address(token), admin, operator, TEST_EVALUATION_INTERVAL);
         vm.expectRevert(abi.encodeWithSelector(IAgentReallocation.WrongEvaluation.selector, 0, 0));
         vm.prank(a1);
         fresh.reallocate(0, policyA, _credits(a2, 1e6));
@@ -402,7 +403,7 @@ contract AgentReallocationTest is ReallocationTestBase {
     }
 
     function test_signatureForAnotherDeploymentRejected() public {
-        AgentReallocation other = new AgentReallocation(address(token), admin, operator);
+        AgentReallocation other = new AgentReallocation(address(token), admin, operator, TEST_EVALUATION_INTERVAL);
         vm.startPrank(operator);
         other.registerAgent(b1, ownerB, PRINCIPAL);
         other.registerAgent(b2, ownerB, PRINCIPAL);
@@ -531,16 +532,17 @@ contract AgentReallocationTest is ReallocationTestBase {
         vm.expectRevert(IAgentReallocation.ZeroAddress.selector);
         realloc.registerAgent(address(0), ownerA, 1);
 
-        address op2 = makeAddr("op2");
+        address op2 = multisig("op2");
         vm.prank(admin);
         realloc.setOperator(op2);
         vm.expectRevert(IAgentReallocation.NotOperator.selector);
         vm.prank(operator);
         realloc.advanceEvaluation();
+        vm.warp(block.timestamp + TEST_EVALUATION_INTERVAL);
         vm.prank(op2);
         assertEq(realloc.advanceEvaluation(), 2);
 
-        address admin2 = makeAddr("admin2");
+        address admin2 = multisig("admin2");
         vm.prank(admin);
         realloc.proposeAdmin(admin2);
         vm.expectRevert(IAgentReallocation.NotAdmin.selector);
@@ -548,6 +550,80 @@ contract AgentReallocationTest is ReallocationTestBase {
         vm.prank(admin2);
         realloc.acceptAdmin();
         assertEq(realloc.admin(), admin2);
+    }
+
+    // --- evaluation spacing ---------------------------------------------------------------------------------------
+
+    function test_evaluationSpacingAtTheBound() public {
+        assertEq(realloc.minEvaluationInterval(), TEST_EVALUATION_INTERVAL);
+        uint256 last = realloc.lastEvaluationAt();
+        vm.warp(last + TEST_EVALUATION_INTERVAL - 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAgentReallocation.EvaluationTooSoon.selector, last + TEST_EVALUATION_INTERVAL)
+        );
+        vm.prank(operator);
+        realloc.advanceEvaluation();
+        vm.warp(last + TEST_EVALUATION_INTERVAL);
+        vm.prank(operator);
+        assertEq(realloc.advanceEvaluation(), 2);
+        assertEq(realloc.lastEvaluationAt(), last + TEST_EVALUATION_INTERVAL);
+    }
+
+    function test_firstEvaluationIsNotSpaced() public {
+        AgentReallocation fresh = new AgentReallocation(address(token), admin, operator, TEST_EVALUATION_INTERVAL);
+        vm.prank(operator);
+        assertEq(fresh.advanceEvaluation(), 1);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IAgentReallocation.EvaluationTooSoon.selector, block.timestamp + TEST_EVALUATION_INTERVAL
+            )
+        );
+        vm.prank(operator);
+        fresh.advanceEvaluation();
+    }
+
+    function test_zeroIntervalRejected() public {
+        vm.expectRevert(IAgentReallocation.ZeroEvaluationInterval.selector);
+        new AgentReallocation(address(token), admin, operator, 0);
+    }
+
+    /// Any interval and any wait: the advance succeeds exactly when the wait reaches the interval.
+    function testFuzz_evaluationSpacing(uint256 interval, uint256 wait) public {
+        interval = bound(interval, 1, 365 days);
+        wait = bound(wait, 0, 2 * interval);
+        AgentReallocation fresh = new AgentReallocation(address(token), admin, operator, interval);
+        vm.prank(operator);
+        fresh.advanceEvaluation();
+        uint256 start = block.timestamp;
+        vm.warp(start + wait);
+        vm.prank(operator);
+        try fresh.advanceEvaluation() {
+            assertGe(wait, interval);
+            assertEq(fresh.currentEvaluation(), 2);
+        } catch {
+            assertLt(wait, interval);
+            assertEq(fresh.currentEvaluation(), 1);
+        }
+    }
+
+    // --- roles must be contracts ----------------------------------------------------------------------------------
+
+    function test_rolesWithoutCodeRejected() public {
+        address key = makeAddr("singleKey");
+        vm.expectRevert(abi.encodeWithSelector(IAgentReallocation.RoleNotContract.selector, key));
+        new AgentReallocation(address(token), admin, key, TEST_EVALUATION_INTERVAL);
+        vm.expectRevert(abi.encodeWithSelector(IAgentReallocation.RoleNotContract.selector, key));
+        new AgentReallocation(address(token), key, operator, TEST_EVALUATION_INTERVAL);
+        vm.expectRevert(abi.encodeWithSelector(IAgentReallocation.RoleNotContract.selector, key));
+        vm.prank(admin);
+        realloc.setOperator(key);
+        vm.expectRevert(abi.encodeWithSelector(IAgentReallocation.RoleNotContract.selector, key));
+        vm.prank(admin);
+        realloc.proposeAdmin(key);
+        // Proposing address(0) cancels a pending proposal and needs no code.
+        vm.prank(admin);
+        realloc.proposeAdmin(address(0));
+        assertEq(realloc.pendingAdmin(), address(0));
     }
 
     // --- fuzz ------------------------------------------------------------------------------------------------------
@@ -612,7 +688,7 @@ contract AgentReallocationTest is ReallocationTestBase {
     /// Rebuilds the fixture on a different settlement asset.
     function _swapToken(MockERC20 t) internal {
         token = t;
-        realloc = new AgentReallocation(address(token), admin, operator);
+        realloc = new AgentReallocation(address(token), admin, operator, TEST_EVALUATION_INTERVAL);
         vm.startPrank(operator);
         realloc.registerAgent(a1, ownerA, PRINCIPAL);
         realloc.registerAgent(a2, ownerA, PRINCIPAL);

@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {AgentReallocation} from "../src/AgentReallocation.sol";
 import {IAgentReallocation} from "../src/IAgentReallocation.sol";
 import {MockERC20} from "./utils/Mocks.sol";
+import {TEST_EVALUATION_INTERVAL, multisig} from "./utils/Roles.sol";
 
 /// Fixed cross-implementation vector for the owner reallocation policy commitment (ARCHITECTURE.md sections 16.4 and
 /// 16.5). libs/commitment/test/reallocation-policy.test.ts asserts the same literals, and produced SIGNATURE with
@@ -30,9 +31,11 @@ contract ReallocationCommitmentVectorTest is Test {
     function setUp() public {
         vm.chainId(CHAIN_ID);
         MockERC20 token = new MockERC20();
-        address operator = makeAddr("operator");
+        address operator = multisig("operator");
         deployCodeTo(
-            "AgentReallocation.sol:AgentReallocation", abi.encode(address(token), makeAddr("admin"), operator), CONTRACT
+            "AgentReallocation.sol:AgentReallocation",
+            abi.encode(address(token), multisig("admin"), operator, TEST_EVALUATION_INTERVAL),
+            CONTRACT
         );
         realloc = AgentReallocation(CONTRACT);
         owner = vm.addr(OWNER_KEY);

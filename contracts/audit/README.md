@@ -1,6 +1,6 @@
 # Audit package
 
-This directory is the material an external auditor needs to review the on-chain contracts of this repository, prepared under issue #46. It is organized per contract so that each contract in scope has its own section. Today it covers `AgentSpendPolicy`, the on-chain spend policy for agent smart accounts (issue #25), in sections 1 to 11, and `X402PaymentValidator`, which bounds the account's x402 payment signatures, in section 12. The owner-scoped reallocation contract (issue #31) is being written separately and is not in this package yet; section 10 states what adding it involves.
+This directory is the material an external auditor needs to review the on-chain contracts of this repository, prepared under issue #46. It is organized per contract so that each contract in scope has its own section. Today it covers `AgentSpendPolicy`, the on-chain spend policy for agent smart accounts (issue #25), in sections 1 to 11, and `X402PaymentValidator`, which bounds the account's x402 payment signatures, in section 12. The owner-scoped reallocation contract (issue #31, `contracts/src/AgentReallocation.sol`) is written and tested but not in this package yet; section 10 states what adding it involves.
 
 `SECURITY.md` section 3 sets the gate this package serves: `AgentSpendPolicy` carries no real user-controlled capital, on testnet or mainnet, before an external audit is complete and every finding is resolved or explicitly accepted as residual risk in `SECURITY.md`.
 

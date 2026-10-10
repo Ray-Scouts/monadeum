@@ -17,20 +17,28 @@ import type { ChainReader } from "./ports.js";
 export { MemoryDebitStore } from "@monadeum/agent-registry";
 export type { DebitRecord, DebitStore } from "@monadeum/agent-registry";
 
+const BPS = 10_000;
+
 /**
  * Owners' reallocation policies, as committed on-chain. In-memory stand-in for the verified policy source of
  * ARCHITECTURE.md section 9: `commit` is where a production source would accept only a policy whose owner signature
  * matches the on-chain hash. It feeds the planner (`current`) and the RiskModule's ledger (`committed`) from the same
  * record, so the plan and the check use one policy.
+ *
+ * A policy is the EIP-712 struct the owner signs and the contract checks (section 16.5), which names agents by smart
+ * account address; the planner and the RiskModule name them by agent ID, so `commit` takes the IDs of the named
+ * accounts, in the same order. Bounds are converted from the contract's units (basis points, base units) to the
+ * planner's fractions here, in one place.
  */
 export class OwnerPolicies implements PolicySource {
-  private readonly policies = new Map<string, { policy: ReallocationPolicyV1; hash: Hex; revoked: boolean }>();
+  private readonly policies = new Map<string, { policy: ReallocationPolicyV1; agentIds: string[]; hash: Hex; revoked: boolean }>();
 
   constructor(private readonly decimals: number) {}
 
-  commit(policy: ReallocationPolicyV1): Hex {
+  commit(policy: ReallocationPolicyV1, agentIds: readonly string[]): Hex {
+    if (agentIds.length !== policy.agents.length) throw new Error("one agent ID per account the policy names");
     const hash = hashReallocationPolicy(policy);
-    this.policies.set(policy.owner.toLowerCase(), { policy, hash, revoked: false });
+    this.policies.set(policy.owner.toLowerCase(), { policy, agentIds: [...agentIds], hash, revoked: false });
     return hash;
   }
 
@@ -40,12 +48,12 @@ export class OwnerPolicies implements PolicySource {
   }
 
   current(): readonly ReallocationPolicy[] {
-    return [...this.policies.entries()].map(([owner, { policy, revoked }]) => ({
+    return [...this.policies.entries()].map(([owner, { policy, agentIds, revoked }]) => ({
       owner,
-      agents: policy.agents.map(String),
-      ...(policy.reallocationCap !== undefined ? { reallocationCap: policy.reallocationCap } : {}),
-      ...(policy.slotCeiling !== undefined ? { slotCeiling: policy.slotCeiling } : {}),
-      ...(policy.capitalFloor !== undefined ? { capitalFloor: Number(BigInt(policy.capitalFloor)) / 10 ** this.decimals } : {}),
+      agents: [...agentIds],
+      reallocationCap: policy.capBps / BPS,
+      slotCeiling: policy.slotCeilingBps / BPS,
+      capitalFloor: Number(policy.capitalFloor) / 10 ** this.decimals,
       revoked,
     }));
   }
@@ -57,15 +65,15 @@ export class OwnerPolicies implements PolicySource {
     const p = entry.policy;
     return {
       hash: entry.hash,
-      agents: p.agents.map(String),
-      ...(p.reallocationCap !== undefined ? { reallocationCap: p.reallocationCap } : {}),
-      ...(p.slotCeiling !== undefined ? { slotCeiling: p.slotCeiling } : {}),
-      ...(p.capitalFloor !== undefined ? { capitalFloor: BigInt(p.capitalFloor) } : {}),
+      agents: [...entry.agentIds],
+      reallocationCap: p.capBps / BPS,
+      slotCeiling: p.slotCeilingBps / BPS,
+      capitalFloor: p.capitalFloor,
     };
   }
 }
 
-/** The batched operation of issue #31: `approve(contract, total)`, then one `reallocate` carrying every credit. */
+/** The batched operation of contracts/src/AgentReallocation.sol: `approve(contract, total)`, then one `reallocate` carrying every credit. */
 export function buildReallocationPlan(proposal: ReallocationProposal, contract: Hex, settlementAsset: Hex): ExecutionPlan {
   const calls = [
     { target: settlementAsset, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [contract, proposal.total] }) },
@@ -90,7 +98,7 @@ export interface ReallocationExecutor {
 }
 
 /**
- * Fail-closed default. The reallocation contract (issue #31) is not deployed, so nothing is submitted. Once it is,
+ * Fail-closed default. The reallocation contract (contracts/src/AgentReallocation.sol) is not deployed, so nothing is submitted. Once it is,
  * the executor sends the plan through `WalletsService.executeForTick` with the debit's key as the tick key.
  */
 export class UnconfiguredReallocationExecutor implements ReallocationExecutor {

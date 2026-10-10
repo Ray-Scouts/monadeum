@@ -20,7 +20,9 @@ pragma solidity ^0.8.24;
 /// - The owner's root wallet commits and revokes the reallocation policy, directly or by an EIP-712 signature a relayer
 ///   submits, so an owner who holds no native gas token can still sign it (ARCHITECTURE.md section 7).
 /// - The operator registers agents (account, owner, principal), updates principal, retires agents, and advances the
-///   evaluation sequence number. The admin replaces the operator. Their trust assumptions are in ARCHITECTURE.md
+///   evaluation sequence number, at most once per `minEvaluationInterval` seconds. The admin replaces the operator.
+///   Both roles must be held by contracts (a multisig in deployment, ARCHITECTURE.md section 16.5); the constructor,
+///   `setOperator` and `proposeAdmin` refuse an address with no code. Their trust assumptions are in ARCHITECTURE.md
 ///   section 16.5 and THREAT-MODEL.md section 8.
 ///
 /// Rules checked on every `reallocate`, at execution time, from on-chain state only:
@@ -84,6 +86,11 @@ interface IAgentReallocation {
     error NotPolicyOwner();
     error NotOwnersAgent(address owner, address account);
     error ZeroAddress();
+    /// The operator or admin role was given an address with no code; both must be multisig contracts.
+    error RoleNotContract(address account);
+    error ZeroEvaluationInterval();
+    /// The operator tried to open an evaluation before `minEvaluationInterval` elapsed since the last one.
+    error EvaluationTooSoon(uint256 nextAllowedAt);
     error UnsupportedDecimals(uint8 decimals);
     error AgentAlreadyRegistered(address account);
     error AgentNotActive(address account);
@@ -124,6 +131,8 @@ interface IAgentReallocation {
 
     function registerAgent(address account, address owner, uint256 principal) external;
     function setPrincipal(address account, uint256 principal) external;
+    /// Reverts with EvaluationTooSoon unless `minEvaluationInterval` seconds have passed since the last advance. The
+    /// first advance is not spaced.
     function advanceEvaluation() external returns (uint256 evaluation);
 
     /// Operator or the agent's owner. One way: a retired agent is never reactivated. Moves no capital.
@@ -135,6 +144,8 @@ interface IAgentReallocation {
     function capitalFloor() external view returns (uint256); // 0.06 of the settlement asset, in base units
     function agent(address account) external view returns (Agent memory);
     function currentEvaluation() external view returns (uint256);
+    function minEvaluationInterval() external view returns (uint256); // seconds, fixed at deployment
+    function lastEvaluationAt() external view returns (uint256); // block timestamp of the last advance
     function lastDebitEvaluation(address source) external view returns (uint256);
     function policyCommitment(address owner) external view returns (bytes32);
     function policyNonce(address owner) external view returns (uint256);

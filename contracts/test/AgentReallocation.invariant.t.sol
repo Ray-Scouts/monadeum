@@ -6,6 +6,7 @@ import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {AgentReallocation} from "../src/AgentReallocation.sol";
 import {IAgentReallocation} from "../src/IAgentReallocation.sol";
 import {MockERC20} from "./utils/Mocks.sol";
+import {TEST_EVALUATION_INTERVAL, multisig} from "./utils/Roles.sol";
 
 /// Drives the reallocation contract with fuzzed sequences over three owners and one unregistered account: moves with
 /// random sources, sinks (mostly the same owner's, sometimes another owner's, a retired or unregistered account, or the
@@ -61,6 +62,8 @@ contract ReallocationHandler is Test {
     uint256 public atomicityBreaks; // a rejected move that changed any balance
     uint256 public retirementMovedCapital;
     uint256 public hashMismatches;
+    uint256 public earlyAdvances; // an advance accepted inside the minimum spacing
+    uint256 public lastAdvanceAt;
     uint256 public accepted;
     uint256 public rejected;
 
@@ -102,6 +105,7 @@ contract ReallocationHandler is Test {
         vm.prank(operator_);
         realloc_.advanceEvaluation();
         mEval = 1;
+        lastAdvanceAt = block.timestamp;
         // Every owner starts with a policy at the protocol bounds covering all of their agents.
         _commitModelled(0, 0x0f, 2_000, 40_000, floor, false);
         _commitModelled(1, 0x30, 2_000, 40_000, floor, true);
@@ -121,10 +125,34 @@ contract ReallocationHandler is Test {
         _reallocate(seed);
     }
 
-    function advance() external {
+    /// Opens the next evaluation once the spacing has passed; tries one second early first, which must revert.
+    function advance(uint256 seed) external {
+        uint256 nextAllowed = realloc.lastEvaluationAt() + realloc.minEvaluationInterval();
+        if (seed % 2 == 0 && block.timestamp < nextAllowed) {
+            vm.warp(nextAllowed - 1);
+            vm.prank(operator);
+            try realloc.advanceEvaluation() {
+                ++earlyAdvances;
+                ++mEval;
+                _recordAdvance();
+                return;
+            } catch {}
+        }
+        _advanceModelled();
+    }
+
+    function _advanceModelled() internal {
+        uint256 nextAllowed = realloc.lastEvaluationAt() + realloc.minEvaluationInterval();
+        if (block.timestamp < nextAllowed) vm.warp(nextAllowed + (block.timestamp % 7));
         vm.prank(operator);
         realloc.advanceEvaluation();
         ++mEval;
+        _recordAdvance();
+    }
+
+    function _recordAdvance() internal {
+        if (lastAdvanceAt != 0 && block.timestamp - lastAdvanceAt < realloc.minEvaluationInterval()) ++earlyAdvances;
+        lastAdvanceAt = block.timestamp;
     }
 
     function commit(uint256 seed) external {
@@ -246,11 +274,7 @@ contract ReallocationHandler is Test {
 
     function _reallocate(uint256 seed) internal {
         // One time in four, open a new evaluation first, so sources debited in this one can move again.
-        if ((seed >> 248) % 4 == 0) {
-            vm.prank(operator);
-            realloc.advanceEvaluation();
-            ++mEval;
-        }
+        if ((seed >> 248) % 4 == 0) _advanceModelled();
         Move memory m = _buildMove(seed);
         bool ok = _modelOk(m);
         uint256[N] memory before = _balances();
@@ -524,8 +548,8 @@ contract AgentReallocationInvariantTest is StdInvariant, Test {
 
     function setUp() public {
         token = new MockERC20();
-        address operator = makeAddr("operator");
-        realloc = new AgentReallocation(address(token), makeAddr("admin"), operator);
+        address operator = multisig("operator");
+        realloc = new AgentReallocation(address(token), multisig("admin"), operator, TEST_EVALUATION_INTERVAL);
         handler = new ReallocationHandler(token, realloc, operator);
         supply = token.totalSupply();
 
@@ -585,6 +609,12 @@ contract AgentReallocationInvariantTest is StdInvariant, Test {
         assertEq(handler.crossOwnerMoves(), 0);
         assertEq(handler.conservationBreaks(), 0);
         assertEq(handler.atomicityBreaks(), 0);
+    }
+
+    /// ARCHITECTURE.md section 16.5: evaluations are never opened closer together than the minimum spacing.
+    function invariant_evaluationSpacing() public view {
+        assertEq(handler.earlyAdvances(), 0);
+        assertEq(realloc.lastEvaluationAt(), handler.lastAdvanceAt());
     }
 
     /// THREAT-MODEL.md invariant 4: cap per evaluation and capital floor on every source; one debit per evaluation.

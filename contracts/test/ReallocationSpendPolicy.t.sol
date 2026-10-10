@@ -8,6 +8,7 @@ import {IAgentReallocation} from "../src/IAgentReallocation.sol";
 import {IAgentSpendPolicy} from "../src/IAgentSpendPolicy.sol";
 import {PackedUserOperation} from "../src/kernel/IKernelModules.sol";
 import {MockERC20, MockKernelAccount} from "./utils/Mocks.sol";
+import {TEST_EVALUATION_INTERVAL, multisig} from "./utils/Roles.sol";
 
 /// How a reallocation passes through the source's spend policy (ARCHITECTURE.md sections 16.3 and 16.5). The source is
 /// a Kernel test double whose session-key operations run the spend policy as policy and hook. A move is one batched
@@ -35,8 +36,8 @@ contract ReallocationSpendPolicyTest is Test {
         vm.warp(1_790_000_000);
         token = new MockERC20();
         spend = new AgentSpendPolicy(address(token));
-        operator = makeAddr("operator");
-        realloc = new AgentReallocation(address(token), makeAddr("admin"), operator);
+        operator = multisig("operator");
+        realloc = new AgentReallocation(address(token), multisig("admin"), operator, TEST_EVALUATION_INTERVAL);
         source = new MockKernelAccount(address(spend), address(spend));
         sink = makeAddr("sink");
         owner = makeAddr("owner");
@@ -127,6 +128,7 @@ contract ReallocationSpendPolicyTest is Test {
 
     function test_movesAcrossEvaluationsShareTheDailyCap() public {
         source.handleSessionKeyOp(_moveOp(30e6, 30e6));
+        vm.warp(block.timestamp + TEST_EVALUATION_INTERVAL);
         vm.prank(operator);
         realloc.advanceEvaluation();
         PackedUserOperation memory op = _moveOp(25e6, 25e6);
@@ -141,6 +143,7 @@ contract ReallocationSpendPolicyTest is Test {
         vm.prank(operator);
         realloc.setPrincipal(sink, 5e6); // ceiling 20 units, sink holds 10
         source.handleSessionKeyOp(_moveOp(10e6, 10e6));
+        vm.warp(block.timestamp + TEST_EVALUATION_INTERVAL);
         vm.prank(operator);
         realloc.advanceEvaluation();
         PackedUserOperation memory op = _moveOp(1, 1);
