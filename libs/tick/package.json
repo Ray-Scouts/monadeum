@@ -10,8 +10,12 @@
   },
   "dependencies": {
     "@monadeum/external": "workspace:*",
+    "@monadeum/risk": "workspace:*",
     "@monadeum/strategy": "workspace:*",
-    "@nestjs/common": "^11.1.6"
+    "@monadeum/trading": "workspace:*",
+    "@monadeum/x402": "workspace:*",
+    "@nestjs/common": "^11.1.6",
+    "viem": "^2.56.9"
   },
   "devDependencies": {
     "@types/node": "^22.15.21",
