@@ -1,9 +1,6 @@
-import { allocateCapital } from "@monadeum/reproduction/allocate";
 import { PROTOCOL } from "monadeum-simulation/protocol";
 import type { ReactNode } from "react";
-import { Icon } from "@/components/Icon";
 import { Card, CardHead, Pill, Tag } from "@/components/ui";
-import type { EligibilityCheck } from "@/data/eligibility";
 import type { Agent, Provider, Trade, X402Purchase } from "@/data/types";
 import { usd } from "@/lib/format";
 
@@ -37,21 +34,21 @@ const None = ({ spoken }: { spoken: string }) => (
 
 /* ---------- Genome ---------- */
 
-type GenomeClass = "immutable" | "mutable" | "capped";
+type GenomeClass = "fixed" | "allowlist" | "capped";
 const CLASS_CHIP: Record<GenomeClass, [string, string]> = {
-  immutable: ["Immutable", "border border-line bg-surface-2 text-muted"],
-  mutable: ["Mutable", "bg-accent-wash text-accent-hi"],
-  capped: ["Capped mutable", "bg-berry-wash text-berry"],
+  fixed: ["Single option", "border border-line bg-surface-2 text-muted"],
+  allowlist: ["Allowlist", "bg-accent-wash text-accent-hi"],
+  capped: ["Capped", "bg-berry-wash text-berry"],
 };
 
 export function GenomePanel({ agent }: { agent: Agent }) {
   const g = agent.genome;
   const rows: { field: string; value: ReactNode; cls: GenomeClass; limit: string }[] = [
-    { field: "Strategy", value: "Trading", cls: "immutable", limit: "Only one strategy plugin in the MVP" },
+    { field: "Strategy", value: "Trading", cls: "fixed", limit: "Only one strategy plugin in the MVP" },
     {
       field: "Asset universe",
       value: <span className="flex flex-wrap gap-1.5">{g.assetUniverse.map((p) => <Tag key={p}>{p}</Tag>)}</span>,
-      cls: "mutable",
+      cls: "allowlist",
       limit: "Subset of the platform allowlist",
     },
     { field: "Risk tolerance", value: g.riskTolerance.toFixed(3), cls: "capped", limit: `${PROTOCOL.riskFloor} to ${PROTOCOL.riskCeiling} of capital` },
@@ -59,7 +56,7 @@ export function GenomePanel({ agent }: { agent: Agent }) {
     {
       field: "Signal horizon",
       value: `${g.timeHorizon} ticks`,
-      cls: "mutable",
+      cls: "capped",
       limit: `Validated by the strategy plugin. The simulation clips it to ${PROTOCOL.timeHorizonMin} to ${PROTOCOL.timeHorizonMax} ticks`,
     },
     {
@@ -68,14 +65,14 @@ export function GenomePanel({ agent }: { agent: Agent }) {
       cls: "capped",
       limit: `Protocol daily spend ceiling. The simulation clips it at ${PROTOCOL.informationBudgetCeiling} per tick`,
     },
-    { field: "Model configuration", value: g.modelConfiguration, cls: "capped", limit: `Allowed set: ${PROTOCOL.allowedModels.join(", ")}` },
+    { field: "Model configuration", value: g.modelConfiguration, cls: "allowlist", limit: `Allowed set: ${PROTOCOL.allowedModels.join(", ")}` },
   ];
   return (
     <Card>
       <CardHead title="Genome">
         <span className="font-mono text-[13px] text-muted">hash {g.hash}</span>
       </CardHead>
-      <Table caption="Genome fields, their class and protocol limit" head={<><th className={TH}>Field</th><th className={TH}>Value</th><th className={TH}>Class</th><th className={TH}>Protocol limit</th></>}>
+      <Table caption="Genome fields, how each is bounded, and the protocol limit" head={<><th className={TH}>Field</th><th className={TH}>Value</th><th className={TH}>Bound</th><th className={TH}>Protocol limit</th></>}>
         {rows.map((r) => {
           const [label, chip] = CLASS_CHIP[r.cls];
           return (
@@ -91,8 +88,8 @@ export function GenomePanel({ agent }: { agent: Agent }) {
         })}
       </Table>
       <Note>
-        Thresholds, cooldown, mutation rate and spend caps are not part of the genome: they are protocol constants, the same for everyone, and are never
-        inherited or mutated.
+        The genome is set when the owner creates the agent and does not change afterwards, by the protocol or by the owner. The reallocation cap, the
+        slot ceiling, the capital floor and the spend caps are not part of it: they are protocol constants, the same for everyone.
       </Note>
     </Card>
   );
@@ -180,70 +177,5 @@ export function PurchasesPanel({ purchases }: { purchases: X402Purchase[] }) {
       )}
       <Note>Provider responses are treated as untrusted data. They can never trigger a transaction on their own.</Note>
     </Card>
-  );
-}
-
-/* ---------- Reproduction ---------- */
-
-export function ReproductionPanel({ agent, checks }: { agent: Agent; checks: EligibilityCheck[] }) {
-  const okN = checks.filter((c) => c.ok).length;
-  const all = okN === checks.length;
-  const profit = Math.max(0, agent.capital - agent.principal);
-  const { childCapital, parentCapitalAfter } = allocateCapital({
-    capital: agent.capital,
-    principal: agent.principal,
-    fraction: PROTOCOL.reproductionFraction,
-    maxChildCapital: PROTOCOL.principal,
-  });
-  return (
-    <div className="grid gap-5 lg:grid-cols-2">
-      <Card>
-        <CardHead title="Conditions to reproduce">{all ? <Pill tone="good">Eligible</Pill> : <Pill tone="off">{okN} of {checks.length}</Pill>}</CardHead>
-        <ul className="m-0 grid list-none gap-2.5 p-0">
-          {checks.map((c) => (
-            <li key={c.key} className="grid grid-cols-[28px_minmax(0,1fr)] items-center gap-3 rounded-xl bg-surface-2 px-3.5 py-3">
-              <span className={`grid size-7 place-items-center rounded-full ${c.ok ? "bg-good-wash text-good" : "bg-bad-wash text-bad"}`}>
-                <Icon name={c.ok ? "check" : "x"} className="size-4" />
-              </span>
-              <div className="min-w-0">
-                <b>
-                  <span className="sr-only">{c.ok ? "Met: " : "Not met: "}</span>
-                  {c.label}
-                </b>
-                <small className="block text-xs text-muted">{c.detail}</small>
-              </div>
-            </li>
-          ))}
-        </ul>
-        <Note>
-          Evaluated every {PROTOCOL.evalEvery} ticks, never on a single tick. At most {PROTOCOL.maxDescendants} children per agent; this one has{" "}
-          {agent.childIds.length}.
-        </Note>
-      </Card>
-      <Card>
-        <CardHead title="If it reproduced today">{!all && <span className="text-[13px] text-muted">Illustration only: not eligible yet</span>}</CardHead>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2.5 text-sm">
-          <dt className="text-muted">Profit above principal</dt>
-          <dd className="m-0 text-right font-mono tabular">{usd(profit)}</dd>
-          <dt className="text-muted">{Math.round(PROTOCOL.reproductionFraction * 100)}% of profit</dt>
-          <dd className="m-0 text-right font-mono tabular">{usd(PROTOCOL.reproductionFraction * profit)}</dd>
-          <dt className="text-muted">Per-child cap</dt>
-          <dd className="m-0 text-right font-mono tabular">{usd(PROTOCOL.principal)}</dd>
-          <dt className="font-bold text-fg">Child&apos;s capital</dt>
-          <dd className="m-0 text-right font-mono text-lg font-bold text-accent-hi tabular">{usd(childCapital)}</dd>
-          <dt className="text-muted">Parent capital after</dt>
-          <dd className="m-0 text-right font-mono tabular">{usd(parentCapitalAfter)}</dd>
-        </dl>
-        <div className="mt-4 flex items-start gap-3 rounded-[14px] bg-good-wash px-4 py-3.5 text-sm">
-          <span className="mt-0.5 text-good">
-            <Icon name="shield" />
-          </span>
-          <span>
-            The parent never drops below its principal ({usd(agent.principal)}). The transfer is atomic on-chain: the system does not create capital, it
-            reallocates it.
-          </span>
-        </div>
-      </Card>
-    </div>
   );
 }

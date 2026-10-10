@@ -1,5 +1,4 @@
 import { shrinkageWeight, SHRINKAGE_K } from "@monadeum/fitness/math";
-import { PROTOCOL } from "monadeum-simulation/protocol";
 import { Card, CardHead, Tag } from "@/components/ui";
 import type { Agent, NepBreakdown } from "@/data/types";
 import { agentLabel, usd } from "@/lib/format";
@@ -7,14 +6,11 @@ import { agentLabel, usd } from "@/lib/format";
 /** Window NEP: realized PnL net of every cost, per EVOLUTION.md section 2.1. */
 export const nepOf = (n: NepBreakdown) => n.realizedPnl - n.x402 - n.gas - n.fees - n.slippage;
 
-export const reproductionThreshold = (principal: number) => principal * (1 + PROTOCOL.profitThresholdFraction);
-
 function CapitalChart({ agent }: { agent: Agent }) {
   const W = 480, H = 220, p = { l: 50, r: 12, t: 12, b: 28 };
   const v = agent.capitalHistory.length > 1 ? agent.capitalHistory : [agent.capital, agent.capital];
-  const th = reproductionThreshold(agent.principal);
   const mn = Math.min(...v, agent.principal) * 0.92;
-  const mx = Math.max(...v, th) * 1.05;
+  const mx = Math.max(...v, agent.principal) * 1.05;
   const x = (i: number) => p.l + (i / (v.length - 1)) * (W - p.l - p.r);
   const y = (val: number) => p.t + (1 - (val - mn) / (mx - mn || 1)) * (H - p.t - p.b);
   const d = v.map((val, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(val).toFixed(1)}`).join("");
@@ -26,7 +22,7 @@ function CapitalChart({ agent }: { agent: Agent }) {
       viewBox={`0 0 ${W} ${H}`}
       className="block h-auto w-full"
       role="img"
-      aria-label={`Capital of ${agentLabel(agent)} over the last ${v.length} ticks, now ${usd(agent.capital)}. Principal ${usd(agent.principal)}, reproduction threshold ${usd(th)}.`}
+      aria-label={`Capital of ${agentLabel(agent)} after each of the last ${v.length - 1} evaluations, now ${usd(agent.capital)}. Principal ${usd(agent.principal)}.`}
     >
       <defs>
         <linearGradient id={grad} x1="0" x2="0" y1="0" y2="1">
@@ -43,12 +39,11 @@ function CapitalChart({ agent }: { agent: Agent }) {
         </g>
       ))}
       <line x1={p.l} x2={W - p.r} y1={y(agent.principal)} y2={y(agent.principal)} stroke="var(--muted)" strokeDasharray="4 4" />
-      <line x1={p.l} x2={W - p.r} y1={y(th)} y2={y(th)} stroke="var(--good)" strokeDasharray="4 4" />
       <path d={`${d}L${x(v.length - 1)},${H - p.b}L${p.l},${H - p.b}Z`} fill={`url(#${grad})`} />
       <path d={d} fill="none" stroke="var(--accent)" strokeWidth={2.2} />
       <circle cx={x(v.length - 1)} cy={y(last)} r={5} fill="var(--accent)" stroke="var(--surface)" strokeWidth={2} />
       <text x={p.l} y={H - 6} className={textCls}>
-        {v.length} ticks ago
+        {v.length - 1} evaluations ago
       </text>
       <text x={W - p.r} y={H - 6} textAnchor="end" className={textCls}>
         now
@@ -61,7 +56,6 @@ function Legend() {
   const items = [
     ["Capital", "bg-accent"],
     ["Principal", "bg-muted"],
-    ["Reproduction threshold", "bg-good"],
   ] as const;
   return (
     <ul className="flex flex-wrap gap-3.5 text-xs text-muted" aria-label="Chart legend">

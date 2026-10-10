@@ -4,7 +4,7 @@ import { getSource, IS_SAMPLE_DATA } from "@/data/source";
 import { agentLabel } from "@/lib/format";
 import { EventFeed } from "./_components/EventFeed";
 
-export const metadata: Metadata = { title: "Evolution events" };
+export const metadata: Metadata = { title: "Selection events" };
 
 export default async function Page() {
   const source = getSource();
@@ -16,8 +16,8 @@ export default async function Page() {
       events={events}
       labels={labels}
       heading={
-        <ScreenHead title="Evolution events" aside={IS_SAMPLE_DATA ? <SampleBadge /> : undefined}>
-          Everything that happens in the population, including what the policy engine blocked and why.
+        <ScreenHead title="Selection events" aside={IS_SAMPLE_DATA ? <SampleBadge /> : undefined}>
+          Reallocations between an owner's agents, retirements, and what the policy engine blocked and why.
         </ScreenHead>
       }
     />

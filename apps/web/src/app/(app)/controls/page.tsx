@@ -15,7 +15,7 @@ export default async function ControlsPage() {
   const live = agents.filter((a) => a.status !== "retired");
   const picks: PickableAgent[] = live
     .slice(0, 6)
-    .map(({ id, name, capital, genome, generation, status }) => ({ id, name, capital, genome, generation, status }));
+    .map(({ id, name, capital, genome, status }) => ({ id, name, capital, genome, status }));
   // a retired agent's balance stays withdrawable, so it stands in for the recovery that already ran this window
   const prior = agents.find((a) => a.status === "retired") ?? live[live.length - 1];
 

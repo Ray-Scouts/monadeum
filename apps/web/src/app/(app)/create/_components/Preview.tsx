@@ -1,4 +1,5 @@
 import { riskBand } from "@monadeum/fitness/math";
+import { CAPITAL_FLOOR, EVALUATION_CADENCE, RETIREMENT_WINDOWS } from "@monadeum/reallocation/constants";
 import { PROTOCOL } from "monadeum-simulation/protocol";
 import { Card, Identicon, Pill } from "@/components/ui";
 import { Icon } from "@/components/Icon";
@@ -6,12 +7,11 @@ import type { Agent } from "@/data/types";
 import { usd } from "@/lib/format";
 import { previewHash, type Draft } from "./draft";
 
-export const identicon = (draft: Draft) => ({ genome: { hash: previewHash(draft) }, generation: 0, status: "active" as const });
+export const identicon = (draft: Draft) => ({ genome: { hash: previewHash(draft) }, status: "active" as const });
 
 export const NICHE_COUNT = PROTOCOL.riskCuts.length + 1;
 
 export function Preview({ draft, amount }: { draft: Draft; amount: number }) {
-  const percentile = PROTOCOL.pThreshold * 100;
   const rows: [string, string][] = [
     ["Max risk", `${draft.riskTolerance.toFixed(2)} · niche ${riskBand(draft.riskTolerance) + 1} of ${NICHE_COUNT}`],
     ["Tick", `every ${draft.executionFrequency}`],
@@ -27,7 +27,7 @@ export function Preview({ draft, amount }: { draft: Draft; amount: number }) {
         <div className="min-w-0">
           <span className="eyebrow">Preview</span>
           <div className="mt-1 font-display text-[22px] font-bold">New agent</div>
-          <Pill tone="accent">Generation 0</Pill>
+          <Pill tone="accent">Fixed genome</Pill>
         </div>
       </div>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2.5 text-sm">
@@ -39,19 +39,20 @@ export function Preview({ draft, amount }: { draft: Draft; amount: number }) {
         ))}
       </dl>
       <div className="grid gap-1.5 border-t border-line-soft pt-3.5 text-[13px]">
-        <span className="eyebrow">To have its first child it will need</span>
+        <span className="eyebrow">Once it is running</span>
         <span className="flex items-start gap-2">
           <Icon name="check" className="mt-0.5 size-4 flex-none text-good" />
-          {PROTOCOL.nMin} trades and {PROTOCOL.cooldown} ticks of age
+          Ranked every {EVALUATION_CADENCE} ticks, once it has trades in the window
         </span>
         <span className="flex items-start gap-2">
           <Icon name="check" className="mt-0.5 size-4 flex-none text-good" />
-          {percentile === 50 ? "A place in the top half of its niche" : `A fitness percentile of at least ${percentile} in its niche`}
+          Capital moves to or from your other agents only under a reallocation policy you sign. Off by default
         </span>
         <span className="flex items-start gap-2">
           <Icon name="check" className="mt-0.5 size-4 flex-none text-good" />
           <span>
-            To reach <b className="font-mono tabular">{usd(amount * (1 + PROTOCOL.profitThresholdFraction))}</b> in capital
+            Retires below <b className="font-mono tabular">{usd(CAPITAL_FLOOR)}</b>, or after {RETIREMENT_WINDOWS} evaluations in a row in the
+            bottom tenth of its niche. Its balance stays in its account
           </span>
         </span>
       </div>

@@ -9,8 +9,8 @@
       "name": "@monadeum/web",
       "dependencies": {
         "@monadeum/fitness": "workspace:*",
+        "@monadeum/reallocation": "workspace:*",
         "@monadeum/recovery": "workspace:*",
-        "@monadeum/reproduction": "workspace:*",
         "monadeum-simulation": "workspace:*",
         "next": "^16.4.0",
         "react": "^19.3.0",

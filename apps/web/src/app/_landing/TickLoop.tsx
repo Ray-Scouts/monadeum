@@ -10,7 +10,7 @@ const STEPS = [
   { title: "Propose", body: "Suggests a concrete trade within its genome." },
   { title: "Policy", body: "Caps, allowed contracts and budgets." },
   { title: "Execute", body: "Only approved actions reach Kuru from its smart account." },
-  { title: "Evolve", body: "Its fitness updates. The best can have offspring." },
+  { title: "Evaluate", body: "Its fitness updates. Under an owner policy, capital can shift between that owner's agents." },
 ] as const;
 const GATE = 3;
 

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
  * Renders the final value on the server and at rest. The first time it scrolls into view,
  * it counts up from zero once. Reduced motion keeps the final value.
  */
-export function CountUp({ to, prefix = "", className = "" }: { to: number; prefix?: string; className?: string }) {
+export function CountUp({ to, prefix = "", suffix = "", className = "" }: { to: number; prefix?: string; suffix?: string; className?: string }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [value, setValue] = useState(to);
 
@@ -36,8 +36,8 @@ export function CountUp({ to, prefix = "", className = "" }: { to: number; prefi
 
   return (
     <span ref={ref} className={className}>
-      <span className="sr-only">{prefix}{to}</span>
-      <span aria-hidden="true">{prefix}{value}</span>
+      <span className="sr-only">{prefix}{to}{suffix}</span>
+      <span aria-hidden="true">{prefix}{value}{suffix}</span>
     </span>
   );
 }

@@ -2,7 +2,6 @@
 
 import { useId, useState, type ReactNode } from "react";
 import { SHRINKAGE_K, shrinkageWeight } from "@monadeum/fitness/math";
-import { PROTOCOL } from "monadeum-simulation/protocol";
 import s from "./landing.module.css";
 
 /** Illustrative inputs. The weight and the blend are the real fitness math. */
@@ -50,8 +49,8 @@ export function ShrinkageChart({ children }: { children: ReactNode }) {
               <text x={P.l - 8} y={y(t) + 4} textAnchor="end">{t * 100}%</text>
             </g>
           ))}
-          <line x1={x(PROTOCOL.nMin)} x2={x(PROTOCOL.nMin)} y1={P.t} y2={HD - P.b} stroke="var(--berry)" strokeDasharray="4 4" />
-          <text x={x(PROTOCOL.nMin) + 6} y={P.t + 12} style={{ fill: "var(--berry)" }}>minimum {PROTOCOL.nMin} to reproduce</text>
+          <line x1={x(SHRINKAGE_K)} x2={x(SHRINKAGE_K)} y1={P.t} y2={HD - P.b} stroke="var(--berry)" strokeDasharray="4 4" />
+          <text x={x(SHRINKAGE_K) + 6} y={P.t + 12} style={{ fill: "var(--berry)" }}>half trust at {SHRINKAGE_K} trades</text>
           <path d={`${CURVE}L${x(N_MAX)},${HD - P.b}L${x(0)},${HD - P.b}Z`} fill="var(--sky)" opacity={0.12} />
           <path d={CURVE} fill="none" stroke="var(--sky)" strokeWidth={2.5} />
           <line x1={x(n)} x2={x(n)} y1={y(w)} y2={HD - P.b} stroke="var(--fg)" strokeOpacity={0.3} />

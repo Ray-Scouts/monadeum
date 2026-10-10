@@ -1,30 +1,29 @@
-import { allocateCapital } from "@monadeum/reproduction/allocate";
+import { CAPITAL_FLOOR, REALLOCATION_CAP, SLOT_CEILING } from "@monadeum/reallocation/constants";
 import { PROTOCOL } from "monadeum-simulation/protocol";
+import { planReallocation } from "@monadeum/reallocation/plan";
 
 /**
- * Illustrative reproduction used across the landing page. The profit figure is a sample;
- * every derived number goes through the real protocol constants and `allocateCapital`.
+ * Illustrative reallocation used across the landing page: one owner, three agents with the protocol principal.
+ * The capitals after trading are a sample; the move goes through the real protocol bounds and `planReallocation`.
  */
-const SAMPLE_PROFIT_FRACTION = 0.64;
-
 const principal = PROTOCOL.principal;
-const profit = principal * SAMPLE_PROFIT_FRACTION;
-const capitalBefore = principal + profit;
-const { childCapital, parentCapitalAfter } = allocateCapital({
-  capital: capitalBefore,
-  principal,
-  fraction: PROTOCOL.reproductionFraction,
-  maxChildCapital: PROTOCOL.principal,
-});
+const SAMPLE_CAPITAL = { high: principal * 1.32, middle: principal * 1.04, low: principal * 0.6 } as const;
 
-export const REPRO = {
+const plan = planReallocation(
+  [SAMPLE_CAPITAL.low],
+  [{ capital: SAMPLE_CAPITAL.high, principal }],
+  REALLOCATION_CAP,
+  SLOT_CEILING,
+  CAPITAL_FLOOR,
+);
+
+export const REALLOC = {
   principal,
-  profit,
-  capitalBefore,
-  threshold: principal * (1 + PROTOCOL.profitThresholdFraction),
-  childCapital,
-  parentCapitalAfter,
-  profitAfter: parentCapitalAfter - principal,
+  before: SAMPLE_CAPITAL,
+  moved: plan.moved,
+  after: { high: SAMPLE_CAPITAL.high + plan.moved, middle: SAMPLE_CAPITAL.middle, low: SAMPLE_CAPITAL.low - plan.moved },
+  total: SAMPLE_CAPITAL.high + SAMPLE_CAPITAL.middle + SAMPLE_CAPITAL.low,
+  ceiling: SLOT_CEILING * principal,
   /** The bars span $0 up to this value. */
   scale: principal * 2,
 } as const;

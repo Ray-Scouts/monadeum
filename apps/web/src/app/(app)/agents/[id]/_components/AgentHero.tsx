@@ -14,13 +14,11 @@ import { CopyButton } from "./CopyButton";
  */
 export function AgentHero({
   agent,
-  parent,
-  populationSize,
+  owner,
   sample,
 }: {
   agent: Agent;
-  parent: { id: string; name: string } | null;
-  populationSize: number;
+  owner: { id: string; name: string } | null;
   sample: boolean;
 }) {
   const [status, setStatus] = useState<AgentStatus>(agent.status);
@@ -60,23 +58,18 @@ export function AgentHero({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-[clamp(28px,3.4vw,40px)] font-bold break-all">{label}</h1>
-            <StatusPill agent={{ ...agent, status }} populationSize={populationSize} />
+            <StatusPill agent={{ ...agent, status }} />
             {sample && <SampleBadge />}
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-muted">
-            <span>Generation {agent.generation}</span>
-            <span>
-              {parent ? (
-                <>
-                  Child of{" "}
-                  <Link href={`/agents/${parent.id}`} className="font-semibold text-accent-hi hover:underline">
-                    {agentLabel(parent)}
-                  </Link>
-                </>
-              ) : (
-                "Founder"
-              )}
-            </span>
+            {owner && (
+              <span>
+                Owned by{" "}
+                <Link href={`/capital-flow?owner=${owner.id}`} className="font-semibold text-accent-hi hover:underline">
+                  {owner.name}
+                </Link>
+              </span>
+            )}
             <span
               title={`Agent's ERC-4337 smart account: ${agent.address}`}
               className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line-soft bg-surface-2 px-2 py-1 font-mono text-[13px] text-fg"

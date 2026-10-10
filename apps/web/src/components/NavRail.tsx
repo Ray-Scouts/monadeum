@@ -6,7 +6,7 @@ import { Icon, Logo, type IconName } from "./Icon";
 
 const LINKS: { href: string; label: string; short?: string; icon: IconName }[] = [
   { href: "/population", label: "Population", icon: "population" },
-  { href: "/lineage", label: "Lineage", icon: "tree" },
+  { href: "/capital-flow", label: "Capital flow", short: "Flow", icon: "flow" },
   { href: "/events", label: "Events", icon: "bolt" },
   { href: "/controls", label: "Controls", icon: "shield" },
   { href: "/create", label: "New agent", short: "New", icon: "plus" },
@@ -39,7 +39,7 @@ export function NavRail({ live, cap }: { live: number; cap: number }) {
       <div className="mt-auto hidden gap-2 rounded-[14px] bg-surface-2 p-3.5 text-xs text-muted md:grid">
         <div className="flex justify-between"><span>Population cap</span><span className="font-mono">{live}/{cap}</span></div>
         <div className="h-1.5 overflow-hidden rounded-full bg-line-soft"><span className="block h-full rounded-full bg-accent" style={{ width: `${(live / cap) * 100}%` }} /></div>
-        <span>At the cap, reproduction pauses until a slot frees up.</span>
+        <span>At the cap, creating a new agent is refused. No agent is retired to make room.</span>
       </div>
     </aside>
   );

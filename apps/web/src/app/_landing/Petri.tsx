@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { REALLOCATION_CAP } from "@monadeum/reallocation/constants";
 import { onThemeChange } from "./hooks";
 
 const NICHE_VARS = ["--sky", "--mint", "--accent", "--berry", "--sun"] as const;
@@ -15,8 +16,17 @@ interface Cell {
   r: number;
   age: number;
   dead: boolean;
+  /** Flash when it receives capital, fading from 1 to 0. */
   split: number;
+  owner: number;
+  /** Capital relative to its starting amount. */
+  cap: number;
 }
+
+/** Decorative: a handful of owners, the protocol reallocation cap, and a ceiling scaled down so the dish stays legible. */
+const OWNERS = 6;
+const SHARE = REALLOCATION_CAP;
+const CEILING = 2.5;
 
 interface Link {
   a: Cell;
@@ -29,14 +39,15 @@ interface PetriProps {
   n: number;
   /** Round dish (hero) or rectangular field (closing band). */
   round: boolean;
-  /** CSS variable used for parent-to-child links. Defaults to --fg. */
+  /** CSS variable used for the link drawn when capital moves. Defaults to --fg. */
   lineColor?: string;
   className?: string;
 }
 
 /**
- * Decorative population animation. Cells are colored by risk niche, the fittest split with a
- * flash and a link to their child, the weakest retire as hollow rings, and the pointer pushes
+ * Decorative population animation. Cells are colored by risk niche. A fit cell takes a capped share
+ * of capital from the weakest cell of the same owner, shown as a link and a flash; the weakest retire
+ * as hollow rings and keep their size; new cells appear as owners create agents; the pointer pushes
  * cells away. Randomness is seeded inside the effect, so server and client markup match.
  */
 export function Petri({ n, round, lineColor = "--fg", className = "" }: PetriProps) {
@@ -78,6 +89,8 @@ export function Petri({ n, round, lineColor = "--fg", className = "" }: PetriPro
         age: Math.random() * 200,
         dead: false,
         split: 0,
+        owner: Math.floor(Math.random() * OWNERS),
+        cap: 1,
       };
       cells.push(c);
       return c;
@@ -129,23 +142,34 @@ export function Petri({ n, round, lineColor = "--fg", className = "" }: PetriPro
           if (!inside(c.x, c.y)) { c.vx *= -1; c.vy *= -1; c.x += c.vx * 3; c.y += c.vy * 3; }
           c.age++;
           c.fit = Math.min(1, Math.max(0, c.fit + (Math.random() - 0.5) * 0.012));
-          if (c.fit > 0.8 && c.age > 260 && alive < n * 1.5 && Math.random() < 0.006) {
-            c.split = 1;
-            c.age = 0;
-            const child = spawn(
-              c.x + (Math.random() - 0.5) * 8,
-              c.y + (Math.random() - 0.5) * 8,
-              c.fit * 0.85,
-              Math.random() < 0.85 ? c.niche : Math.floor(Math.random() * 5),
-            );
-            links.push({ a: c, b: child, life: 1 });
+          // a fit cell receives a capped share from the weakest live cell of the same owner, up to a ceiling
+          if (c.fit > 0.8 && c.age > 260 && c.cap < CEILING && Math.random() < 0.006) {
+            const low = cells
+              .filter((o) => !o.dead && o !== c && o.owner === c.owner && o.fit < 0.4)
+              .sort((p, q) => p.fit - q.fit)[0];
+            if (low) {
+              const amount = Math.min(SHARE * low.cap, CEILING - c.cap);
+              low.cap -= amount;
+              c.cap += amount;
+              c.split = 1;
+              c.age = 0;
+              links.push({ a: low, b: c, life: 1 });
+            }
           }
           if (c.fit < 0.12 && c.age > 300 && Math.random() < 0.004) c.dead = true;
         }
         c.split = Math.max(0, c.split - 0.015);
       }
+      // owners keep creating agents, so retirements do not empty the dish
+      if (alive < n && Math.random() < 0.01) {
+        let x = 0;
+        let y = 0;
+        let tries = 0;
+        do { x = Math.random() * W; y = Math.random() * H; } while (!inside(x, y) && tries++ < 50);
+        spawn(x, y);
+      }
       const di = cells.findIndex((c) => c.dead);
-      if (cells.length > n * 2 && di > -1) cells.splice(di, 1);
+      if (cells.length > n * 1.5 && di > -1) cells.splice(di, 1);
     };
 
     const draw = () => {
@@ -160,7 +184,7 @@ export function Petri({ n, round, lineColor = "--fg", className = "" }: PetriPro
         ctx.stroke();
       }
       for (const c of cells) {
-        const r = c.r + c.fit * 3 + c.split * 5;
+        const r = (c.r + c.fit * 3) * Math.sqrt(c.cap) + c.split * 5;
         ctx.beginPath();
         ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
         if (c.dead) {
