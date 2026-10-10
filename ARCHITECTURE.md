@@ -66,7 +66,8 @@ The two shaded facts that matter most: the Policy/Risk Engine sits **between** t
 ## 3. Capital flow
 
 ```
-User funds embedded wallet (fiat on-ramp or external wallet transfer)
+User funds embedded wallet with USDC on Monad (card on-ramp, or a
+transfer from an external wallet or exchange; see section 6.1)
   -> user allocates capital to a specific agent
   -> platform deploys (or reuses, counterfactually) the agent's smart account
   -> capital transferred from user's embedded wallet to agent's smart account
@@ -178,9 +179,44 @@ User
 
 **Alternative considered and deferred**: EIP-7702 delegation (letting an agent's own EOA temporarily behave like a smart account) is confirmed live on Monad at the protocol level and is materially cheaper per transaction than deploying a full ERC-4337 account. It was not chosen for the MVP for two concrete reasons found in research: Monad's 7702 implementation carries two chain-specific constraints not present on Ethereum (a delegated EOA cannot drop below a 10 MON reserve balance, and `CREATE`/`CREATE2` calls are banned inside delegated-code execution), and the session-key/spend-limit tooling ecosystem around 7702 on Monad specifically is less mature than ERC-4337's six-vendor bundler/paymaster ecosystem. Revisit 7702 as a gas-optimization pass once the ERC-4337 architecture is proven in testnet, not before.
 
+### 6.1 Funding flow
+
+**Decision**: a user funds their embedded wallet by buying USDC on Monad mainnet with a card through **Ramp Network**, opened from inside the app with the asset locked to USDC on Monad and the destination preset to the user's own embedded wallet. **Coinbase Onramp** is the secondary vendor, pending one confirmation below. Where neither serves the user, the fallback is USDC on Base through Privy's built-in on-ramp, moved to Monad with Circle's CCTP. The full vendor comparison, with a FACT or ASSUMPTION label and a source on every claim, is in `docs/funding-onramp.md`. Building this flow and usability-testing it with non-crypto-native participants is the remaining work on issue #41; neither has been done.
+
+**Why Ramp**: it is the only vendor whose own sources confirm USDC on Monad mainnet specifically. Its public asset API lists USDC on chain `MONAD` at `0x754704Bc059F8C67012fEd69BC8A327a5aafb603`, the same contract Circle publishes for USDC on Monad, and its announcement covers card, Apple Pay, and Google Pay purchases in the US, the UK, and the EU (both checked 2026-10-09). Its widget can lock the purchase to a single asset and preset the destination address, so the user never chooses a network or pastes an address. Supporting MON on Monad, or USDC on another chain, did not count: MoonPay's and Transak's own APIs list Monad assets but not USDC on Monad, Stripe's onramp does not list Monad at all, and Privy's built-in on-ramp routes to Stripe and MoonPay. Coinbase's exchange lists USDC on the `monad` network and its Onramp documentation says Onramp covers every network Coinbase supports, but the authenticated Buy Options API that would confirm it for Onramp was not called; until it is, Coinbase is ranked second rather than offered.
+
+**Flow (mainnet)**:
+
+```
+1. User picks an amount in dollars on the Fund step.
+2. App asks the API for an on-ramp session. The API, not the client, sets the
+   destination to the authenticated user's own embedded wallet address and
+   locks the asset to USDC on Monad.
+3. Ramp's widget opens inside the app. Ramp runs its own identity check and
+   takes the card payment. The platform never sees card or identity data.
+4. Ramp delivers USDC on Monad to the embedded wallet.
+5. The indexer credits the user's available balance only when it observes a
+   Transfer of the canonical USDC contract to that wallet. Ramp's webhook
+   drives the progress display only; it never credits a balance.
+6. User confirms the allocation. The embedded wallet signs an EIP-3009
+   transferWithAuthorization to the agent's smart account address (deployed or
+   counterfactual). A platform relayer submits it and pays the gas (section 7).
+7. The agent's smart account is deployed (paymaster-sponsored) and starts.
+```
+
+**Fitting section 7, no MON at any step**: the user pays the on-ramp in dollars, receives USDC, and the two transactions that follow, the allocation transfer and the account deployment, are both sponsored. The allocation transfer is the step section 7 did not previously cover: the embedded wallet is a plain EOA, and a plain `transfer` from it would need MON for gas. It is covered by a relayed EIP-3009 authorization rather than by delegating the embedded wallet with EIP-7702 (which Privy's native gas sponsorship uses, and which lists Monad). The reason is the root wallet's role: it owns every agent the user has (`THREAT-MODEL.md` scenario G), so attaching delegated code to it adds code to the most sensitive account in the system, and the interaction of Monad's 7702 reserve-balance rule with a delegated wallet holding no MON is unverified. An EIP-3009 authorization names the recipient and amount inside the user's signature, so the relayer can submit it but cannot redirect it. A read of the Monad USDC contract on 2026-10-09 shows it exposes the EIP-3009 type hashes; a relayed `transferWithAuthorization` on Monad has not yet been executed, and that testnet spike precedes implementation. If it fails, Privy's native sponsorship is the fallback, with the delegation concern above recorded as accepted risk.
+
+**Other paths**: a user who already holds USDC on Monad, or a Coinbase account that can withdraw it, can send it to the embedded wallet address; this is the advanced path, behind the same "USDC on Monad only" warning, and never the default screen. On testnet no card on-ramp applies (Stripe states it does not support testnets; Ramp's testnet support for Monad is unconfirmed), so testnet funding uses test assets from a separate source. Funding never sets either mainnet flag (`SECURITY.md` section 10).
+
+**Fallback when no vendor serves the user directly**: buy USDC on Base through Privy's flow (Stripe in the US, MoonPay elsewhere), then burn on Base and mint on Monad with CCTP, both chains being CCTP-supported per Circle. It adds two transactions, a wait for Circle's attestation, a dependency on Circle's attestation service on both chains, gas on two chains to sponsor, and a state where funds are stranded on Base if a step fails, which needs its own recovery screen. Bridges that mint a wrapped USDC are not used, because the wrapped token is not the settlement asset.
+
+**What is unverified**: USDC on Monad through Coinbase Onramp specifically; Ramp's identifier `MONAD_USDC`, its excluded regions for this asset, and its partner terms; a relayed EIP-3009 transfer on Monad; the CCTP contract addresses and version on Monad for the fallback. Two costs are known and are not designed away: Ramp requires an identity document from the first purchase in the US, and its minimum card fee of about 2.49 EUR is roughly a quarter of a 10 USD first deposit. On-ramp fees are paid before capital enters the system, so they are outside the cost model in `ECONOMICS.md`; they are a user-facing cost that usability testing must surface.
+
 ## 7. Gasless onboarding
 
 **Decision**: the platform runs a paymaster (via the same ZeroDev infrastructure used for the smart account itself) that sponsors two specific transaction types, each under an explicit budget: (1) an agent's smart account deployment, and (2) an agent's first N x402 payments and first N trades after creation, up to a fixed MON budget per agent. Beyond that budget, the agent's own smart account pays its own gas out of its allocated capital, same as any other operating cost.
+
+A third sponsored type, added with the funding flow (section 6.1): the user's allocation transfer of USDC from the embedded wallet to an agent's smart account, submitted by a platform relayer as an EIP-3009 authorization the user signed. It has its own budget, a fixed number of relayed allocations per user per day, separate from the per-agent budget above, because it is spent before the agent exists. When it is exhausted, the allocation waits for the next window; it is never submitted unsponsored from a wallet that holds no MON.
 
 **Why capped, not unlimited, sponsorship**: unlimited gas sponsorship is a direct, unmetered cost center with no natural circuit breaker, and a compromised or degenerate agent (for instance one caught in a failed-transaction retry loop) could otherwise consume unbounded platform funds through gas alone, independent of its own trading capital. A fixed per-agent sponsorship budget makes the cost of onboarding one agent a known, bounded number that feeds directly into `ECONOMICS.md`'s cost model, and it fails closed: once the budget is exhausted, gas sponsorship stops and the agent must fund its own gas or become inactive, rather than the platform absorbing unbounded cost silently.
 
@@ -272,7 +308,7 @@ Next.js, TypeScript, Tailwind, viem. Wagmi is not adopted as a core dependency: 
 
 Priority order for the dashboard, matching the brief's own list with the brief's lineage view replaced by the adopted mechanism's equivalent: onboarding and agent creation, funding, population view, a per-owner capital-flow view (reallocations between the owner's agents and retirements, replacing the lineage view, since nothing has descendants), per-agent performance and transparency (wallet address, transactions, x402 spend, trades visible without reading logs, and why the agent did or did not send or receive capital at the last evaluation), selection event feed (reallocations and retirements).
 
-**Current state (`apps/web`).** The frontend exists as `apps/web`: Next.js App Router, Tailwind CSS, and strict TypeScript, with the screens above plus a landing page. No API exists yet, so every screen reads a deterministic sample data source behind one typed interface, `PopulationSource`, and says on screen that the data is a sample. Replacing that source is the only change needed when the API lands. viem and the Privy SDK are not installed yet, because nothing is read on-chain and nothing is signed; they arrive with the login and API work. The frontend never restates a protocol constant: it imports them from `@monadeum/fitness/math`, `@monadeum/reproduction/allocate`, `@monadeum/recovery/decide`, and `monadeum-simulation/protocol`, so a change to a proposed default in `EVOLUTION.md` reaches the UI through the same code the simulation uses. The five reproduction eligibility conditions still live in the simulation, so the frontend evaluates them with those same imported constants. Those screens, the lineage view, and `@monadeum/reproduction/allocate` show the superseded reproduction mechanism (`EVOLUTION.md` section 3.6); they are sample screens, and replacing them with the reallocation and retirement views above is frontend work under issue #43, not a statement that reproduction is current.
+**Current state (`apps/web`).** The frontend exists as `apps/web`: Next.js App Router, Tailwind CSS, and strict TypeScript, with the screens above plus a landing page. No API exists yet, so every screen reads a deterministic sample data source behind one typed interface, `PopulationSource`, and says on screen that the data is a sample. Replacing that source is the only change needed when the API lands. viem and the Privy SDK are not installed yet, because nothing is read on-chain and nothing is signed; they arrive with the login and API work. The frontend never restates a protocol constant: it imports them from `@monadeum/fitness/math`, `@monadeum/reproduction/allocate`, `@monadeum/recovery/decide`, and `monadeum-simulation/protocol`, so a change to a proposed default in `EVOLUTION.md` reaches the UI through the same code the simulation uses. The five reproduction eligibility conditions still live in the simulation, so the frontend evaluates them with those same imported constants. Those screens, the lineage view, and `@monadeum/reproduction/allocate` show the superseded reproduction mechanism (`EVOLUTION.md` section 3.6); they are sample screens, and replacing them with the reallocation and retirement views above is frontend work under issue #43, not a statement that reproduction is current. The create flow's Fund step is a sample: it picks a testnet amount (1 to 100 USD, presets 5, 10, and 25) and assumes the funds already exist, with no on-ramp step. The mainnet flow in section 6.1 adds the purchase before allocation, and its 5 USD preset is below Ramp's minimum purchase of 6.25 EUR for USDC on Monad, so mainnet presets are set when that flow is built.
 
 ## 16. Interface contracts (addendum)
 
