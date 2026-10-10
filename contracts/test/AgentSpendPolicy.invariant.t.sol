@@ -25,8 +25,11 @@ contract SpendPolicyHandler is Test {
     address[] internal targets;
     bytes4[] internal selectors;
 
-    // Model of the allowlist, maintained independently of the contract's own bookkeeping.
+    address public immutable tradedToken;
+
+    // Model of the allowlist and the traded assets, maintained independently of the contract's own bookkeeping.
     mapping(address => mapping(bytes4 => bool)) internal modelAllowed;
+    mapping(address => bool) internal modelTraded;
 
     // Ghost state.
     uint256[] public spendTimes;
@@ -38,6 +41,7 @@ contract SpendPolicyHandler is Test {
     uint256 public dailyViolations; // record accepted spend that takes the model window above dailyCap
     uint256 public totalMismatches; // check returned a total different from the model's
     uint256 public recordWithoutCheck; // record accepted an operation check rejects
+    uint256 public tradedViolations; // setTradedAsset accepted a token it must refuse
     uint256 public accepted;
     uint256 public rejected;
 
@@ -52,6 +56,8 @@ contract SpendPolicyHandler is Test {
         targets.push(makeAddr("otherStranger"));
         targets.push(address(policy_));
         targets.push(account_);
+        tradedToken = makeAddr("tradedAsset");
+        targets.push(tradedToken);
         selectors.push(TRANSFER);
         selectors.push(APPROVE);
         selectors.push(SWAP);
@@ -68,6 +74,11 @@ contract SpendPolicyHandler is Test {
         // Allowlist entries on the policy and the account must never let a call through.
         _setAllowed(address(policy_), selectors[5], true);
         _setAllowed(account_, SWAP, true);
+        // The base of the agent's market: recipient-checked, uncounted, never a recipient.
+        policy_.setTradedAsset(tradedToken, true);
+        modelTraded[tradedToken] = true;
+        _setAllowed(tradedToken, APPROVE, true);
+        _setAllowed(tradedToken, TRANSFER, true);
         vm.stopPrank();
     }
 
@@ -129,8 +140,29 @@ contract SpendPolicyHandler is Test {
         try policy.setAllowed(target, sel, allowed) {
             modelAllowed[target][sel] = allowed;
         } catch {
-            // Only the settlement-asset rule may refuse an allowlist change.
-            require(target == asset && sel != TRANSFER && sel != APPROVE, "unexpected setAllowed revert");
+            // Only the token-selector rules may refuse an allowlist change: the settlement asset and a traded asset
+            // admit only transfer and approve, and no other target may hold either.
+            bool tokenSel = sel == TRANSFER || sel == APPROVE;
+            bool expected = target == asset ? !tokenSel : tokenSel != modelTraded[target];
+            require(expected, "unexpected setAllowed revert");
+        }
+    }
+
+    /// Marks or unmarks any pool target as a traded asset; the contract must refuse the asset, the policy, the
+    /// account, and any target with a selector allowed.
+    function toggleTraded(uint256 targetSeed, bool isTraded) external {
+        address target = targets[targetSeed % targets.length];
+        bool anyAllowed;
+        for (uint256 i = 0; i < selectors.length; ++i) {
+            if (modelAllowed[target][selectors[i]]) anyAllowed = true;
+        }
+        bool mustRefuse = target == asset || target == address(policy) || target == account || anyAllowed;
+        vm.prank(account);
+        try policy.setTradedAsset(target, isTraded) {
+            if (mustRefuse) ++tradedViolations;
+            modelTraded[target] = isTraded;
+        } catch {
+            require(mustRefuse, "unexpected setTradedAsset revert");
         }
     }
 
@@ -146,12 +178,15 @@ contract SpendPolicyHandler is Test {
             ? raw % 1e6
             : amountKind == 1 ? raw % (uint256(PER_TX_CAP) + 1) : amountKind == 2 ? PER_TX_CAP + raw % 10 : raw;
         if ((seed >> 4) % 4 != 0) {
-            uint256 shape = (seed >> 8) % 4;
+            uint256 shape = (seed >> 8) % 5;
             address recipient = targets[1 + (seed >> 48) % 2];
             if (shape == 0) {
                 c = IAgentSpendPolicy.Call(asset, 0, abi.encodeWithSelector(TRANSFER, recipient, amount % 60e6));
             } else if (shape == 1) {
                 c = IAgentSpendPolicy.Call(asset, 0, abi.encodeWithSelector(APPROVE, recipient, amount % 60e6));
+            } else if (shape == 4) {
+                // A close: approve the router on the traded asset, any amount, uncounted.
+                c = IAgentSpendPolicy.Call(tradedToken, 0, abi.encodeWithSelector(APPROVE, recipient, raw));
             } else if (shape == 2) {
                 c = IAgentSpendPolicy.Call(targets[1], 0, abi.encodeWithSelector(SWAP, recipient, amount));
             } else {
@@ -170,8 +205,13 @@ contract SpendPolicyHandler is Test {
         return c.target == asset;
     }
 
+    /// A call on the settlement asset or a traded asset decodes a recipient that must pass the rule.
+    function _isTokenCall(IAgentSpendPolicy.Call memory c) internal view returns (bool) {
+        return c.target == asset || modelTraded[c.target];
+    }
+
     function _recipientOk(address r) internal view returns (bool) {
-        if (r == asset || r == address(policy) || r == account) return false;
+        if (r == asset || r == address(policy) || r == account || modelTraded[r]) return false;
         for (uint256 i = 0; i < selectors.length; ++i) {
             if (modelAllowed[r][selectors[i]]) return true;
         }
@@ -185,9 +225,11 @@ contract SpendPolicyHandler is Test {
             if (c.target == address(policy) || c.target == account) return (false, 0);
             if (!modelAllowed[c.target][sel]) return (false, 0);
             if (c.value != 0) return (false, 0);
-            if (_isCounted(c)) {
+            if (_isTokenCall(c)) {
+                if (sel != TRANSFER && sel != APPROVE) return (false, 0);
                 (address r, uint256 a) = _args(c.data);
                 if (!_recipientOk(r)) return (false, 0);
+                if (!_isCounted(c)) continue;
                 if (a > PER_TX_CAP - total) return (false, 0);
                 total += a;
             }
@@ -203,7 +245,7 @@ contract SpendPolicyHandler is Test {
                 ++allowlistViolations;
             }
             if (c.value != 0) ++valueViolations;
-            if (_isCounted(c)) {
+            if (_isTokenCall(c)) {
                 (address r,) = _args(c.data);
                 if (!_recipientOk(r)) ++recipientViolations;
             }
@@ -241,10 +283,11 @@ contract AgentSpendPolicyInvariantTest is StdInvariant, Test {
         policy = new AgentSpendPolicy(asset);
         handler = new SpendPolicyHandler(policy, account, asset, makeAddr("router"), makeAddr("reallocation"));
 
-        bytes4[] memory sels = new bytes4[](3);
+        bytes4[] memory sels = new bytes4[](4);
         sels[0] = SpendPolicyHandler.operate.selector;
         sels[1] = SpendPolicyHandler.warp.selector;
         sels[2] = SpendPolicyHandler.toggleAllowed.selector;
+        sels[3] = SpendPolicyHandler.toggleTraded.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: sels}));
         targetContract(address(handler));
     }
@@ -278,9 +321,17 @@ contract AgentSpendPolicyInvariantTest is StdInvariant, Test {
         assertEq(handler.allowlistViolations(), 0);
     }
 
+    /// The recipient rule holds for every call on the settlement asset and on a traded asset, a traded asset is never
+    /// a recipient, and nonzero native value is never accepted.
     function invariant_recipientRuleAndNativeValueEnforced() public view {
         assertEq(handler.recipientViolations(), 0);
         assertEq(handler.valueViolations(), 0);
+    }
+
+    /// `setTradedAsset` never marks the settlement asset, the policy, the account, or a target with a selector
+    /// allowed, so the token rules cannot change under an existing allowlist entry.
+    function invariant_tradedAssetMarkingRefusesWhatItMust() public view {
+        assertEq(handler.tradedViolations(), 0);
     }
 
     function invariant_checkAgreesWithModel() public view {
