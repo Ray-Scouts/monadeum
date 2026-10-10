@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@monadeum/commitment": "workspace:*",
+    "@monadeum/db": "workspace:*",
     "@monadeum/external": "workspace:*",
     "@monadeum/fitness": "workspace:*",
     "@monadeum/reallocation": "workspace:*",
@@ -24,6 +25,7 @@
     "viem": "2.56.9"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@types/node": "^22.15.21",
     "typescript": "^5.8.3"
   }

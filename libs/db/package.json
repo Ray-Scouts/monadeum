@@ -11,7 +11,7 @@
   "dependencies": {
     "@monadeum/auth": "workspace:*",
     "@monadeum/commitment": "workspace:*",
-    "@monadeum/indexer": "workspace:*",
+    "@monadeum/read-model": "workspace:*",
     "@monadeum/risk": "workspace:*",
     "@monadeum/tick": "workspace:*",
     "@monadeum/trading": "workspace:*",

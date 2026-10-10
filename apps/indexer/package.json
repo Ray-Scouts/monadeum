@@ -10,10 +10,13 @@
     "start": "node dist/src/main.js"
   },
   "dependencies": {
+    "@monadeum/db": "workspace:*",
+    "@monadeum/read-model": "workspace:*",
     "@zerodev/sdk": "5.5.10",
     "viem": "2.56.9"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@types/node": "^22.15.21",
     "typescript": "^5.8.3"
   }

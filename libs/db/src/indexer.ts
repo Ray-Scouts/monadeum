@@ -1,4 +1,4 @@
-import type { BlockHash, ChainEvent, EventFilter, ReadModelStore, SyncBatch } from "@monadeum/indexer";
+import type { BlockHash, ChainEvent, EventFilter, ReadModelStore, SyncBatch } from "@monadeum/read-model";
 import type { Address, Hex } from "viem";
 import type { Database } from "./database.js";
 

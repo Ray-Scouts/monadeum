@@ -8,10 +8,13 @@
     "apps/indexer": {
       "name": "@monadeum/indexer",
       "dependencies": {
+        "@monadeum/db": "workspace:*",
+        "@monadeum/read-model": "workspace:*",
         "@zerodev/sdk": "5.5.10",
         "viem": "2.56.9",
       },
       "devDependencies": {
+        "@electric-sql/pglite": "0.5.8",
         "@types/node": "^22.15.21",
         "typescript": "^5.8.3",
       },
@@ -41,6 +44,7 @@
       "name": "@monadeum/worker",
       "dependencies": {
         "@monadeum/commitment": "workspace:*",
+        "@monadeum/db": "workspace:*",
         "@monadeum/external": "workspace:*",
         "@monadeum/fitness": "workspace:*",
         "@monadeum/reallocation": "workspace:*",
@@ -57,6 +61,7 @@
         "viem": "2.56.9",
       },
       "devDependencies": {
+        "@electric-sql/pglite": "0.5.8",
         "@types/node": "^22.15.21",
         "typescript": "^5.8.3",
       },
@@ -89,7 +94,7 @@
       "dependencies": {
         "@monadeum/auth": "workspace:*",
         "@monadeum/commitment": "workspace:*",
-        "@monadeum/indexer": "workspace:*",
+        "@monadeum/read-model": "workspace:*",
         "@monadeum/risk": "workspace:*",
         "@monadeum/tick": "workspace:*",
         "@monadeum/trading": "workspace:*",
@@ -119,6 +124,16 @@
       "name": "@monadeum/fitness",
       "dependencies": {
         "@nestjs/common": "^11.1.6",
+      },
+      "devDependencies": {
+        "@types/node": "^22.15.21",
+        "typescript": "^5.8.3",
+      },
+    },
+    "libs/read-model": {
+      "name": "@monadeum/read-model",
+      "dependencies": {
+        "viem": "2.56.9",
       },
       "devDependencies": {
         "@types/node": "^22.15.21",
@@ -408,6 +423,8 @@
     "@monadeum/fitness": ["@monadeum/fitness@workspace:libs/fitness"],
 
     "@monadeum/indexer": ["@monadeum/indexer@workspace:apps/indexer"],
+
+    "@monadeum/read-model": ["@monadeum/read-model@workspace:libs/read-model"],
 
     "@monadeum/reallocation": ["@monadeum/reallocation@workspace:libs/reallocation"],
 
