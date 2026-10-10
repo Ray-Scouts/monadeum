@@ -1,0 +1,20 @@
+{
+  "name": "@monadeum/indexer",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./dist/src/index.js"
+  },
+  "scripts": {
+    "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js",
+    "start": "node dist/src/main.js"
+  },
+  "dependencies": {
+    "@zerodev/sdk": "5.5.10",
+    "viem": "2.56.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "typescript": "^5.8.3"
+  }
+}
