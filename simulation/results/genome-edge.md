@@ -1,6 +1,6 @@
 # Genome-edge study on Kuru MON-USDC
 
-Issue #102. This is the study named in `EVOLUTION.md` section 7, item 4: does the genome space of the production trading strategy carry a net, persistent edge of at least the size the simulation assumed, on real data from the MVP venue? The design, hypotheses, thresholds, and decision rule were fixed in `genome-edge-preregistration.md` (commit 5c48579) and in issue #102 before any study data was fetched. Section numbers below of the form "pre-registration section N" refer to that document.
+Issue #102. This is the study named in `EVOLUTION.md` section 7, item 4: does the genome space of the production trading strategy carry a net, persistent edge of at least the size the simulation assumed, on real data from the MVP venue? The design, hypotheses, thresholds, and decision rule were fixed in `genome-edge-preregistration.md` (committed and pushed as 5c48579 before any study data was fetched; identical content as 071d271 after the branch was rebased onto main) and in issue #102 before any study data was fetched. Section numbers below of the form "pre-registration section N" refer to that document.
 
 ## Answer
 
