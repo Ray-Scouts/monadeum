@@ -128,6 +128,25 @@ test("scenario A: an approve or transfer to an attacker is rejected even though 
   if (!sweep.approved) assert.deepEqual(sweep.violations, ["recipient-not-allowed"]);
 });
 
+test("the reallocation contract is an allowed spender, and its approval is counted like any other", async () => {
+  // contracts/src/IAgentReallocation.sol: the source approves the contract, then calls reallocate in the same plan.
+  const REALLOCATION: Hex = "0x00000000000000000000000000000000000000d4";
+  const REALLOCATION_ABI = parseAbi(["function reallocate(uint256 evaluation, bytes32 policyHash, (address sink, uint256 amount)[] credits)"]);
+  const reallocate = encodeFunctionData({ abi: REALLOCATION_ABI, functionName: "reallocate", args: [1n, `0x${"11".repeat(32)}`, [{ sink: OTHER, amount: 4_000_000n }]] });
+  const base = doc(1, null);
+  const [row] = await chain([{ allowedCalls: [...base.allowedCalls, { target: REALLOCATION, selector: selector(reallocate), label: "reallocation" }] }]);
+  const policy = await loadPolicy([row], operator.address, NOW);
+  assert.ok(policy);
+
+  const move = evaluateTrade(policy, proposal(4_000_000n), plan([{ target: USDC, data: approve(REALLOCATION, 4_000_000n) }, { target: REALLOCATION, data: reallocate }]), ledger);
+  assert.equal(move.approved, true);
+  const overCap = evaluateTrade(policy, proposal(4_000_000n), plan([{ target: USDC, data: approve(REALLOCATION, 5_000_001n) }, { target: REALLOCATION, data: reallocate }]), ledger);
+  assert.ok(!overCap.approved && overCap.violations.includes("per-action-cap"));
+  // Paying the sink agent directly bypasses the contract's bounds, so the sink is not an allowed recipient.
+  const direct = evaluateTrade(policy, proposal(4_000_000n), plan([{ target: USDC, data: transfer(OTHER, 1n) }]), ledger);
+  assert.ok(!direct.approved && direct.violations.includes("recipient-not-allowed"));
+});
+
 test("scenario C: an information purchase from an unlisted provider is rejected", async () => {
   const policy = await active();
   const request = { tickKey: "agent-1:7", agentId: "agent-1", provider: "evil" as "nansen", maxPrice: 1n };

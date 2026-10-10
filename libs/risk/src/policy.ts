@@ -8,7 +8,7 @@ export type BaseUnits = bigint;
 export interface AllowedCall {
   target: Hex;
   selector: Hex;
-  label: "kuru-router" | "reproduction" | "settlement-asset";
+  label: "kuru-router" | "reallocation" | "settlement-asset";
 }
 
 export interface PolicyDocument {

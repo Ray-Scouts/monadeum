@@ -3,13 +3,20 @@ pragma solidity ^0.8.24;
 
 import {IHook, IPolicy, PackedUserOperation} from "../../src/kernel/IKernelModules.sol";
 
-/// Minimal ERC-20 for moving a settlement asset in tests.
+/// Minimal ERC-20 for moving a settlement asset in tests. Six decimals unless set otherwise, like USDC.
 contract MockERC20 {
+    uint8 public decimals = 6;
+    uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
+    function setDecimals(uint8 d) external {
+        decimals = d;
+    }
+
     function mint(address to, uint256 amount) external {
         balanceOf[to] += amount;
+        totalSupply += amount;
     }
 
     function transfer(address to, uint256 amount) external returns (bool) {
@@ -21,6 +28,31 @@ contract MockERC20 {
     function approve(address spender, uint256 amount) external returns (bool) {
         allowance[msg.sender][spender] = amount;
         return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external virtual returns (bool) {
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+}
+
+/// Delivers one base unit less than asked, like a fee-on-transfer token.
+contract MockFeeToken is MockERC20 {
+    function transferFrom(address from, address to, uint256 amount) external override returns (bool) {
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount - 1;
+        totalSupply -= 1;
+        return true;
+    }
+}
+
+/// Returns false from transferFrom without moving anything.
+contract MockFalseToken is MockERC20 {
+    function transferFrom(address, address, uint256) external pure override returns (bool) {
+        return false;
     }
 }
 

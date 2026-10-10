@@ -35,4 +35,4 @@ indexer/
 tests/
 ```
 
-`contracts/` holds only the spend-policy interface (`ARCHITECTURE.md` section 16.3) so far; the other directories do not exist yet. They are created once the architecture they depend on has been decided and documented.
+`contracts/` holds the spend-policy contract (`ARCHITECTURE.md` section 16.3) and the owner-scoped reallocation contract (section 16.5), both tested and neither audited nor deployed; the other directories do not exist yet. They are created once the architecture they depend on has been decided and documented.

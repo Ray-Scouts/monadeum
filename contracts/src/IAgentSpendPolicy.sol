@@ -21,9 +21,9 @@ pragma solidity ^0.8.24;
 ///
 /// Recipient rule: the first argument of a counted call (the `to` of `transfer`, the `spender` of `approve`) must be
 /// an address on which the account has at least one allowed selector, and must not be the settlement asset, the
-/// policy contract, or the account itself. With the MVP allowlist that means Kuru's router and the reproduction
-/// contract, the same set the RiskModule's `recipient-not-allowed` rule uses. There is no separate recipient list
-/// to configure, so the two cannot drift apart.
+/// policy contract, or the account itself. With the MVP allowlist that means Kuru's router and the owner-scoped
+/// reallocation contract (AgentReallocation), the same set the RiskModule's `recipient-not-allowed` rule uses. There
+/// is no separate recipient list to configure, so the two cannot drift apart.
 ///
 /// Self-protection, independent of how the allowlist is configured: `check` rejects any call whose target is the
 /// policy contract or the account itself, and `setAllowed` rejects any selector on the settlement asset other than
