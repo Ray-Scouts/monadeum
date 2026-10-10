@@ -9,8 +9,13 @@ export interface KuruMarket {
   pair: string;
   router: Hex;
   market: Hex;
-  /** The zero address: native MON. */
+  /** The zero address for native MON, or an ERC-20 that wraps MON one to one when `wrappedNativeBase` is set. */
   base: Hex;
+  /**
+   * Set only for an ERC-20 base that wraps MON one to one, so gas, paid in MON, still converts at the market's price.
+   * Such a base can be sold with a zero native value; native MON cannot (ARCHITECTURE.md section 10, TradingModule).
+   */
+  wrappedNativeBase?: boolean;
   /** The settlement asset. */
   quote: Hex;
   baseDecimals: number;
@@ -71,9 +76,13 @@ export function priceOf(quoteIn: bigint, baseOut: bigint, market: KuruMarket): b
   return (quoteIn * PRICE_SCALE * 10n ** BigInt(market.baseDecimals)) / (baseOut * 10n ** BigInt(market.quoteDecimals));
 }
 
-/** The reference a fill's slippage is measured against: the mid when both sides are live, else the best ask. */
-export function referencePrice(book: Book): { kind: "mid" | "ask"; price: bigint } | null {
-  if (!liveSide(book.ask)) return null;
-  if (!liveSide(book.bid)) return { kind: "ask", price: book.ask };
+/**
+ * The reference a fill's slippage and a position's value are measured against: the mid when both sides are live,
+ * else the side the order takes (the best ask for a buy, the best bid for a sell). Null when that side is empty.
+ */
+export function referencePrice(book: Book, side: "buy" | "sell" = "buy"): { kind: "mid" | "ask" | "bid"; price: bigint } | null {
+  const [taken, other] = side === "buy" ? [book.ask, book.bid] : [book.bid, book.ask];
+  if (!liveSide(taken)) return null;
+  if (!liveSide(other)) return { kind: side === "buy" ? "ask" : "bid", price: taken };
   return { kind: "mid", price: (book.bid + book.ask) / 2n };
 }

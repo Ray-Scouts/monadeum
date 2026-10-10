@@ -13,6 +13,13 @@ export interface Venue {
   quoteBuy(quoteIn: bigint): Promise<bigint>;
   /** The router call that buys base with exactly `quoteIn`, reverting below `minBaseOut`. Native value is 0. */
   swapCall(account: Hex, quoteIn: bigint, minBaseOut: bigint): Promise<Call>;
+  /** Expected quote out, in quote base units, for selling `baseIn` base units, rounded down. */
+  quoteSell(baseIn: bigint): Promise<bigint>;
+  /**
+   * The router call that sells exactly `baseIn` base for quote, reverting below `minQuoteOut`. Native value is 0, so
+   * it throws for a native-MON base, which the router can only take as native value.
+   */
+  sellCall(account: Hex, baseIn: bigint, minQuoteOut: bigint): Promise<Call>;
   /** Router swaps by `account` from `fromBlock` on, read from chain logs, independent of the signer. */
   swapsSince(account: Hex, fromBlock: bigint): Promise<{ transactionHash: Hex; blockNumber: bigint }[]>;
 }
@@ -63,16 +70,29 @@ export class KuruSdkVenue implements Venue {
   }
 
   async quoteBuy(quoteIn: bigint): Promise<bigint> {
-    const amountIn = Number(formatUnits(quoteIn, this.market.quoteDecimals));
-    const route = await PathFinder.findBestPath(this.provider, this.market.quote, this.market.base, amountIn, "amountIn", undefined, [this.pool]);
-    if (route.route.path.length !== 1 || !(route.output > 0)) return 0n;
-    // The SDK returns a float. Truncate rather than round, so the quote never overstates what the book gives.
-    const [whole, fraction = ""] = route.output.toFixed(this.market.baseDecimals + 2).split(".");
-    return parseUnits(`${whole}.${fraction.slice(0, this.market.baseDecimals)}`, this.market.baseDecimals);
+    return this.quote(this.market.quote, this.market.base, quoteIn, this.market.quoteDecimals, this.market.baseDecimals);
   }
 
   async swapCall(account: Hex, quoteIn: bigint, minBaseOut: bigint): Promise<Call> {
     return buildSwapCall(this.market, account, quoteIn, minBaseOut, this.provider);
+  }
+
+  async quoteSell(baseIn: bigint): Promise<bigint> {
+    return this.quote(this.market.base, this.market.quote, baseIn, this.market.baseDecimals, this.market.quoteDecimals);
+  }
+
+  async sellCall(account: Hex, baseIn: bigint, minQuoteOut: bigint): Promise<Call> {
+    return buildSellCall(this.market, account, baseIn, minQuoteOut, this.provider);
+  }
+
+  /** The SDK's single-hop quote through `PathFinder.findBestPath`, which marks the hop a buy or a sell from the input token. */
+  private async quote(tokenIn: Hex, tokenOut: Hex, amount: bigint, inDecimals: number, outDecimals: number): Promise<bigint> {
+    const amountIn = Number(formatUnits(amount, inDecimals));
+    const route = await PathFinder.findBestPath(this.provider, tokenIn, tokenOut, amountIn, "amountIn", undefined, [this.pool]);
+    if (route.route.path.length !== 1 || !(route.output > 0)) return 0n;
+    // The SDK returns a float. Truncate rather than round, so the quote never overstates what the book gives.
+    const [whole, fraction = ""] = route.output.toFixed(outDecimals + 2).split(".");
+    return parseUnits(`${whole}.${fraction.slice(0, outDecimals)}`, outDecimals);
   }
 
   async swapsSince(account: Hex, fromBlock: bigint) {
@@ -100,9 +120,39 @@ export async function buildSwapCall(
   provider?: ethers.providers.Provider,
 ): Promise<Call> {
   if (same(market.quote, zeroAddress)) throw new Error("a native quote asset would need native value, which an ExecutionPlan never carries");
+  return routerCall(market, account, "buy", quoteIn, minBaseOut, provider);
+}
+
+/**
+ * Builds the router sell of `baseIn` base for at least `minQuoteOut` quote, the same way. The SDK's own sell route
+ * (`PathFinder`, checked in the installed 0.0.95 source) marks the hop `isBuy: false` and sets `nativeSend` when the
+ * input token is the zero address, and `TokenSwap.constructSwapTransaction` then attaches `tokenInAmount` as native
+ * value. A plan never carries native value and the on-chain spend policy reverts one with `NativeValueNotAllowed`
+ * (ARCHITECTURE.md section 16.3), so a native-MON base is refused here rather than built.
+ */
+export async function buildSellCall(
+  market: KuruMarket,
+  account: Hex,
+  baseIn: bigint,
+  minQuoteOut: bigint,
+  provider?: ethers.providers.Provider,
+): Promise<Call> {
+  if (same(market.base, zeroAddress)) throw new Error("selling a native-MON base needs native value, which an ExecutionPlan never carries");
+  return routerCall(market, account, "sell", baseIn, minQuoteOut, provider);
+}
+
+async function routerCall(
+  market: KuruMarket,
+  account: Hex,
+  side: "buy" | "sell",
+  amountIn: bigint,
+  minOut: bigint,
+  provider?: ethers.providers.Provider,
+): Promise<Call> {
+  const [tokenIn, tokenOut] = side === "buy" ? [market.quote, market.base] : [market.base, market.quote];
   const route: RouteOutput = {
-    route: { path: [{ baseToken: market.base, quoteToken: market.quote, orderbook: market.market }], tokenIn: market.quote, tokenOut: market.base },
-    isBuy: [true],
+    route: { path: [{ baseToken: market.base, quoteToken: market.quote, orderbook: market.market }], tokenIn, tokenOut },
+    isBuy: [side === "buy"],
     nativeSend: [false],
     output: 0,
     priceImpact: 0,
@@ -110,7 +160,7 @@ export async function buildSwapCall(
   };
   const signer = new ethers.VoidSigner(account, provider);
   const one = ethers.BigNumber.from(1);
-  const tx = await TokenSwap.constructSwapTransaction(signer, market.router, route, ethers.BigNumber.from(quoteIn), ethers.BigNumber.from(minBaseOut), {
+  const tx = await TokenSwap.constructSwapTransaction(signer, market.router, route, ethers.BigNumber.from(amountIn), ethers.BigNumber.from(minOut), {
     gasLimit: one,
     gasPrice: one,
   });

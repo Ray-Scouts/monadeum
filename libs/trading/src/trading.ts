@@ -3,10 +3,14 @@ import { type ActionProposal, type Decision, type ExecutionPlan } from "@monadeu
 import { encodeFunctionData, zeroAddress, type Hex } from "viem";
 import { costsOf, decodeFill } from "./fills.js";
 import { ERC20_ABI, referencePrice, type KuruMarket } from "./market.js";
+import { applyFill, emptyPosition, unrealizedPnl } from "./positions.js";
 import {
   SignerRejected,
   type OperationReceipt,
   type OrderSnapshot,
+  type Position,
+  type PositionStore,
+  type SellOrder,
   type TradeFailure,
   type TradeRecord,
   type TradeSigner,
@@ -19,9 +23,18 @@ export interface PreparedTrade {
   plan: ExecutionPlan;
 }
 
+/**
+ * Why no plan was built. For a close: `no-position` when nothing is open, `close-pending` while an earlier close may
+ * still be in flight, and `native-sell` on a native-MON base market, which cannot be sold with a zero native value.
+ */
 export type PrepareResult =
   | { ok: true; trade: PreparedTrade }
-  | { ok: false; reason: "no-action" | "pair" | "notional" | "slippage" | "no-liquidity" | "no-quote" | "network" };
+  | {
+      ok: false;
+      reason:
+        | "no-action" | "pair" | "notional" | "slippage" | "no-liquidity" | "no-quote" | "network"
+        | "no-position" | "close-pending" | "native-sell";
+    };
 
 /** What reconciliation found for a tick. `resubmittable` means nothing for this tick exists anywhere it can look. */
 export type Reconciled =
@@ -32,11 +45,14 @@ export type Reconciled =
 const FINAL = new Set(["filled", "failed", "needs-review"]);
 
 /**
- * Builds Kuru execution plans and submits approved ones, once per tick key (ARCHITECTURE.md section 11).
+ * Builds Kuru execution plans and submits approved ones, once per tick key (ARCHITECTURE.md section 11), and keeps
+ * each agent's position on the market so a close realizes P&L.
  *
  * Order of a tick: `prepare` turns the proposal's TradeIntent into an ExecutionPlan (exact-amount approve, then the
- * router swap); the RiskModule evaluates that plan; `submit` sends it only if the decision approved this exact plan
- * hash. Every attempt, including a policy rejection, is written to the TradeStore with the order and the failure.
+ * router swap; a `long` intent buys, a `flat` intent sells the whole open position); the RiskModule evaluates that
+ * plan; `submit` sends it only if the decision approved this exact plan hash. Every attempt, including a policy
+ * rejection, is written to the TradeStore with the order and the failure. `settle` folds a final trade into the
+ * position, once per tick key, and returns the realized P&L FitnessModule receives.
  */
 export class TradingService {
   // In-process guard: one submission per tick key at a time in this process, set before the first await. Across
@@ -48,18 +64,22 @@ export class TradingService {
     private readonly venue: Venue,
     private readonly signer: TradeSigner,
     private readonly store: TradeStore,
+    private readonly positions: PositionStore,
   ) {
-    if (market.base !== zeroAddress) throw new Error("only a native-MON base market is supported: gas converts at the market price");
+    if (market.base !== zeroAddress && !market.wrappedNativeBase) {
+      throw new Error("the base must be native MON or wrap it one to one: gas converts at the market price");
+    }
   }
 
   async prepare(proposal: ActionProposal): Promise<PrepareResult> {
     const intent = proposal.action;
-    // "flat" means no position, which the worker treats as no action (libs/tick); there is nothing to sell into.
-    if (!intent || intent.side !== "long") return { ok: false, reason: "no-action" };
+    if (!intent || (intent.side !== "long" && intent.side !== "flat")) return { ok: false, reason: "no-action" };
     if (intent.pair !== this.market.pair) return { ok: false, reason: "pair" };
-    if (typeof intent.notional !== "bigint" || intent.notional <= 0n) return { ok: false, reason: "notional" };
     const slip = intent.maxSlippageBps;
     if (!Number.isInteger(slip) || slip < 0 || slip >= 10_000) return { ok: false, reason: "slippage" };
+    // A close sells what the position store holds, never an amount the proposal declares, so a flat notional is 0.
+    if (intent.side === "flat") return intent.notional === 0n ? this.prepareClose(proposal, slip) : { ok: false, reason: "notional" };
+    if (typeof intent.notional !== "bigint" || intent.notional <= 0n) return { ok: false, reason: "notional" };
 
     let book, takerFeeBps, expected, block;
     try {
@@ -103,6 +123,112 @@ export class TradingService {
   }
 
   /**
+   * A close: `approve(router, size)` on the base token, exactly the open size, then the router sell of that size with
+   * `minAmountOut` set to the SDK quote less `maxSlippageBps`. Refused while an earlier close may be in flight.
+   */
+  private async prepareClose(proposal: ActionProposal, slip: number): Promise<PrepareResult> {
+    if (this.market.base === zeroAddress) return { ok: false, reason: "native-sell" };
+    const position = await this.openPosition(proposal.agentId);
+    if (position === "close-pending") return { ok: false, reason: "close-pending" };
+    if (position.size <= 0n) return { ok: false, reason: "no-position" };
+    const size = position.size;
+
+    let book, takerFeeBps, expected, block;
+    try {
+      [book, takerFeeBps, block] = await Promise.all([this.venue.book(), this.venue.takerFeeBps(), this.venue.blockNumber()]);
+      expected = await this.venue.quoteSell(size);
+    } catch {
+      return { ok: false, reason: "network" };
+    }
+    const reference = referencePrice(book, "sell");
+    if (!reference) return { ok: false, reason: "no-liquidity" };
+    const minQuoteOut = (expected * BigInt(10_000 - slip)) / 10_000n;
+    if (minQuoteOut <= 0n) return { ok: false, reason: "no-quote" };
+
+    const approve = {
+      target: this.market.base,
+      data: encodeFunctionData({ abi: ERC20_ABI, functionName: "approve", args: [this.market.router, size] }),
+    };
+    let sell;
+    try {
+      sell = await this.venue.sellCall(proposal.account, size, minQuoteOut);
+    } catch {
+      return { ok: false, reason: "network" };
+    }
+    const calls = [approve, sell];
+    const order: SellOrder = {
+      tickKey: proposal.tickKey,
+      agentId: proposal.agentId,
+      account: proposal.account,
+      pair: this.market.pair,
+      side: "sell",
+      baseIn: size,
+      expectedQuoteOut: expected,
+      minQuoteOut,
+      maxSlippageBps: slip,
+      reference,
+      takerFeeBps,
+      preparedAtBlock: block,
+    };
+    return { ok: true, trade: { order, plan: { tickKey: proposal.tickKey, calls, planHash: planHashOf(proposal.tickKey, calls) } } };
+  }
+
+  /** The agent's position, after settling a close that has since become final; `close-pending` if one may be in flight. */
+  private async openPosition(agentId: string): Promise<Position | "close-pending"> {
+    const position = await this.position(agentId);
+    if (!position.closing) return position;
+    const record = await this.store.get(position.closing);
+    // Absent, unresolved, or needing review: the close may have sold, so nothing else is sold until it is known.
+    if (!record || (record.status !== "filled" && record.status !== "failed")) return "close-pending";
+    await this.settle(record);
+    return this.position(agentId);
+  }
+
+  /** The agent's position on this market; an empty one when it has never traded. */
+  async position(agentId: string): Promise<Position> {
+    return (await this.positions.get(agentId)) ?? emptyPosition(agentId, this.market.pair);
+  }
+
+  /** Unrealized P&L of the agent's open size at the current book, base units; reported only, never a fitness input. */
+  async unrealized(agentId: string): Promise<bigint | null> {
+    return unrealizedPnl(this.market, await this.position(agentId), await this.venue.book());
+  }
+
+  /**
+   * Folds a final trade into its agent's position and returns the realized P&L it produced (0 for a buy or a failed
+   * trade), settlement-asset base units. Idempotent by tick key: a trade already settled returns the same figure and
+   * changes nothing. A filled or failed close releases the close marker; a close in `needs-review` keeps it, so no
+   * further close is built until an operator resolves it. A trade that is not final settles nothing.
+   */
+  async settle(record: TradeRecord): Promise<bigint> {
+    if (record.status !== "filled" && record.status !== "failed") return 0n;
+    const current = await this.position(record.order.agentId);
+    const release = current.closing === record.key ? { closing: null } : {};
+    const done = current.applied[record.key];
+    if (done !== undefined) {
+      if (current.closing === record.key) await this.positions.write({ ...current, closing: null });
+      return done;
+    }
+    const { position, realized } = applyFill(current, record);
+    await this.positions.write({ ...position, ...release, applied: { ...current.applied, [record.key]: realized } });
+    return realized;
+  }
+
+  /**
+   * Marks a close as in flight before anything is sent, so no other tick builds a second sell of the same position.
+   * False when a different close holds the mark. A tick whose own record is already final needs no mark.
+   */
+  private async markClosing(order: SellOrder): Promise<boolean> {
+    const position = await this.position(order.agentId);
+    if (position.closing === order.tickKey) return true;
+    const existing = await this.store.get(order.tickKey);
+    if (existing && FINAL.has(existing.status)) return true;
+    if (position.closing !== null) return false;
+    await this.positions.write({ ...position, closing: order.tickKey });
+    return true;
+  }
+
+  /**
    * Submits an approved plan at most once per tick key. A second call for the same key never sends a second
    * operation blindly: it reconciles first, and resubmits the same plan only when neither the signer nor the chain
    * shows anything for that tick.
@@ -119,6 +245,13 @@ export class TradingService {
       const failed = { ...record, status: "failed" as const, failure: rejection };
       // Claimed like any other attempt, so a rejected tick cannot later be submitted under the same key.
       if (await this.store.claim(failed)) return failed;
+      return (await this.store.get(order.tickKey))!;
+    }
+
+    if (order.side === "sell" && !(await this.markClosing(order))) {
+      const blocked = { ...record, status: "failed" as const, failure: { kind: "execution" as const, reason: "another close of this position may be in flight" } };
+      // Nothing was sent; the key is burned like a rejection so this tick cannot sell later.
+      if (await this.store.claim(blocked)) return blocked;
       return (await this.store.get(order.tickKey))!;
     }
 
@@ -213,6 +346,9 @@ export class TradingService {
   private async write(record: TradeRecord, patch: Partial<TradeRecord>): Promise<TradeRecord> {
     const next = { ...record, ...patch };
     await this.store.write(next);
+    // The trade record is durable first; a crash before the position is updated is repaired by the next `settle` of
+    // this key (the worker's measurement, or the next close's `prepare`), which is idempotent.
+    if (next.status === "filled" || next.status === "failed") await this.settle(next);
     return next;
   }
 }

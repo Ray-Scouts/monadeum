@@ -13,9 +13,11 @@ import { encodeAbiParameters, encodeEventTopics, parseAbiParameters, type Hex } 
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
   KURU_TESTNET_MON_USDC as M,
+  MemoryPositionStore,
   MemoryTradeStore,
   TradingService,
   WalletsTradeSigner,
+  type BuyFill,
   type Call,
   type LogEntry,
   type TradeSigner,
@@ -57,6 +59,8 @@ const venue: Venue = {
   takerFeeBps: async () => 0,
   quoteBuy: async () => 99n * 10n ** 16n,
   swapCall: async () => SWAP_CALL,
+  quoteSell: async () => 0n,
+  sellCall: async () => SWAP_CALL,
   swapsSince: async () => [],
 };
 
@@ -66,7 +70,7 @@ async function world() {
   const chain = new FakeChain({
     receiptLogs: (account) => [swapLog(account, 1_000_000n, 99n * 10n ** 16n), tradeLog(account, (995n * 10n ** 15n * M.sizePrecision) / 10n ** 18n)],
   });
-  const stores = { wallet: new MemoryAgentWalletStore(), vault: new MemorySessionKeyVault(), ledger: new MemorySponsorshipLedger(), trades: new MemoryTradeStore() };
+  const stores = { wallet: new MemoryAgentWalletStore(), vault: new MemorySessionKeyVault(), ledger: new MemorySponsorshipLedger(), trades: new MemoryTradeStore(), positions: new MemoryPositionStore() };
   const wallets = () => new WalletsService(chain, stores.wallet, stores.vault, stores.ledger, { scope, budget: { operations: 100, gasWei: 10n ** 18n }, paymaster: true });
   const ownerAccount = privateKeyToAccount(generatePrivateKey());
   const owner = { address: ownerAccount.address, signer: ownerAccount };
@@ -75,7 +79,7 @@ async function world() {
   assert.ok(deployed.ok);
   assert.ok((await w.issueSessionKey({ agentId: "agent-1", owner })).ok);
   const account = deployed.account;
-  const trading = (signer: TradeSigner = new WalletsTradeSigner(wallets())) => new TradingService(M, venue, signer, stores.trades);
+  const trading = (signer: TradeSigner = new WalletsTradeSigner(wallets())) => new TradingService(M, venue, signer, stores.trades, stores.positions);
   const proposal: ActionProposal = {
     schemaVersion: 1, tickKey: "agent-1:7", agentId: "agent-1", account, genomeHash: "0x01", strategyType: "trading",
     state: { capital: 10_000_000n, principal: 10_000_000n, ticksSinceTrade: 3, observedAt: "2026-10-09T00:00:00Z" },
@@ -92,8 +96,8 @@ test("a trade signed through WalletsModule is filled from the wallet receipt's l
   const { trading, trade, sessions } = await world();
   const record = await trading().submit(trade, approved(trade.plan.planHash));
   assert.equal(record.status, "filled");
-  assert.equal(record.fill!.quoteIn, 1_000_000n);
-  assert.equal(record.fill!.baseOut, 99n * 10n ** 16n);
+  assert.equal((record.fill as BuyFill).quoteIn, 1_000_000n);
+  assert.equal((record.fill as BuyFill).baseOut, 99n * 10n ** 16n);
   assert.equal(record.fill!.feeSource, "trade-events");
   assert.equal(record.costs!.gasWei, 900n);
   assert.equal(sessions(), 1);

@@ -8,7 +8,11 @@ export type BaseUnits = bigint;
 export interface AllowedCall {
   target: Hex;
   selector: Hex;
-  label: "kuru-router" | "reallocation" | "settlement-asset";
+  /**
+   * "traded-asset" is an ERC-20 base a close sells (ARCHITECTURE.md section 16.1): only its `approve` and `transfer`
+   * may be allowlisted, and they are held to the recipient rule but spend no settlement asset, so they count 0.
+   */
+  label: "kuru-router" | "reallocation" | "settlement-asset" | "traded-asset";
 }
 
 export interface PolicyDocument {
@@ -250,10 +254,13 @@ export function evaluateTrade(
 /**
  * The allowlist, recipient, and counting rules every plan is held to (section 16.1). Returns what the plan spends,
  * counted from calldata: `transfer` and `approve` on the settlement asset count their amount, every other allowed call
- * counts 0. Pushes a violation for each call that breaks a rule.
+ * counts 0. A `transfer` or `approve` on a traded asset (the base a close sells) is held to the same recipient rule
+ * and counts 0, because it moves no settlement asset. A recipient must be an allowlisted contract that is not a token
+ * (the router or the reallocation contract). Pushes a violation for each call that breaks a rule.
  */
 function checkCalls(d: PolicyDocument, plan: ExecutionPlan, v: Violation[]): bigint {
-  const recipients = d.allowedCalls.filter((c) => c.label !== "settlement-asset").map((c) => c.target);
+  const tokens = d.allowedCalls.filter((c) => c.label === "traded-asset").map((c) => c.target);
+  const recipients = d.allowedCalls.filter((c) => c.label === "kuru-router" || c.label === "reallocation").map((c) => c.target);
   let spend = 0n;
   for (const call of plan.calls) {
     const selector = typeof call.data === "string" ? call.data.slice(0, 10) : "";
@@ -261,12 +268,13 @@ function checkCalls(d: PolicyDocument, plan: ExecutionPlan, v: Violation[]): big
       v.push("call-not-allowed");
       continue;
     }
-    if (!same(call.target, d.settlementAsset)) continue;
+    const settlement = same(call.target, d.settlementAsset);
+    if (!settlement && !tokens.some((t) => same(t, call.target))) continue;
     try {
       const { args } = decodeFunctionData({ abi: SETTLEMENT_ABI, data: call.data });
       const [to, amount] = args;
       if (!recipients.some((r) => same(r, to))) v.push("recipient-not-allowed");
-      spend += amount;
+      if (settlement) spend += amount;
     } catch {
       v.push("call-not-allowed");
     }

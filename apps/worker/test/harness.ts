@@ -7,14 +7,18 @@ import { StrategyService } from "@monadeum/strategy";
 import { MemoryTickStore, type TickStore } from "@monadeum/tick";
 import {
   KURU_TESTNET_MON_USDC as M,
+  MemoryPositionStore,
   MemoryTradeStore,
   TradingService,
   WalletsTradeSigner,
+  type KuruMarket,
+  type PositionStore,
   type TradeSigner,
   type TradeStore,
   type Venue,
 } from "@monadeum/trading";
 import {
+  APPROVE_SELECTOR,
   MemoryAgentWalletStore,
   MemorySessionKeyVault,
   MemorySponsorshipLedger,
@@ -97,53 +101,93 @@ export class FakeToken implements ChainReader {
   }
 }
 
-/** Kuru: a book at 0.99 / 1.01 USDC per MON, every buy filled at the ask with no taker fee. */
+/** An ERC-20 that wraps MON one to one, the base of the market a close can sell (ARCHITECTURE.md section 10). */
+export const WMON: Address = getAddress("0x00000000000000000000000000000000000000a7");
+/** The testnet MON/USDC market with that ERC-20 base, for the tests that close a position. */
+export const WRAPPED_MARKET: KuruMarket = { ...M, base: WMON, wrappedNativeBase: true };
+const SWAP_ARGS = parseAbiParameters("bool, uint256, uint256");
+
+/**
+ * Kuru: a book at `bid` / `ask` USDC per MON (0.99 / 1.01 by default), every buy filled at the ask and every sell at
+ * the bid, with no taker fee. It holds each account's base balance, so a sell of more than the account holds emits no
+ * swap, as a reverting router call would not.
+ */
 export class FakeKuru {
   readonly pool: Address = getAddress("0x00000000000000000000000000000000000000f1");
-  constructor(private readonly token: FakeToken) {}
+  readonly baseBalances = new Map<string, bigint>();
+  bid = 99n * 10n ** 16n;
+  ask = 101n * 10n ** 16n;
+  constructor(private readonly token: FakeToken, readonly market: KuruMarket = M) {}
 
-  static baseOut(quoteIn: bigint): bigint {
-    return (quoteIn * 10n ** 12n * 100n) / 101n;
+  /** Base bought with `quoteIn` at the ask, rounded down. */
+  baseOut(quoteIn: bigint): bigint {
+    return (quoteIn * 10n ** 30n) / this.ask;
+  }
+
+  /** Quote received for `baseIn` at the bid, rounded down. */
+  quoteOut(baseIn: bigint): bigint {
+    return (baseIn * this.bid) / 10n ** 30n;
+  }
+
+  baseOf(account: Hex): bigint {
+    return this.baseBalances.get(account.toLowerCase()) ?? 0n;
   }
 
   venue(): Venue {
+    const call = (isBuy: boolean, amount: bigint, minOut: bigint) => ({
+      target: M.router,
+      data: `${SWAP_SELECTOR}${encodeAbiParameters(SWAP_ARGS, [isBuy, amount, minOut]).slice(2)}` as Hex,
+    });
     return {
       blockNumber: async () => 100n,
-      book: async () => ({ bid: 99n * 10n ** 16n, ask: 101n * 10n ** 16n }),
+      book: async () => ({ bid: this.bid, ask: this.ask }),
       takerFeeBps: async () => 0,
-      quoteBuy: async (quoteIn) => FakeKuru.baseOut(quoteIn),
-      swapCall: async (_account, quoteIn, minBaseOut) => ({
-        target: M.router,
-        data: `${SWAP_SELECTOR}${encodeAbiParameters(parseAbiParameters("uint256, uint256"), [quoteIn, minBaseOut]).slice(2)}` as Hex,
-      }),
+      quoteBuy: async (quoteIn) => this.baseOut(quoteIn),
+      swapCall: async (_account, quoteIn, minBaseOut) => call(true, quoteIn, minBaseOut),
+      quoteSell: async (baseIn) => this.quoteOut(baseIn),
+      sellCall: async (_account, baseIn, minQuoteOut) => {
+        // As the SDK path does: selling native MON would need native value, which a plan never carries.
+        if (this.market.base === M.base) throw new Error("native value");
+        return call(false, baseIn, minQuoteOut);
+      },
       swapsSince: async () => [],
     };
   }
 
   /** The on-chain effect of an included session operation, and the logs it emits. */
   apply(account: Address, calls: { to: Address; data: Hex }[]) {
+    const { base, quote } = this.market;
     const logs = [];
+    const swapLog = (debit: Hex, credit: Hex, amountIn: bigint, amountOut: bigint) => ({
+      address: M.router,
+      topics: encodeEventTopics({ abi: ROUTER_ABI, eventName: "KuruRouterSwap" }) as Hex[],
+      data: encodeAbiParameters(parseAbiParameters("address, address, address, uint256, uint256"), [account, debit, credit, amountIn, amountOut]),
+    });
+    const tradeLog = (isBuy: boolean, price: bigint, baseFilled: bigint) => ({
+      address: M.market,
+      topics: encodeEventTopics({ abi: ORDER_BOOK_ABI, eventName: "Trade" }) as Hex[],
+      data: encodeAbiParameters(parseAbiParameters("uint40, address, bool, uint256, uint96, address, address, uint96"), [
+        1, this.pool, !isBuy, price, 0n, M.router, account, (baseFilled * M.sizePrecision) / 10n ** 18n,
+      ]),
+    });
     for (const call of calls) {
-      if (call.to.toLowerCase() === M.quote.toLowerCase()) {
+      if (call.to.toLowerCase() === quote.toLowerCase()) {
         const { functionName, args } = decodeFunctionData({ abi: erc20Abi, data: call.data });
         if (functionName === "approve" || functionName === "transfer") this.token.count(account, args[1] as bigint);
       }
       if (call.to.toLowerCase() === M.router.toLowerCase() && call.data.startsWith(SWAP_SELECTOR)) {
-        const [quoteIn] = decodeAbiParameters(parseAbiParameters("uint256, uint256"), `0x${call.data.slice(10)}`);
-        const baseOut = FakeKuru.baseOut(quoteIn);
-        this.token.move(account, this.pool, quoteIn);
-        logs.push({
-          address: M.router,
-          topics: encodeEventTopics({ abi: ROUTER_ABI, eventName: "KuruRouterSwap" }) as Hex[],
-          data: encodeAbiParameters(parseAbiParameters("address, address, address, uint256, uint256"), [account, M.quote, M.base, quoteIn, baseOut]),
-        });
-        logs.push({
-          address: M.market,
-          topics: encodeEventTopics({ abi: ORDER_BOOK_ABI, eventName: "Trade" }) as Hex[],
-          data: encodeAbiParameters(parseAbiParameters("uint40, address, bool, uint256, uint96, address, address, uint96"), [
-            1, this.pool, false, 101n * 10n ** 16n, 0n, M.router, account, (baseOut * M.sizePrecision) / 10n ** 18n,
-          ]),
-        });
+        const [isBuy, amountIn] = decodeAbiParameters(SWAP_ARGS, `0x${call.data.slice(10)}`);
+        if (isBuy) {
+          const baseOut = this.baseOut(amountIn);
+          this.token.move(account, this.pool, amountIn);
+          this.baseBalances.set(account.toLowerCase(), this.baseOf(account) + baseOut);
+          logs.push(swapLog(quote, base, amountIn, baseOut), tradeLog(true, this.ask, baseOut));
+        } else if (this.baseOf(account) >= amountIn) {
+          const quoteOut = this.quoteOut(amountIn);
+          this.baseBalances.set(account.toLowerCase(), this.baseOf(account) - amountIn);
+          this.token.mint(account, quoteOut);
+          logs.push(swapLog(base, quote, amountIn, quoteOut), tradeLog(false, this.bid, amountIn));
+        }
       }
     }
     return logs.length > 0 ? logs : [{ address: account, topics: [keccak256(toHex("Executed"))], data: "0x" as Hex }];
@@ -256,30 +300,45 @@ export interface WorldOptions {
   information?: boolean;
   /** Replaces the module stores, for example with the Postgres ones a booted worker provides. */
   stores?: Omit<WorkerStores, "durable">;
+  /**
+   * native: the configured testnet market, whose native-MON base cannot be sold. wrapped: the same market with the
+   * ERC-20 base `WMON`, whose `approve` is added to the session key scope and, unless `tradedAssetInPolicy` is false,
+   * to the RiskModule policy as a "traded-asset".
+   */
+  market?: "native" | "wrapped";
+  tradedAssetInPolicy?: boolean;
 }
+
+const TRADED_ASSET = { target: WMON, selector: APPROVE_SELECTOR, label: "traded-asset" as const };
 
 export async function world(options: WorldOptions = {}) {
   const specs = options.agents ?? [{ agentId: "1", owner: "a" }, { agentId: "2", owner: "a" }, { agentId: "3", owner: "b" }];
+  const wrapped = options.market === "wrapped";
   const token = new FakeToken();
-  const kuru = new FakeKuru(token);
+  const kuru = new FakeKuru(token, wrapped ? WRAPPED_MARKET : M);
   const chain = new FakeChain({ receiptLogs: (account, calls) => kuru.apply(account, calls) });
   const provider = new FakeProvider();
   const authorizations: unknown[] = [];
   const payer: Payer = { authorize: async (terms) => { authorizations.push(terms); return "signed-authorization"; } };
   const stores = {
     wallets: new MemoryAgentWalletStore() as AgentWalletStore, vault: new MemorySessionKeyVault(), sponsorship: new MemorySponsorshipLedger() as SponsorshipLedger,
-    trades: new MemoryTradeStore() as TradeStore, payments: new MemoryPaymentLog() as PaymentLog, ticks: new MemoryTickStore() as TickStore, agents: new MemoryAgentStore() as AgentRegistry,
+    trades: new MemoryTradeStore() as TradeStore, positions: new MemoryPositionStore() as PositionStore, payments: new MemoryPaymentLog() as PaymentLog,
+    ticks: new MemoryTickStore() as TickStore, agents: new MemoryAgentStore() as AgentRegistry,
     debits: new MemoryDebitStore(),
   };
   if (options.stores) Object.assign(stores, options.stores);
   const policies = new OwnerPolicies(DECIMALS);
-  const scope = buildScope({
+  const built = buildScope({
     settlementAsset: M.quote, kuruRouter: M.router, kuruRouterSelectors: [SWAP_SELECTOR], reallocation: REALLOC, reallocationSelectors: [REALLOCATE_SELECTOR],
   });
+  // `buildScope` has no traded-asset entry: allowlisting one on-chain waits on the spend policy applying the recipient
+  // rule to it (ARCHITECTURE.md section 16.3). The fake chain enforces nothing, so the harness adds it here.
+  const scope = wrapped ? [...built, TRADED_ASSET] : built;
   const budget = options.budget ?? { operations: 1_000, gasWei: 10n ** 18n };
   const owners = { a: privateKeyToAccount(generatePrivateKey()), b: privateKeyToAccount(generatePrivateKey()) };
   const wallets = () => new WalletsService(chain, stores.wallets, stores.vault, stores.sponsorship, { scope, budget, paymaster: true });
-  const signed = policyDocument(options.policy);
+  const traded = wrapped && options.tradedAssetInPolicy !== false;
+  const signed = policyDocument({ ...(traded ? { allowedCalls: [...policyDocument().allowedCalls, TRADED_ASSET] } : {}), ...options.policy });
   const signature = await operator.signMessage({ message: { raw: hashRiskPolicy(signed) } });
   const signals = new Map<string, number>();
   const symbols = new Map<string, unknown>();
@@ -344,7 +403,7 @@ export async function world(options: WorldOptions = {}) {
     assert.ok(await risk.load([{ document: signed, signature }], operator.address, new Date("2026-10-10T00:00:00Z")));
     const inner = new WalletsTradeSigner(wallets());
     const signer = over.signer ? over.signer(inner) : inner;
-    let trading = new TradingService(M, kuru.venue(), signer, stores.trades);
+    let trading = new TradingService(kuru.market, kuru.venue(), signer, stores.trades, stores.positions);
     if (over.trading) trading = over.trading(trading);
     const x402 = new X402Client(
       { nansen: { baseUrl: "https://nansen.example", payTo: PAY_TO }, defillama: { baseUrl: "https://defillama.example", payTo: getAddress("0x00000000000000000000000000000000000000b2") } },

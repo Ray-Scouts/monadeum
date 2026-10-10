@@ -147,6 +147,37 @@ test("the reallocation contract is an allowed spender, and its approval is count
   assert.ok(!direct.approved && direct.violations.includes("recipient-not-allowed"));
 });
 
+test("a close is held to the allowlist, the recipient rule on the traded asset, the pair, and the spend caps", async () => {
+  const WMON: Hex = "0x00000000000000000000000000000000000000a7";
+  const tokenApprove = { target: WMON, selector: selector(approve(ROUTER, 0n)), label: "traded-asset" as const };
+  const policy = await loadPolicy(await chain([{ allowedCalls: [...doc(1, null).allowedCalls, tokenApprove] }]), operator.address, NOW);
+  assert.ok(policy);
+  const flat = (pair = "MON/USDC"): ActionProposal => ({ ...proposal(0n, pair), action: { kind: "trade", pair, side: "flat", notional: 0n, maxSlippageBps: 50 } });
+  const size = 10n ** 30n; // far above every settlement cap: selling the base spends no settlement asset
+
+  const ok = evaluateTrade(policy, flat(), plan([{ target: WMON, data: approve(ROUTER, size) }, { target: ROUTER, data: order }]), ledger);
+  assert.equal(ok.approved, true);
+
+  // The base token's approve is allowlisted only where the policy says so.
+  const unlisted = evaluateTrade(await active(), flat(), plan([{ target: WMON, data: approve(ROUTER, size) }, { target: ROUTER, data: order }]), ledger);
+  assert.deepEqual(!unlisted.approved && unlisted.violations, ["call-not-allowed"]);
+  // Approving or sending the base to anyone but the router is the scenario A drain, on the traded asset.
+  const drain = evaluateTrade(policy, flat(), plan([{ target: WMON, data: approve(ATTACKER, size) }]), ledger);
+  assert.deepEqual(!drain.approved && drain.violations, ["recipient-not-allowed"]);
+  const toToken = evaluateTrade(policy, flat(), plan([{ target: USDC, data: approve(WMON, 1n) }]), ledger);
+  assert.deepEqual(!toToken.approved && toToken.violations, ["recipient-not-allowed"], "a token is never a recipient");
+  // A transfer selector the policy does not list on the traded asset is not allowed.
+  const sweep = evaluateTrade(policy, flat(), plan([{ target: WMON, data: transfer(ROUTER, size) }]), ledger);
+  assert.deepEqual(!sweep.approved && sweep.violations, ["call-not-allowed"]);
+  // A close that also moves settlement asset is counted against the caps like any plan.
+  const smuggled = evaluateTrade(policy, flat(), plan([{ target: WMON, data: approve(ROUTER, size) }, { target: USDC, data: approve(ROUTER, 6_000_000n) }]), ledger);
+  assert.deepEqual(!smuggled.approved && smuggled.violations, ["per-action-cap"]);
+  const spent = evaluateTrade(policy, flat(), plan([{ target: USDC, data: approve(ROUTER, 1n) }]), { ...ledger, spentInWindow: 20_000_000n });
+  assert.deepEqual(!spent.approved && spent.violations, ["session-daily-cap"]);
+  const pair = evaluateTrade(policy, flat("ETH/USDC"), plan([{ target: WMON, data: approve(ROUTER, size) }]), ledger);
+  assert.deepEqual(!pair.approved && pair.violations, ["pair-not-allowed"]);
+});
+
 test("scenario C: an information purchase from an unlisted provider is rejected", async () => {
   const policy = await active();
   const request = { tickKey: "agent-1:7", agentId: "agent-1", provider: "evil" as "nansen", maxPrice: 1n };

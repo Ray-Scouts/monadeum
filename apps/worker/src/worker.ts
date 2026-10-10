@@ -158,11 +158,11 @@ export class AgentWorker {
   }
 
   private async observe(agent: AgentRecord): Promise<Observation | null> {
-    const { chain, market, agents, settings } = this.deps;
-    let decimals: number, capital: bigint, spentInWindow: bigint, reading;
+    const { chain, market, agents, settings, trading } = this.deps;
+    let decimals: number, capital: bigint, spentInWindow: bigint, reading, position;
     try {
-      [decimals, capital, spentInWindow, reading] = await Promise.all([
-        chain.decimals(), chain.balanceOf(agent.account), chain.windowTotal(agent.account), market.read(agent),
+      [decimals, capital, spentInWindow, reading, position] = await Promise.all([
+        chain.decimals(), chain.balanceOf(agent.account), chain.windowTotal(agent.account), market.read(agent), trading.position(agent.agentId),
       ]);
     } catch {
       return null;
@@ -198,6 +198,7 @@ export class AgentWorker {
       principal: agent.principal,
       decimals,
       maxSlippageBps: settings.maxSlippageBps,
+      position: position.size,
       offer: info && provider && maxPrice !== undefined && maxPrice > 0n
         ? { provider, resource: info.resource(agent.genome.pair), maxPrice }
         : null,
@@ -205,18 +206,20 @@ export class AgentWorker {
   }
 
   /**
-   * Cost accounting (EVOLUTION.md section 2.1): the fill's gas, fees, and slippage from TradingModule and the x402
-   * spend from X402Module become one FitnessModule entry per tick. Realized P&L is 0 until a position-closing path
-   * exists. The per-tick return is that net over the agent's principal; Sortino is scale-free, so the denominator only
-   * fixes units. Idempotent by tick key.
+   * Cost accounting (EVOLUTION.md section 2.1): the trade's realized P&L (non-zero only for a close, from
+   * TradingModule's position), its gas, fees, and slippage, and the x402 spend from X402Module become one FitnessModule
+   * entry per tick. Unrealized P&L on an open position is not an input. The per-tick return is that net over the
+   * agent's principal; Sortino is scale-free, so the denominator only fixes units. Idempotent by tick key, and
+   * `settle` is idempotent by tick key, so a measurement replayed after a crash realizes nothing twice.
    */
   private async measure(agent: AgentRecord, m: TickMeasurement): Promise<void> {
-    const { agents, fitness, chain, settings } = this.deps;
+    const { agents, fitness, chain, settings, trading } = this.deps;
     const state = await agents.state(agent.agentId);
     if (state.measured.includes(m.key)) return;
     const decimals = await chain.decimals();
     const entries: CostedFill[] = [];
-    const fill = m.trade ? toCostedFill(m.trade, decimals) : null;
+    const realized = m.trade ? await trading.settle(m.trade) : 0n;
+    const fill = m.trade ? toCostedFill(m.trade, decimals, realized) : null;
     if (fill) entries.push(fill);
     if (m.information > 0n) entries.push({ realizedPnl: 0, x402: units(m.information, decimals), gas: 0, fees: 0, slippage: 0 });
     const net = fitness.net(entries);
