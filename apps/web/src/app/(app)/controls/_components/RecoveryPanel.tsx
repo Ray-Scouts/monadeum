@@ -16,7 +16,7 @@ import { Icon } from "@/components/Icon";
 import type { Agent } from "@/data/types";
 import { agentLabel, usd } from "@/lib/format";
 
-export type PickableAgent = Pick<Agent, "id" | "name" | "capital" | "genome" | "generation" | "status">;
+export type PickableAgent = Pick<Agent, "id" | "name" | "capital" | "genome" | "status">;
 
 const ROOT_WALLET = "sample-root-wallet";
 const minutes = (ms: number) => `${Math.round(ms / 60_000)} minutes`;

@@ -14,10 +14,10 @@ const STEPS = ["Sign in", "Strategy", "Genome", "Fund"] as const;
 const SAMPLE_WALLET = "0x4f2a…91c3";
 const DEFAULT_PRESET = 1;
 
-type FieldClass = "capped" | "mutable" | "closed list";
+type FieldClass = "capped" | "allowlist" | "closed list";
 const CLASS_STYLE: Record<FieldClass, string> = {
   capped: "bg-berry-wash text-berry",
-  mutable: "bg-accent-wash text-accent-hi",
+  allowlist: "bg-accent-wash text-accent-hi",
   "closed list": "bg-berry-wash text-berry",
 };
 
@@ -179,7 +179,7 @@ export function CreateFlow({ pairs }: { pairs: readonly string[] }) {
 
         {step === 1 && (
           <>
-            {headingEl("Step 2 of 4", "Pick a starting point", "This is only the starting genome. You can tune it in the next step, and its descendants will keep mutating it.")}
+            {headingEl("Step 2 of 4", "Pick a starting point", "This is only a starting point. You can tune it in the next step. Once the agent is created its genome is fixed: for a different strategy, you create another agent.")}
             <div role="radiogroup" aria-label="Starting strategy" className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
               {PRESETS.map((p, i) => {
                 const d = p.draft(pairs);
@@ -221,7 +221,7 @@ export function CreateFlow({ pairs }: { pairs: readonly string[] }) {
 
         {step === 2 && (
           <>
-            {headingEl("Step 3 of 4", "Tune its genome", "Protocol limits cannot be exceeded, by you or by mutation.")}
+            {headingEl("Step 3 of 4", "Tune its genome", "Protocol limits cannot be exceeded. The genome is fixed once the agent is created.")}
             <div className="mt-4">
               <Field>
                 <FieldHead htmlFor={ids.risk} label="Risk tolerance" kind="capped" output={draft.riskTolerance.toFixed(2)} />
@@ -263,7 +263,7 @@ export function CreateFlow({ pairs }: { pairs: readonly string[] }) {
                 <fieldset aria-describedby={`${ids.pairs}-hint`} className="grid gap-2">
                   <legend className="mb-2 font-semibold">
                     Asset universe
-                    <ClassChip kind="mutable" />
+                    <ClassChip kind="allowlist" />
                   </legend>
                   <div className="flex flex-wrap gap-2">
                     {pairs.map((p) => {
@@ -327,7 +327,7 @@ export function CreateFlow({ pairs }: { pairs: readonly string[] }) {
 
         {step === 3 && (
           <>
-            {headingEl("Step 4 of 4", "Give it starting capital", "This becomes its principal. It never funds its children: only profit above it does.")}
+            {headingEl("Step 4 of 4", "Give it starting capital", "This becomes its principal. If you later sign a reallocation policy that covers it, capital can move between it and your other agents, and it can end up below this amount while your total stays the same.")}
             <div role="group" aria-label="Amount" className="mt-5 flex flex-wrap gap-2.5">
               {AMOUNT_PRESETS.map((v) => (
                 <button

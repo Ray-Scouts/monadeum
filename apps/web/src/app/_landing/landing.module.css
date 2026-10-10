@@ -122,24 +122,21 @@
 .gbar span { position: absolute; inset: 0 auto 0 0; border-radius: 99px; transition: width .7s cubic-bezier(.2, .8, .2, 1); }
 .gbar i { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--fg); opacity: .5; right: 0; }
 .gene output { font: 500 13px var(--f-mono); text-align: right; }
-.flash output { animation: flash 1s; }
-.clip output { color: var(--bad); }
-@keyframes flash { 0% { background: var(--sun); color: var(--ink-btn-fg); border-radius: 4px; } 100% { background: transparent; } }
 @media (max-width: 560px) { .gene { grid-template-columns: 110px minmax(0, 1fr) 56px; } }
 
-/* reproduction */
-.reproSteps { list-style: none; padding: 0; margin: 22px 0 0; display: grid; gap: 8px; counter-reset: rs; }
-.reproSteps li { counter-increment: rs; display: flex; align-items: center; gap: 12px; color: var(--faint); font-weight: 500; transition: color .3s; }
-.reproSteps li::before { content: counter(rs); flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); font: 500 12px var(--f-mono); transition: .3s; }
-.reproSteps li.on { color: var(--fg); }
-.reproSteps li.on::before { background: var(--mint); border-color: var(--mint); color: var(--ink-btn-fg); }
-.reproCard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 26px; display: grid; gap: 18px; box-shadow: var(--shadow); min-width: 0; }
-.rbarRow { display: grid; grid-template-columns: 52px minmax(0, 1fr) 64px; gap: 12px; align-items: center; }
+/* reallocation */
+.steps { list-style: none; padding: 0; margin: 22px 0 0; display: grid; gap: 8px; counter-reset: rs; }
+.steps li { counter-increment: rs; display: flex; align-items: center; gap: 12px; color: var(--faint); font-weight: 500; transition: color .3s; }
+.steps li::before { content: counter(rs); flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); font: 500 12px var(--f-mono); transition: .3s; }
+.steps li.on { color: var(--fg); }
+.steps li.on::before { background: var(--mint); border-color: var(--mint); color: var(--ink-btn-fg); }
+.flowCard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 26px; display: grid; gap: 18px; box-shadow: var(--shadow); min-width: 0; }
+.rbarRow { display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 12px; align-items: center; }
 .rbar { height: 44px; border-radius: 12px; background: var(--surface-2); display: flex; position: relative; }
 .seg { height: 100%; display: flex; align-items: center; justify-content: center; font: 500 12px var(--f-mono); overflow: hidden; white-space: nowrap; transition: width 1s cubic-bezier(.3, .8, .3, 1); }
-.segPrincipal { background: var(--surface); border: 1.5px dashed var(--muted); border-radius: 12px 0 0 12px; color: var(--muted); }
-.segProfit { background: var(--mint); color: var(--ink-btn-fg); }
-.segChild { background: var(--sun); border-radius: 12px; color: var(--ink-btn-fg); }
+.segMid { background: var(--accent); border-radius: 12px; }
+.segUp { background: var(--mint); border-radius: 12px; }
+.segDown { background: var(--sun); border-radius: 12px; }
 .thr { position: absolute; top: -8px; bottom: -8px; width: 2px; background: var(--berry); }
 .thr em { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font: 500 11px var(--f-mono); font-style: normal; color: var(--berry); white-space: nowrap; }
 .rCap { font-size: 15px; min-height: 2.6em; }

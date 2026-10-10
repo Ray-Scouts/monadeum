@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { isEligible } from "@/data/eligibility";
 import type { Agent, Genome } from "@/data/types";
 
 export type Tone = "good" | "warn" | "bad" | "accent" | "berry" | "off";
@@ -22,11 +21,10 @@ export function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   );
 }
 
-export function StatusPill({ agent, populationSize }: { agent: Agent; populationSize: number }) {
+export function StatusPill({ agent }: { agent: Pick<Agent, "status" | "zeroDownsideFlag"> }) {
   if (agent.status === "retired") return <Pill tone="off">Retired</Pill>;
-  if (agent.status === "review") return <Pill tone="warn">In review</Pill>;
   if (agent.status === "paused") return <Pill tone="off">Paused</Pill>;
-  if (isEligible(agent, populationSize)) return <Pill tone="good">Eligible</Pill>;
+  if (agent.zeroDownsideFlag) return <Pill tone="warn">Flagged</Pill>;
   return <Pill tone="accent">Active</Pill>;
 }
 
@@ -88,13 +86,13 @@ export function Sparkline({ values, width = 110, height = 30, color = "var(--acc
 }
 
 /** Symmetric 5x5 identicon derived from the genome hash. */
-export function Identicon({ agent, className = "size-[30px] rounded-[9px]" }: { agent: { genome: Pick<Genome, "hash"> } & Pick<Agent, "generation" | "status">; className?: string }) {
+export function Identicon({ agent, className = "size-[30px] rounded-[9px]" }: { agent: { genome: Pick<Genome, "hash"> } & Pick<Agent, "status">; className?: string }) {
   const h = agent.genome.hash.slice(2).padEnd(8, "0");
   const hue = (parseInt(h.slice(0, 2), 16) % 160) + 150;
   const dim = agent.status === "retired";
   const cells: [number, number][] = [];
   for (let y = 0; y < 5; y++) for (let x = 0; x < 3; x++) if (parseInt(h[(y * 3 + x) % 8]!, 16) % 2) { cells.push([x, y]); if (x < 2) cells.push([4 - x, y]); }
-  const fg = dim ? "var(--faint)" : `hsl(${hue} 80% ${agent.generation % 2 ? 72 : 64}%)`;
+  const fg = dim ? "var(--faint)" : `hsl(${hue} 80% ${parseInt(h[7]!, 16) % 2 ? 72 : 64}%)`;
   return (
     <svg viewBox="0 0 7 7" className={`block flex-none ${className}`} aria-hidden="true">
       <rect width="7" height="7" rx="1.6" fill={dim ? "var(--surface-2)" : `hsl(${hue} 45% 20%)`} />

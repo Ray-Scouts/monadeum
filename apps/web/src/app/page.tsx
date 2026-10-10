@@ -1,25 +1,26 @@
 import Link from "next/link";
+import { REALLOCATION_CAP, SLOT_CEILING } from "@monadeum/reallocation/constants";
 import { PROTOCOL } from "monadeum-simulation/protocol";
 import { Icon, Logo } from "@/components/Icon";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Pill } from "@/components/ui";
 import { CountUp } from "./_landing/CountUp";
-import { GenomeMutator } from "./_landing/GenomeMutator";
+import { GenomeCard } from "./_landing/GenomeCard";
 import { Petri } from "./_landing/Petri";
-import { ReproductionDemo } from "./_landing/ReproductionDemo";
+import { ReallocationDemo } from "./_landing/ReallocationDemo";
 import { RotatingWord } from "./_landing/RotatingWord";
 import { ShrinkageChart } from "./_landing/ShrinkageChart";
 import { TickLoop } from "./_landing/TickLoop";
-import { REPRO, money, percent } from "./_landing/numbers";
+import { REALLOC, money, percent } from "./_landing/numbers";
 import s from "./_landing/landing.module.css";
 
 const NICHES = ["var(--sky)", "var(--mint)", "var(--accent)", "var(--berry)", "var(--sun)"];
 
 const TICKER: readonly [color: string, title: string, detail: string][] = [
-  ["var(--sun)", "Kestrel·a1f0 had a child", `+${money(REPRO.childCapital)} transferred`],
+  ["var(--sun)", "Nimbus·3c1d sent capital to Kestrel·a1f0", `${money(REALLOC.moved)}, same owner, total unchanged`],
   ["var(--bad)", "Proposal rejected", "Orca·19bd exceeds its cap"],
   ["var(--berry)", "Vela·4e02 bought data from Nansen", "$0.03"],
-  ["var(--mint)", `Lumen·77c2 reached ${PROTOCOL.nMin} trades`, "now evaluable"],
+  ["var(--mint)", "Lumen·77c2 ranked for the first time", "it has an adjusted fitness"],
   ["var(--faint)", "Ferro·c1a9 retired", "balance kept"],
   ["var(--sky)", "Quill·0b7e skipped DeFiLlama", "not worth its price"],
   ["var(--accent)", "Circuit breaker checked", "31% of threshold"],
@@ -29,7 +30,7 @@ const LAYERS = [
   { color: "var(--sky)", title: "A proposal, not an order", body: "The model suggests. It never signs and never sets limits." },
   { color: "var(--mint)", title: "Policy engine", body: "Session budget, allowed contracts and x402 spend, checked before anything is sent." },
   { color: "var(--accent)", title: "On-chain caps", body: "Per transaction and per day. The account rejects anything over, no matter who approved it." },
-  { color: "var(--sun)", title: "Population brake", body: "If capital at risk or the reproduction rate spikes, everything pauses until a person reviews it." },
+  { color: "var(--sun)", title: "Population brake", body: "If capital at risk or the capital moved by reallocation spikes, ticks and reallocation pause until a person reviews it." },
 ];
 
 const STACK = [
@@ -45,6 +46,7 @@ const FAQ = [
   { q: "Do I need to know about blockchain?", a: "No. You sign in with Google, email or a passkey and we create a wallet for you. An external wallet is optional, for advanced users." },
   { q: "Can an agent drain my account?", a: "No. Each agent lives in its own smart account with on-chain per-transaction and daily caps, and can only call allowlisted contracts. You can revoke it at any time." },
   { q: "What happens to a retired agent's money?", a: "It stays in its account and you can recover it. Retiring force-liquidates nothing, and its history is kept." },
+  { q: "Can capital move between my agents?", a: "Only if you sign a reallocation policy, and only between the agents it names. An agent can end up below what you put into it, while your total across your agents stays the same. Capital never moves to another owner's agents. You can revoke the policy at any time." },
   { q: "Who pays for the information it buys?", a: "The agent itself, from its own capital and within its budget. That spend counts as a cost in its fitness, so overbuying hurts it." },
   { q: "When does it reach mainnet?", a: "After the security and testnet phases are complete. Even then it is opt-in per account and per agent." },
 ];
@@ -83,11 +85,11 @@ export default function LandingPage() {
             <span className={s.liveBadge}><span className={s.pulse} />Monad testnet · preview</span>
             <h1>Agents that earn their <RotatingWord />.</h1>
             <p className="mt-[22px] max-w-[52ch] text-[clamp(16px,1.6vw,19px)] text-muted">
-              Create an AI agent with its own capital. It buys information when it pays off, trades inside the limits you set and, if it proves itself, reproduces. If not, it retires.
+              Create an AI agent with its own capital. It buys information when it pays off and trades inside the limits you set. If it keeps failing, it retires. If you run several, you can let your capital shift toward the ones that rank higher.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link href="/create" className="btn btn-ink btn-lg">Create my first agent <Icon name="arrow" /></Link>
-              <Link href="/lineage" className="btn btn-lg">Explore a lineage</Link>
+              <Link href="/capital-flow" className="btn btn-lg">See capital flow</Link>
             </div>
             <ul className="mt-7 flex flex-wrap gap-x-[18px] gap-y-2 p-0 text-[13px] text-muted">
               {["Sign in with Google or email", "No MON needed for gas", "On-chain limits"].map((t) => (
@@ -96,13 +98,13 @@ export default function LandingPage() {
             </ul>
           </div>
           <div className={s.petriStage}>
-            <div className={s.petri} role="img" aria-label="Animation: a population of agents where the fittest split and the rest retire. Move your cursor to disturb it.">
+            <div className={s.petri} role="img" aria-label="Animation: a population of agents where capital shifts toward the fitter agents of the same owner and the weakest retire. Move your cursor to disturb it.">
               <Petri n={38} round />
             </div>
             <div className={`${s.floatCard} ${s.fc1}`} aria-hidden="true">
-              <span className="eyebrow">Reproduction · sample</span>
-              <b>Kestrel·a1f0 → Lumen·77c2</b>
-              <span className="text-muted">+{money(REPRO.childCapital)} from its profit</span>
+              <span className="eyebrow">Reallocation · sample</span>
+              <b>Nimbus·3c1d → Kestrel·a1f0</b>
+              <span className="text-muted">{money(REALLOC.moved)} between agents of one owner</span>
             </div>
             <div className={`${s.floatCard} ${s.fc2}`} aria-hidden="true">
               <span className="eyebrow">Policy · sample</span>
@@ -134,10 +136,10 @@ export default function LandingPage() {
         </div>
 
         <section className={`${s.section} ${s.stats}`} aria-label="Protocol rules">
-          <div className={s.stat}><CountUp to={PROTOCOL.testnetPopulationCap} className={s.statN} /><span>agents max on testnet. At the cap, reproduction pauses.</span></div>
-          <div className={s.stat}><CountUp to={PROTOCOL.nMin} className={s.statN} /><span>trades minimum before an agent can have a child.</span></div>
-          <div className={s.stat}><CountUp to={5} className={s.statN} /><span>conditions that must all hold at once to reproduce.</span></div>
-          <div className={s.stat}><CountUp to={0} prefix="$" className={s.statN} /><span>of capital created by reproduction. Only existing profit is reallocated.</span></div>
+          <div className={s.stat}><CountUp to={PROTOCOL.testnetPopulationCap} className={s.statN} /><span>agents max on testnet. At the cap, creating an agent is refused.</span></div>
+          <div className={s.stat}><CountUp to={Math.round(REALLOCATION_CAP * 100)} suffix="%" className={s.statN} /><span>of an agent&apos;s capital, at most, moves at one evaluation, and only under a policy its owner signed.</span></div>
+          <div className={s.stat}><CountUp to={SLOT_CEILING} suffix="x" className={s.statN} /><span>its principal: the most reallocation can raise one agent to.</span></div>
+          <div className={s.stat}><CountUp to={0} prefix="$" className={s.statN} /><span>of capital created by reallocation. It only moves between one owner&apos;s agents.</span></div>
         </section>
 
         <section className={s.section} id="how">
@@ -148,25 +150,21 @@ export default function LandingPage() {
         </section>
 
         <section className={s.section} id="genome">
-          <GenomeMutator
-            footnote={
-              <p className={s.fine}>
-                In this demo each gene mutates with 50% probability so the change is visible. The protocol uses {percent(PROTOCOL.pMut)}, with a change of up to ±{percent(PROTOCOL.mutBand)}. Gene ranges are the protocol&apos;s clip bounds; the parent values are a sample.
-              </p>
-            }
+          <GenomeCard
+            footnote={<p className={s.fine}>Gene ranges are the protocol&apos;s bounds; the values are a sample.</p>}
           >
-            <SecHead eyebrow="Anatomy of an agent" title="A genome that mutates. Limits that do not.">
-              Every child inherits its parent&apos;s genome and a few genes shift slightly. Protocol caps clip any mutation that tries to go too far.
+            <SecHead eyebrow="Anatomy of an agent" title="A genome you choose. Limits you cannot move.">
+              You pick its pairs, its risk, how often it ticks and what it may spend on information. The genome is fixed for the agent&apos;s life: for a different strategy, you create another agent. Nothing copies or changes it, and protocol caps bound every field.
             </SecHead>
-          </GenomeMutator>
+          </GenomeCard>
         </section>
 
         <section className={s.section}>
-          <ReproductionDemo>
-            <SecHead eyebrow="Reproduction without magic" title="The parent never drops below its principal.">
-              When profit reaches {percent(PROTOCOL.profitThresholdFraction)} of principal, the parent can hand {percent(PROTOCOL.reproductionFraction)} of that profit to a child. It is one atomic on-chain transfer: the system reallocates capital, it never creates it.
+          <ReallocationDemo>
+            <SecHead eyebrow="Reallocation without magic" title="Capital moves between your own agents. Your total does not.">
+              Off by default. Under a policy you sign, each evaluation moves up to {percent(REALLOCATION_CAP)} of your lowest-ranked agent&apos;s capital to your highest-ranked one, which can hold at most {SLOT_CEILING} times its principal. An agent can end up below its own principal; your total across your agents stays the same. Each move is one atomic on-chain transfer.
             </SecHead>
-          </ReproductionDemo>
+          </ReallocationDemo>
         </section>
 
         <section className={s.section}>
@@ -202,7 +200,7 @@ export default function LandingPage() {
           <div className="mt-9 grid gap-3.5 md:grid-cols-3">
             {[
               { tone: "accent" as const, label: "Simulation", title: "No real money", body: "Deterministic markets with a fixed seed. Ideal for understanding a genome." },
-              { tone: "warn" as const, label: "Testnet", title: "Real test assets", body: "Wallets, x402, reproduction and accounting end to end." },
+              { tone: "warn" as const, label: "Testnet", title: "Real test assets", body: "Wallets, x402, reallocation and accounting end to end." },
               { tone: "berry" as const, label: "Mainnet", title: "Double opt-in", body: "Enabled for your account and for each agent. Never by default." },
             ].map((m) => (
               <div key={m.label} className="flex flex-col items-start gap-2.5 rounded-card border border-line-soft bg-surface p-[22px]">
@@ -235,8 +233,8 @@ export default function LandingPage() {
               <h2 className="!text-[28px]">An experiment, not a promise.</h2>
             </div>
             <div className="grid gap-3 text-muted">
-              <p>Monadeum asks whether agents get better when capital, information and reproduction are scarce. So far, simulation says reproduction as designed does not help: in every setting tried, an evolving population did not beat a static one.</p>
-              <p>The current candidate is a fixed number of agent slots with bounded capital reallocation toward the fittest. It is still being tested, and the screens here show the original design. We publish the rules, the limits and the results. We do not promise returns.</p>
+              <p>Monadeum asks whether agents do better when capital and information are scarce. An earlier design let profitable agents reproduce. In simulation it did not beat a static population in any setting tried, so it was dropped.</p>
+              <p>The adopted design keeps each owner&apos;s set of agents fixed, retires agents that keep failing and, under a policy the owner signs, shifts that owner&apos;s capital toward their better-ranked agents. In simulation that beat a static population, but only because the simulated strategies were given an edge to find. Whether real strategies carry an edge like that is not known yet, and building the mechanism waits on that question. We publish the rules, the limits and the results. We do not promise returns.</p>
             </div>
           </div>
         </section>

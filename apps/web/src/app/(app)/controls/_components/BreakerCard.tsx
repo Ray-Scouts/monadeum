@@ -1,4 +1,4 @@
-import { PROTOCOL } from "monadeum-simulation/protocol";
+import { EVALUATION_CADENCE } from "@monadeum/reallocation/constants";
 import { Card, CardHead, Pill, SampleBadge } from "@/components/ui";
 import type { BreakerState } from "@/data/types";
 import { pct } from "@/lib/format";
@@ -20,7 +20,7 @@ function Ring({ fraction }: { fraction: number }) {
 }
 
 export function BreakerCard({ breaker }: { breaker: BreakerState }) {
-  const tripped = breaker.capitalAtRiskFraction >= 1;
+  const tripped = breaker.capitalAtRiskFraction >= 1 || breaker.reallocationFraction >= 1;
   return (
     <Card>
       <CardHead title="Population circuit breaker">
@@ -36,9 +36,9 @@ export function BreakerCard({ breaker }: { breaker: BreakerState }) {
             <b className="tabular">{pct(breaker.capitalAtRiskFraction)}</b> <span className="text-muted">of the capital-at-risk threshold</span>
           </div>
           <div>
-            <b className="tabular">{breaker.reproductionsPerEvaluation}</b> <span className="text-muted">reproductions per {PROTOCOL.evalEvery} ticks</span>
+            <b className="tabular">{pct(breaker.reallocationFraction)}</b> <span className="text-muted">of the threshold for capital moved by reallocation per {EVALUATION_CADENCE} ticks</span>
           </div>
-          <p className="max-w-[34ch] text-xs text-muted">If either crosses its threshold, ticks and reproduction stop until a person reviews it.</p>
+          <p className="max-w-[34ch] text-xs text-muted">If either crosses its threshold, ticks stop being scheduled and reallocation pauses until a person reviews it.</p>
         </div>
       </div>
     </Card>

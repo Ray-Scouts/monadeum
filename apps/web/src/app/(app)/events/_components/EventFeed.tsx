@@ -6,11 +6,11 @@ import { Icon, type IconName } from "@/components/Icon";
 import { Segmented } from "@/components/Segmented";
 import type { EventKind, EvolutionEvent } from "@/data/types";
 
-type Filter = "all" | "reproduction" | "policy" | "x402" | "retirement";
+type Filter = "all" | "reallocation" | "policy" | "x402" | "retirement";
 
 const FILTERS: { value: Filter; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "reproduction", label: "Reproduction" },
+  { value: "reallocation", label: "Reallocation" },
   { value: "policy", label: "Policy" },
   { value: "x402", label: "x402" },
   { value: "retirement", label: "Retirements" },
@@ -18,7 +18,7 @@ const FILTERS: { value: Filter; label: string }[] = [
 
 /** Breaker checks are policy-level events, so they show under Policy. */
 const FILTER_OF: Record<EventKind, Filter> = {
-  reproduction: "reproduction",
+  reallocation: "reallocation",
   policy: "policy",
   breaker: "policy",
   x402: "x402",
@@ -26,7 +26,7 @@ const FILTER_OF: Record<EventKind, Filter> = {
 };
 
 const KIND: Record<EventKind, { icon: IconName; tile: string; name: string }> = {
-  reproduction: { icon: "split", tile: "bg-accent-wash text-accent-hi", name: "Reproduction" },
+  reallocation: { icon: "flow", tile: "bg-accent-wash text-accent-hi", name: "Reallocation" },
   policy: { icon: "x", tile: "bg-bad-wash text-bad", name: "Policy" },
   breaker: { icon: "eye", tile: "bg-warn-wash text-warn", name: "Circuit breaker" },
   x402: { icon: "coin", tile: "bg-berry-wash text-berry", name: "x402" },

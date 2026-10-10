@@ -7,7 +7,7 @@ import s from "./landing.module.css";
 const WORDS = [
   ["place", "var(--mint)"],
   ["capital", "var(--sky)"],
-  ["offspring", "var(--sun)"],
+  ["keep", "var(--sun)"],
   ["survival", "var(--berry)"],
 ] as const;
 
