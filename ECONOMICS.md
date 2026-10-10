@@ -14,6 +14,17 @@ The capital, cost, and population model for Monadeum, plus preliminary simulatio
 | Kuru trading fee + slippage | 10 bps + 5 bps (15 bps combined) | **Assumption, not researched.** Kuru sets fees per market with no platform-wide schedule found in research; no confirmed number exists yet for any specific pair. This is the single most important number in this document to replace with a real figure before any of the results below are trusted further. |
 | Paymaster gas sponsorship budget | Not yet modeled numerically | See `ARCHITECTURE.md` section 7 for the mechanism; this document does not yet price it because the per-agent sponsorship budget is a product decision (how many free transactions per agent) not a researched fact. |
 
+**Measured inputs from issue #20, used by `libs/trading`.** The table above is what every simulation result in this document was run with, so it is left as is; replacing it changes those results and calls for a re-run (section 6, item 3). The Kuru testnet spike (`spikes/kuru-testnet-trade`) completed a dry run only on 2026-10-08: the live swap was not made, because no Kuru testnet USDC could be obtained. What it did measure, on-chain, and what TradingModule's cost estimation uses instead of the assumptions above:
+
+| Input | Measured | Status |
+|---|---|---|
+| Kuru taker fee, MON/USDC | 0 bps (`takerFeeBps` from `getMarketParams`, testnet market and, read-only, the mainnet market) | Measured on-chain. Whether any fee is charged outside the market contract was not checked. |
+| Router swap gas | 389,331 gas (`eth_estimateGas`, one fill against one resting order), plus the spike's 10 percent buffer | Simulated estimate, not a receipt. Excludes the exact-amount approve and ERC-4337 verification overhead, so it is a lower bound for an agent's operation. |
+| Gas price | 102 gwei (`eth_gasPrice`, base fee 100 gwei), testnet | One read. Monad's documentation says the gas limit is charged, not gas used; the live run was to verify this and has not. |
+| Spread | Not measurable on testnet (no bids). One read-only mainnet snapshot: about 15.5 bps spread, about 7.8 bps half-spread | One snapshot, context only. TradingModule estimates the half-spread from the live book at plan time instead. |
+
+At the testnet gas price, the router swap costs about 0.0437 MON. Converting that to dollars needs a MON price at the time of use, so no dollar figure is stated here. The working hypothesis from these reads is that the 15 bps line is mostly half-spread rather than fee, and that gas per trade is set more by Monad's gas price and the charged limit than by the $0.001 assumption; neither is confirmed until the live run or a mainnet receipt.
+
 ## 2. Capital model
 
 Starting capital per agent is a user decision, not a protocol constant; $10 is used as the illustrative default throughout this document, generalizing the brief's own $5 worked example to a slightly higher floor that at least partially covers a realistic first tick of gas plus one information purchase without immediately approaching the minimum viable floor defined in `EVOLUTION.md`.
