@@ -9,7 +9,7 @@ Per-agent ERC-4337 account deployment, session key issuance and revocation, and 
 - **Revocation** (`revokeSessionKey`): the key is destroyed in the vault and the record marked first, so this process cannot sign again whatever happens next. Then one owner-signed operation uninstalls the validator, if installed, and calls Kernel `invalidateNonce(currentNonce + 1)`. Success is read back from chain: the validator is not installed or is below `validNonceFrom`, and `currentNonce` is past the nonce the enable signature was bound to, so the owner's approval cannot reinstall it. `revocationStatus` repeats that check independently at any time. The on-chain step is always sponsored and never charged to the per-agent budget, because it is the emergency stop. If the paymaster is down, the account pays from its own MON if it can; if not, the result is `paymaster-unavailable`, the key stays destroyed on the platform, and the chain keeps accepting it until the call is retried and succeeds.
 - **Sponsorship** (`send`, internal to every operation other than revocation): sponsored only if a paymaster is configured, the agent has budget left, the paymaster answers, and the operation's worst-case gas fits the remaining budget, reserved before submission. Otherwise the account pays in native MON, if its balance covers the worst case; if it does not, the operation is not sent. A paymaster that fails is never assumed to have sponsored. A submission the bundler rejected releases its reservation; one whose outcome is unknown keeps it.
 
-The spend policy contract is issue #25. This package depends only on its interface, `contracts/src/IAgentSpendPolicy.sol`, and its address.
+The spend policy contract is `contracts/src/AgentSpendPolicy.sol` (issue #25). This package depends only on its interface, `contracts/src/IAgentSpendPolicy.sol`, and its deployed address. Both policies are installed with flag `0x0000`, so neither skips the signature check, and `AgentSpendPolicy`'s `checkSignaturePolicy` always fails: a session key issued here cannot produce an ERC-1271 signature for the account. The x402 signature path needs the owner's skip-signature flag, an explicit decision this module does not make (`ARCHITECTURE.md` section 16.3, open question on x402 coverage).
 
 ## Configuration
 
@@ -22,8 +22,8 @@ The spend policy contract is issue #25. This package depends only on its interfa
 | `WALLETS_BUNDLER_URL` | yes | ZeroDev v3 bundler URL, https. It carries the ZeroDev project ID: keep it out of logs. |
 | `WALLETS_PAYMASTER_URL` | no | ZeroDev paymaster URL, https. Unset: nothing is sponsored. |
 | `WALLETS_SPEND_POLICY_ADDRESS` | yes | Deployed `IAgentSpendPolicy` implementation. Deployment fails closed if it has no code. |
-| `WALLETS_SPEND_POLICY_DATA` | no | Install data for the policy role. Defaults to `0x` until issue #25 defines one. |
-| `WALLETS_SPEND_POLICY_HOOK_DATA` | no | Install data for the hook role. Defaults to `0x` until issue #25 defines one. |
+| `WALLETS_SPEND_POLICY_DATA` | no | Install data for the policy role. Defaults to `0x`: `AgentSpendPolicy` configures nothing at install (`ARCHITECTURE.md` section 16.3). |
+| `WALLETS_SPEND_POLICY_HOOK_DATA` | no | Hook data, at least one byte. Kernel v3.1 reads the first byte as a flag (`0xff` forces `onInstall`/`onUninstall`). Defaults to `0x00`. |
 | `WALLETS_SETTLEMENT_ASSET` | yes | Settlement asset (USDC). Its `transfer` and `approve` are allowlisted, nothing else on it. |
 | `WALLETS_KURU_ROUTER` | yes | Kuru router address. |
 | `WALLETS_KURU_ROUTER_SELECTORS` | yes | Comma-separated 4-byte selectors allowed on the router, pending issue #20. |
@@ -42,7 +42,7 @@ The consuming app also supplies an `AgentWalletStore` and a `SponsorshipLedger` 
 
 ## Not verified yet
 
-- No run on Monad testnet: the spend policy contract it depends on does not exist yet (issue #25). The opt-in test is the check.
-- Installing a custom policy and hook on Kernel v3.1, and their install data, is the assumption stated in `ARCHITECTURE.md` section 16.3.
+- No run on Monad testnet: the spend policy contract is implemented but not yet deployed there. The opt-in test is the check.
+- Installing `AgentSpendPolicy` as policy and hook is verified against the Kernel v3.1 source and Foundry tests (`ARCHITECTURE.md` section 16.3), not on a deployed Kernel account.
 - Sponsorship through ZeroDev's paymaster has not been exercised on Monad; both spikes paid gas from the account.
 - The Kernel v3.1 nonce rules the revocation check relies on were read from the Kernel v3.1 source (`ValidationManager.sol`, `Kernel.sol`) on 2026-10-09, not observed on chain.

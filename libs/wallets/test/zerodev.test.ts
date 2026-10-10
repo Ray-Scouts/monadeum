@@ -38,7 +38,7 @@ const ROUTER = getAddress("0x00000000000000000000000000000000000000b1");
 const REALLOC = getAddress("0x00000000000000000000000000000000000000c1");
 const POLICY = getAddress("0x00000000000000000000000000000000000000e1");
 const scope = buildScope({ settlementAsset: USDC, kuruRouter: ROUTER, kuruRouterSelectors: ["0x12345678"], reallocation: REALLOC, reallocationSelectors: ["0x9abcdef0"] });
-const spendPolicy = { address: POLICY, policyData: "0x" as Hex, hookData: "0x" as Hex };
+const spendPolicy = { address: POLICY, policyData: "0x" as Hex, hookData: "0x00" as Hex };
 
 type Handler = (method: string, params: unknown[]) => unknown;
 function chainWith(handler: Handler, calls: string[] = []) {
@@ -119,7 +119,7 @@ test("the owner's enable signature covers the scoped validator and names the spe
       nonce: 3,
       hook: POLICY,
       validatorData,
-      hookData: "0x",
+      hookData: "0x00",
       selectorData: concat(["0xe9ae5c53", zeroAddress, zeroAddress, encodeAbiParameters(parseAbiParameters("bytes, bytes"), ["0xff", "0x0000"])]),
     },
     signature: approval.enableSignature,
@@ -186,6 +186,8 @@ test("configuration is read from the environment and rejects anything but Monad 
   };
   const config = loadWalletsConfig(env);
   assert.equal(config.chain.paymasterUrl, null);
+  assert.deepEqual([config.chain.spendPolicy.policyData, config.chain.spendPolicy.hookData], ["0x", "0x00"]);
+  assert.throws(() => loadWalletsConfig({ ...env, WALLETS_SPEND_POLICY_HOOK_DATA: "0x" }), WalletsConfigError);
   assert.deepEqual(config.budget, { operations: 5, gasWei: 10n ** 18n });
   assert.deepEqual(config.chain.scope, scope);
   assert.throws(() => loadWalletsConfig({ ...env, WALLETS_CHAIN_ID: "143" }), WalletsConfigError);

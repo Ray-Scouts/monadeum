@@ -61,9 +61,12 @@ export const spendPolicyAbi = parseAbi([
 
 export interface SpendPolicyConfig {
   address: Address;
-  /** Install data for the policy role, defined by the issue #25 implementation. Empty until it specifies one. */
+  /** Install data for the policy role. AgentSpendPolicy configures nothing at install (16.3), so `0x`. */
   policyData: Hex;
-  /** Install data for the hook role, defined by the issue #25 implementation. Empty until it specifies one. */
+  /**
+   * Hook data, at least one byte: Kernel v3.1 reads the first byte as a flag on install and uninstall, where `0xff`
+   * forces `onInstall` or `onUninstall`. The default `0x00` forces neither; AgentSpendPolicy keeps no install state.
+   */
   hookData: Hex;
 }
 
@@ -92,6 +95,9 @@ export function sessionPolicies(scope: readonly AllowedCall[], spendPolicy: Spen
     policyVersion: CallPolicyVersion.V0_0_4,
     permissions: scope.map((c) => ({ target: c.target, selector: c.selector, valueLimit: 0n, callType: CallType.CALL })),
   });
+  // Flag 0x0000 on both policies: neither skips the user-operation or the signature check. AgentSpendPolicy's
+  // checkSignaturePolicy always fails (16.3), so a session key issued here cannot produce an ERC-1271 signature for
+  // the account. Enabling the x402 signature path needs the owner's skip-signature flag, which this module never sets.
   const custom: Policy = {
     getPolicyData: () => spendPolicy.policyData,
     getPolicyInfoInBytes: () => concatHex(["0x0000", spendPolicy.address]),

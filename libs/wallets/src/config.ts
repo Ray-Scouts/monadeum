@@ -34,6 +34,12 @@ function hex(env: Env, name: string): Hex {
   return value;
 }
 
+function hookData(env: Env): Hex {
+  const value = env.WALLETS_SPEND_POLICY_HOOK_DATA?.trim() || "0x00";
+  if (!isHex(value) || value.length < 4) throw new WalletsConfigError("WALLETS_SPEND_POLICY_HOOK_DATA must be at least one byte of hex");
+  return value;
+}
+
 function selectors(env: Env, name: string): Hex[] {
   return required(env, name).split(",").map((s) => s.trim()).filter(Boolean) as Hex[];
 }
@@ -74,7 +80,7 @@ export function loadWalletsConfig(env: Env = process.env): WalletsConfig {
       spendPolicy: {
         address: address(env, "WALLETS_SPEND_POLICY_ADDRESS"),
         policyData: hex(env, "WALLETS_SPEND_POLICY_DATA"),
-        hookData: hex(env, "WALLETS_SPEND_POLICY_HOOK_DATA"),
+        hookData: hookData(env),
       },
       scope,
     },
