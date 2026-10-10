@@ -18,6 +18,7 @@ import {
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { monadTestnet } from "viem/chains";
+import { entryPoint07Abi } from "viem/account-abstraction";
 import {
   ZeroDevChain,
   buildScope,
@@ -194,4 +195,42 @@ test("configuration is read from the environment and rejects anything but Monad 
   assert.throws(() => loadWalletsConfig({ ...env, WALLETS_BUNDLER_URL: "http://bundler.example" }), WalletsConfigError);
   assert.throws(() => loadWalletsConfig({ ...env, WALLETS_SPEND_POLICY_ADDRESS: undefined }), WalletsConfigError);
   assert.throws(() => loadWalletsConfig({ ...env, WALLETS_SPONSORED_GAS_WEI: "-1" }), WalletsConfigError);
+});
+
+test("bundler reads map to the full receipt, pending state, and the EntryPoint nonce for the operation's key", async () => {
+  const hash = `0x${"11".repeat(32)}` as Hex;
+  const tx = `0x${"22".repeat(32)}` as Hex;
+  const topic = `0x${"33".repeat(32)}` as Hex;
+  let held: "none" | "pool" | "mined" = "none";
+  const key = 5n;
+  const chain = chainWith((method, params) => {
+    if (method === "eth_getUserOperationReceipt") {
+      if (held !== "mined") return null;
+      return {
+        userOpHash: hash, sender: USDC, nonce: "0x0", actualGasCost: "0x64", actualGasUsed: "0x10", success: false, reason: "0xdead",
+        paymaster: POLICY,
+        logs: [{ address: ROUTER, topics: [topic], data: "0x01", blockNumber: "0x7", transactionHash: tx, logIndex: "0x0", blockHash: tx, transactionIndex: "0x0", removed: false }],
+        receipt: { transactionHash: tx, blockNumber: "0x7", blockHash: tx, status: "0x1", logs: [], gasUsed: "0x10", cumulativeGasUsed: "0x10", effectiveGasPrice: "0x1", transactionIndex: "0x0", type: "0x2", from: USDC, to: ROUTER, logsBloom: "0x", contractAddress: null },
+      };
+    }
+    if (method === "eth_getUserOperationByHash") return held === "pool" ? { userOperation: {}, blockNumber: null } : null;
+    if (method === "eth_call") {
+      const data = (params[0] as { data: Hex }).data;
+      const [, k] = decodeFunctionData({ abi: entryPoint07Abi, data }).args as readonly unknown[] as [Hex, bigint];
+      assert.equal(k, key);
+      return encodeFunctionResult({ abi: entryPoint07Abi, functionName: "getNonce", result: (key << 64n) | 3n });
+    }
+    throw new Error(`unexpected ${method}`);
+  });
+  assert.equal(await chain.getReceipt(hash), null);
+  assert.equal(await chain.isPending(hash), false);
+  held = "pool";
+  assert.equal(await chain.isPending(hash), true);
+  held = "mined";
+  const receipt = await chain.getReceipt(hash);
+  assert.deepEqual(receipt, {
+    success: false, actualGasCost: 100n, sponsored: true, transactionHash: tx, blockNumber: 7n,
+    logs: [{ address: ROUTER, topics: [topic], data: "0x01" }], revertReason: "0xdead",
+  });
+  assert.equal(await chain.nextNonce(USDC, (key << 64n) | 2n), (key << 64n) | 3n);
 });

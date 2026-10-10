@@ -37,9 +37,8 @@ export type OperationStatus =
  *   ERC-4337, the user operation hash). It throws `SignerRejected` only when it knows nothing was or will be included,
  *   for example a bundler simulation revert; any other throw is treated as an unknown outcome.
  * - `lookup` answers from the bundler and the chain, not from process memory, whether an operation for this tick key
- *   exists. It must find one even when `ref` is null, which is the crash-between-send-and-record case. One way is to
- *   derive the operation's ERC-4337 nonce key from the tick key; which way fits the account's validator is a
- *   WalletsModule decision.
+ *   exists. It must find one even when `ref` is null, which is the crash-between-send-and-record case.
+ *   `WalletsTradeSigner` meets this through WalletsModule's per-tick record, written before submission.
  */
 export interface TradeSigner {
   submit(request: { tickKey: string; account: Hex; calls: Call[] }): Promise<{ ref: Hex }>;

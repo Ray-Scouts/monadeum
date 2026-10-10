@@ -4,6 +4,7 @@ import { privateKeyToAddress } from "viem/accounts";
 import {
   PaymasterUnavailableError,
   SubmissionRejectedError,
+  type OperationLog,
   type OperationReceipt,
   type OwnerSigner,
   type PermissionState,
@@ -11,10 +12,13 @@ import {
   type SessionApproval,
   type SpendLimits,
   type WalletsChain,
-} from "../src/index.js";
-import { isRevokedOnChain } from "../src/index.js";
-import type { Call } from "../src/index.js";
+} from "./chain.js";
+import type { Call } from "./scope.js";
+import { isRevokedOnChain } from "./wallets.service.js";
 
+// Test double, exported as `@monadeum/wallets/testing` so other packages can test against WalletsService without a
+// chain. Never use it outside tests: it holds no key and enforces nothing.
+//
 // In-memory model of the account, the Kernel nonce rules the module depends on, the bundler, and the paymaster.
 // It encodes the behavior verified in Kernel v3.1 (ValidationManager.sol, Kernel.sol): a validator installed below
 // validNonceFrom is rejected, and an enable signature is bound to currentNonce.
@@ -30,12 +34,28 @@ interface Account {
   currentNonce: number;
   validNonceFrom: number;
   permissions: Map<Hex, { installed: boolean; nonce: number }>;
+  /** Next session-key nonce (key 0). Owner operations use another Kernel nonce key and do not move it. */
+  sessionNonce: bigint;
+}
+
+interface Pooled {
+  account: Address;
+  nonce: bigint | null;
+  include: () => OperationReceipt;
 }
 
 export interface FakeOptions {
   paymaster?: "up" | "down";
   gasPerOp?: bigint;
-  submit?: "ok" | "rejected" | "unknown";
+  /**
+   * ok: included at once. rejected: the bundler refuses it. unknown: the request fails before the bundler sees it.
+   * accepted-then-throw: the bundler accepts it into its mempool, then the response is lost. pending: accepted and
+   * held until `mine()`.
+   */
+  submit?: "ok" | "rejected" | "unknown" | "accepted-then-throw" | "pending";
+  bundlerDown?: boolean;
+  /** Logs a session operation emits when included. Defaults to one marker log. */
+  receiptLogs?: (account: Address, calls: Call[]) => OperationLog[];
   policyDeployed?: boolean;
 }
 
@@ -45,17 +65,23 @@ export class FakeChain implements WalletsChain {
   prepareCalls = 0;
   options: Required<FakeOptions>;
   private readonly receipts = new Map<Hex, OperationReceipt>();
+  readonly mempool = new Map<Hex, Pooled>();
   private seq = 0;
+  private block = 100n;
 
   constructor(options: FakeOptions = {}) {
-    this.options = { paymaster: "up", gasPerOp: 1000n, submit: "ok", policyDeployed: true, ...options };
+    this.options = {
+      paymaster: "up", gasPerOp: 1000n, submit: "ok", policyDeployed: true, bundlerDown: false,
+      receiptLogs: (account, calls) => [{ address: account, topics: [keccak256(toHex("Executed"))], data: keccak256(toHex(JSON.stringify(calls, (_, v) => (typeof v === "bigint" ? v.toString() : v)))) }],
+      ...options,
+    };
   }
 
   acct(address: Address): Account {
     const key = address.toLowerCase();
     let a = this.accounts.get(key);
     if (!a) {
-      a = { deployed: false, limits: null, allowed: new Set(), balance: 0n, currentNonce: 1, validNonceFrom: 0, permissions: new Map() };
+      a = { deployed: false, limits: null, allowed: new Set(), balance: 0n, currentNonce: 1, validNonceFrom: 0, permissions: new Map(), sessionNonce: 0n };
       this.accounts.set(key, a);
     }
     return a;
@@ -77,25 +103,76 @@ export class FakeChain implements WalletsChain {
     return [{ to: "0x00000000000000000000000000000000000000f0", value: 0n, data: `${CONFIGURE}${Buffer.from(payload).toString("hex")}` }];
   }
 
-  private prepared(account: Address, kind: "owner" | "session", calls: Call[], sponsored: boolean, apply: () => void, check?: () => void): PreparedOperation {
+  private prepared(account: Address, kind: "owner" | "session", calls: Call[], sponsored: boolean, apply: () => void, check?: () => void, nonce: bigint | null = null): PreparedOperation {
     this.prepareCalls++;
     if (sponsored && this.options.paymaster === "down") throw new PaymasterUnavailableError("paymaster timeout");
     check?.();
     const gas = this.options.gasPerOp;
+    const userOpHash = keccak256(toHex(`op-${++this.seq}`));
+    const include = (): OperationReceipt => {
+      const a = this.acct(account);
+      if (nonce !== null) {
+        if (nonce !== a.sessionNonce) throw new Error("AA25 invalid account nonce");
+        a.sessionNonce++;
+      }
+      this.submitted.push({ account, kind, sponsored, calls });
+      apply();
+      if (!sponsored) a.balance -= gas;
+      const receipt: OperationReceipt = {
+        success: true, actualGasCost: gas - 100n, sponsored,
+        transactionHash: keccak256(toHex(`tx-${userOpHash}`)), blockNumber: ++this.block,
+        logs: this.options.receiptLogs(account, calls),
+        revertReason: null,
+      };
+      this.receipts.set(userOpHash, receipt);
+      return receipt;
+    };
     return {
       maxCost: gas,
       sponsored,
+      userOpHash,
+      nonce: nonce ?? 0n,
       submit: async () => {
-        if (this.options.submit === "rejected") throw new SubmissionRejectedError("AA23 reverted");
-        if (this.options.submit === "unknown") throw new Error("socket hang up");
-        const hash = keccak256(toHex(`op-${++this.seq}`));
-        this.submitted.push({ account, kind, sponsored, calls });
-        apply();
-        if (!sponsored) this.acct(account).balance -= gas;
-        this.receipts.set(hash, { success: true, actualGasCost: gas - 100n, sponsored });
-        return hash;
+        const mode = this.options.submit;
+        if (mode === "rejected") throw new SubmissionRejectedError("AA23 reverted");
+        if (mode === "unknown") throw new Error("socket hang up");
+        if (nonce !== null && nonce < this.acct(account).sessionNonce) throw new SubmissionRejectedError("AA25 invalid account nonce");
+        if (mode === "accepted-then-throw" || mode === "pending") {
+          this.mempool.set(userOpHash, { account, nonce, include });
+          if (mode === "accepted-then-throw") throw new Error("response lost after the bundler accepted the operation");
+          return userOpHash;
+        }
+        include();
+        return userOpHash;
       },
     };
+  }
+
+  /** Includes every pooled operation whose nonce is still next, in submission order, and drops the rest. */
+  mine() {
+    for (const [hash, pooled] of [...this.mempool]) {
+      this.mempool.delete(hash);
+      try { pooled.include(); } catch { /* nonce already used: dropped */ }
+    }
+  }
+
+  /** The bundler forgets every pooled operation without including it. */
+  dropMempool() {
+    this.mempool.clear();
+  }
+
+  async getReceipt(hash: Hex) {
+    if (this.options.bundlerDown) throw new Error("bundler unreachable");
+    return this.receipts.get(hash) ?? null;
+  }
+
+  async isPending(hash: Hex) {
+    if (this.options.bundlerDown) throw new Error("bundler unreachable");
+    return this.mempool.has(hash);
+  }
+
+  async nextNonce(account: Address, _nonce: bigint) {
+    return this.acct(account).sessionNonce;
   }
 
   async prepareOwnerOperation(input: { owner: OwnerSigner; index: bigint; account: Address; calls: Call[]; sponsored: boolean }) {
@@ -120,9 +197,10 @@ export class FakeChain implements WalletsChain {
   }
 
   async prepareSessionOperation(input: {
-    owner: Address; index: bigint; account: Address; sessionKey: Hex; approval: SessionApproval; calls: Call[]; sponsored: boolean;
+    owner: Address; index: bigint; account: Address; sessionKey: Hex; approval: SessionApproval; calls: Call[]; sponsored: boolean; nonce?: bigint;
   }) {
     const a = this.acct(input.account);
+    const nonce = input.nonce ?? a.sessionNonce;
     return this.prepared(input.account, "session", input.calls, input.sponsored, () => {
       a.permissions.set(input.approval.permissionId, { installed: true, nonce: input.approval.enableNonce });
     }, () => {
@@ -132,7 +210,7 @@ export class FakeChain implements WalletsChain {
       const enableOk = !p?.installed && a.currentNonce === input.approval.enableNonce;
       if (!installedOk && !enableOk) throw new Error("AA24 signature error");
       if (keccak256(toHex(privateKeyToAddress(input.sessionKey))).slice(0, 10) !== input.approval.permissionId) throw new Error("wrong key");
-    });
+    }, nonce);
   }
 
   async waitForReceipt(hash: Hex) {

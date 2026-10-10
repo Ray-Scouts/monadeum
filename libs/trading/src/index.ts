@@ -9,6 +9,8 @@ export { costsOf, decodeFill, toCostedFill } from "./fills.js";
 export { KURU_TESTNET_MON_USDC, baseToQuote, liveSide, priceOf, referencePrice } from "./market.js";
 export type { Book, KuruMarket } from "./market.js";
 export { MemoryTradeStore, SignerRejected } from "./types.js";
+export { WalletsTradeSigner } from "./wallets-signer.js";
+export type { TickExecutor } from "./wallets-signer.js";
 export type {
   Call,
   Fill,

@@ -31,7 +31,14 @@ import {
   type PublicClient,
   type Transport,
 } from "viem";
-import { formatUserOperationRequest, type UserOperation } from "viem/account-abstraction";
+import {
+  entryPoint07Abi,
+  formatUserOperationReceipt,
+  formatUserOperationRequest,
+  getUserOperationHash,
+  type UserOperation,
+  type UserOperationReceipt,
+} from "viem/account-abstraction";
 import { privateKeyToAccount } from "viem/accounts";
 import {
   PaymasterUnavailableError,
@@ -121,6 +128,18 @@ export function maxOperationCost(op: Pick<UserOperation<"0.7">, "callGasLimit" |
 }): bigint {
   const gas = op.callGasLimit + op.verificationGasLimit + op.preVerificationGas + (op.paymasterVerificationGasLimit ?? 0n) + (op.paymasterPostOpGasLimit ?? 0n);
   return gas * op.maxFeePerGas;
+}
+
+function toReceipt(receipt: UserOperationReceipt<"0.7">): OperationReceipt {
+  return {
+    success: receipt.success,
+    actualGasCost: receipt.actualGasCost,
+    sponsored: Boolean(receipt.paymaster && receipt.paymaster !== zeroAddress),
+    transactionHash: receipt.receipt.transactionHash,
+    blockNumber: receipt.receipt.blockNumber,
+    logs: receipt.logs.map((l) => ({ address: l.address, topics: [...l.topics], data: l.data })),
+    revertReason: receipt.success ? null : (receipt.reason ?? null),
+  };
 }
 
 function isBundlerRejection(error: unknown): boolean {
@@ -230,20 +249,28 @@ export class ZeroDevChain implements WalletsChain {
     });
   }
 
-  private async prepare(account: Awaited<ReturnType<typeof createKernelAccount>>, calls: Call[], sponsored: boolean): Promise<PreparedOperation> {
+  private async prepare(account: Awaited<ReturnType<typeof createKernelAccount>>, calls: Call[], sponsored: boolean, nonce?: bigint): Promise<PreparedOperation> {
     const failed = { paymaster: false };
     const client = this.client(account, sponsored, failed);
     let op: UserOperation<"0.7">;
     try {
-      op = (await client.prepareUserOperation({ calls })) as UserOperation<"0.7">;
+      op = (await client.prepareUserOperation(nonce === undefined ? { calls } : { calls, nonce })) as UserOperation<"0.7">;
     } catch (error) {
       if (failed.paymaster) throw new PaymasterUnavailableError(error instanceof Error ? error.message : String(error));
       throw error;
     }
     const hasPaymaster = Boolean(op.paymaster && op.paymaster !== zeroAddress);
+    const userOpHash = getUserOperationHash({
+      userOperation: { ...op, signature: "0x" },
+      entryPointAddress: entryPoint.address,
+      entryPointVersion: entryPoint.version,
+      chainId: this.config.chain.id,
+    });
     return {
       maxCost: maxOperationCost(op),
       sponsored: hasPaymaster,
+      userOpHash,
+      nonce: op.nonce,
       submit: async () => {
         const signature = await account.signUserOperation(op);
         try {
@@ -266,7 +293,7 @@ export class ZeroDevChain implements WalletsChain {
   }
 
   async prepareSessionOperation(input: {
-    owner: Address; index: bigint; account: Address; sessionKey: Hex; approval: SessionApproval; calls: Call[]; sponsored: boolean;
+    owner: Address; index: bigint; account: Address; sessionKey: Hex; approval: SessionApproval; calls: Call[]; sponsored: boolean; nonce?: bigint;
   }): Promise<PreparedOperation> {
     const sudo = await signerToEcdsaValidator(this.publicClient, { signer: addressToEmptyAccount(input.owner), entryPoint, kernelVersion });
     const regular = await this.permissionValidator(privateKeyToAccount(input.sessionKey));
@@ -275,19 +302,33 @@ export class ZeroDevChain implements WalletsChain {
       entryPoint, kernelVersion, index: input.index, address: input.account,
       plugins: { sudo, regular, hook: spendPolicyHook(this.config.spendPolicy), pluginEnableSignature: input.approval.enableSignature },
     });
-    return this.prepare(account, input.calls, input.sponsored);
+    return this.prepare(account, input.calls, input.sponsored, input.nonce);
+  }
+
+  private bundler() {
+    return createKernelAccountClient({
+      chain: this.config.chain, client: this.publicClient, bundlerTransport: this.config.transport?.bundler ?? http(this.config.bundlerUrl),
+    });
   }
 
   async waitForReceipt(userOpHash: Hex): Promise<OperationReceipt> {
-    const bundler = createKernelAccountClient({
-      chain: this.config.chain, client: this.publicClient, bundlerTransport: this.config.transport?.bundler ?? http(this.config.bundlerUrl),
+    return toReceipt(await this.bundler().waitForUserOperationReceipt({ hash: userOpHash }));
+  }
+
+  async getReceipt(userOpHash: Hex): Promise<OperationReceipt | null> {
+    const raw = await this.bundler().request({ method: "eth_getUserOperationReceipt", params: [userOpHash] });
+    return raw ? toReceipt(formatUserOperationReceipt(raw)) : null;
+  }
+
+  async isPending(userOpHash: Hex): Promise<boolean> {
+    const found = await this.bundler().request({ method: "eth_getUserOperationByHash", params: [userOpHash] });
+    return Boolean(found) && !found!.blockNumber;
+  }
+
+  async nextNonce(account: Address, nonce: bigint): Promise<bigint> {
+    return this.publicClient.readContract({
+      address: entryPoint.address, abi: entryPoint07Abi, functionName: "getNonce", args: [account, nonce >> 64n],
     });
-    const receipt = await bundler.waitForUserOperationReceipt({ hash: userOpHash });
-    return {
-      success: receipt.success,
-      actualGasCost: receipt.actualGasCost,
-      sponsored: Boolean(receipt.paymaster && receipt.paymaster !== zeroAddress),
-    };
   }
 
   async permissionState(account: Address, permissionId: Hex): Promise<PermissionState> {
