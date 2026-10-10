@@ -23,7 +23,17 @@ export interface PreparedOperation {
   /** Upper bound on gas this operation can be charged, in wei. On Monad the charge is based on the gas limit. */
   maxCost: bigint;
   sponsored: boolean;
+  /** ERC-4337 user operation hash, computed from the prepared operation before anything is signed or sent. */
+  userOpHash: Hex;
+  /** Full ERC-4337 nonce (192-bit key, 64-bit sequence). Two operations with the same nonce can never both be included. */
+  nonce: bigint;
   submit(): Promise<Hex>;
+}
+
+export interface OperationLog {
+  address: Address;
+  topics: Hex[];
+  data: Hex;
 }
 
 export interface OperationReceipt {
@@ -31,6 +41,11 @@ export interface OperationReceipt {
   actualGasCost: bigint;
   /** True when the receipt names a paymaster, so the paymaster, not the account, paid the gas. */
   sponsored: boolean;
+  transactionHash: Hex;
+  blockNumber: bigint;
+  /** Logs emitted by this user operation only, not the whole bundle transaction. */
+  logs: OperationLog[];
+  revertReason: string | null;
 }
 
 export interface PermissionState {
@@ -68,6 +83,7 @@ export interface WalletsChain {
   configurationCalls(scope: readonly AllowedCall[], limits: SpendLimits): Call[];
 
   prepareOwnerOperation(input: { owner: OwnerSigner; index: bigint; account: Address; calls: Call[]; sponsored: boolean }): Promise<PreparedOperation>;
+  /** `nonce`, when given, pins the operation's nonce so it excludes an earlier operation for the same tick. */
   prepareSessionOperation(input: {
     owner: Address;
     index: bigint;
@@ -76,8 +92,15 @@ export interface WalletsChain {
     approval: SessionApproval;
     calls: Call[];
     sponsored: boolean;
+    nonce?: bigint;
   }): Promise<PreparedOperation>;
   waitForReceipt(userOpHash: Hex): Promise<OperationReceipt>;
+  /** The bundler's receipt, or null when it has none. Throws when the bundler cannot be asked. */
+  getReceipt(userOpHash: Hex): Promise<OperationReceipt | null>;
+  /** The bundler holds the operation and it is not yet in a block. */
+  isPending(userOpHash: Hex): Promise<boolean>;
+  /** EntryPoint `getNonce(account, key)` for the key of `nonce`: the next full nonce that key will accept. */
+  nextNonce(account: Address, nonce: bigint): Promise<bigint>;
 
   /** The owner signs the Kernel enable data for a permission validator scoped to `scope` with the spend policy attached. */
   approveSession(input: { owner: OwnerSigner; index: bigint; account: Address; sessionKeyAddress: Address }): Promise<SessionApproval>;

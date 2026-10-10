@@ -1,4 +1,5 @@
 import type { Address, Hex } from "viem";
+import type { OperationReceipt } from "./chain.js";
 
 export interface SessionRecord {
   keyAddress: Address;
@@ -24,11 +25,43 @@ export interface AgentWalletRecord {
   session: SessionRecord | null;
 }
 
-/** Durable store. `claim` is insert-if-absent, keyed by agent ID and, separately, unique by account address. */
+/** One signed operation for a tick. Recorded before it is submitted, so a crash can never lose its hash. */
+export interface TickAttempt {
+  userOpHash: Hex;
+  nonce: bigint;
+  sponsored: boolean;
+  /** Sponsorship reserved for it in the ledger, settled when its receipt is seen. 0 when the account paid. */
+  reserved: bigint;
+  /** The bundler answered and refused it, so it was never accepted. */
+  rejected: boolean;
+}
+
+/** Session-key operation keyed by (agent ID, tick key), for at-most-once submission across restarts. */
+export interface TickOperationRecord {
+  agentId: string;
+  tickKey: string;
+  account: Address;
+  /** keccak256 of the encoded calls. A tick key is bound to one set of calls. */
+  callsHash: Hex;
+  /** Every attempt, oldest first. Re-attempts reuse the nonce of the attempt they replace. */
+  attempts: TickAttempt[];
+  included: { userOpHash: Hex; receipt: OperationReceipt } | null;
+}
+
+/**
+ * Durable store. `claim` and `claimOperation` are insert-if-absent. `claim` is keyed by agent ID and, separately,
+ * unique by account address; `claimOperation` by (agent ID, tick key). A write must be durable before it returns:
+ * the service submits an operation only after its attempt has been written.
+ */
 export interface AgentWalletStore {
   get(agentId: string): Promise<AgentWalletRecord | undefined>;
   claim(record: AgentWalletRecord): Promise<boolean>;
   update(record: AgentWalletRecord): Promise<void>;
+  findByAccount(account: Address): Promise<AgentWalletRecord | undefined>;
+  getOperation(agentId: string, tickKey: string): Promise<TickOperationRecord | undefined>;
+  claimOperation(record: TickOperationRecord): Promise<boolean>;
+  updateOperation(record: TickOperationRecord): Promise<void>;
+  listOperations(agentId: string): Promise<TickOperationRecord[]>;
 }
 
 /**
@@ -44,8 +77,40 @@ export interface SessionKeyVault {
 const copy = (r: AgentWalletRecord): AgentWalletRecord =>
   ({ ...r, deployment: { ...r.deployment }, session: r.session ? { ...r.session } : null });
 
+const copyOp = (r: TickOperationRecord): TickOperationRecord =>
+  ({ ...r, attempts: r.attempts.map((a) => ({ ...a })), included: r.included ? { ...r.included } : null });
+
 export class MemoryAgentWalletStore implements AgentWalletStore {
   private readonly byAgent = new Map<string, AgentWalletRecord>();
+  private readonly operations = new Map<string, TickOperationRecord>();
+  private readonly opKey = (agentId: string, tickKey: string) => JSON.stringify([agentId, tickKey]);
+
+  async findByAccount(account: Address) {
+    for (const r of this.byAgent.values()) if (r.account.toLowerCase() === account.toLowerCase()) return copy(r);
+    return undefined;
+  }
+
+  async getOperation(agentId: string, tickKey: string) {
+    const r = this.operations.get(this.opKey(agentId, tickKey));
+    return r ? copyOp(r) : undefined;
+  }
+
+  async claimOperation(record: TickOperationRecord) {
+    const key = this.opKey(record.agentId, record.tickKey);
+    if (this.operations.has(key)) return false;
+    this.operations.set(key, copyOp(record));
+    return true;
+  }
+
+  async updateOperation(record: TickOperationRecord) {
+    const key = this.opKey(record.agentId, record.tickKey);
+    if (!this.operations.has(key)) throw new Error(`no operation record for ${key}`);
+    this.operations.set(key, copyOp(record));
+  }
+
+  async listOperations(agentId: string) {
+    return [...this.operations.values()].filter((r) => r.agentId === agentId).map(copyOp);
+  }
 
   async get(agentId: string) {
     const r = this.byAgent.get(agentId);

@@ -16,7 +16,7 @@ import {
   type OwnerSigner,
   type SponsorshipBudget,
 } from "../src/index.js";
-import { FakeChain, type FakeOptions } from "./fake-chain.js";
+import { FakeChain, type FakeOptions } from "../src/testing.js";
 
 const USDC = getAddress("0x00000000000000000000000000000000000000a1");
 const ROUTER = getAddress("0x00000000000000000000000000000000000000b1");

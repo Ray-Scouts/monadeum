@@ -1,10 +1,11 @@
 import type { AllowedCall } from "@monadeum/risk";
-import { isAddressEqual, type Address, type Hex } from "viem";
+import { encodeAbiParameters, isAddressEqual, keccak256, parseAbiParameters, type Address, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAddress } from "viem/accounts";
 import { hasHeadroom, type SponsorshipBudget, type SponsorshipLedger } from "./budget.js";
 import {
   PaymasterUnavailableError,
   SubmissionRejectedError,
+  type OperationReceipt,
   type OwnerSigner,
   type PermissionState,
   type PreparedOperation,
@@ -12,7 +13,7 @@ import {
   type WalletsChain,
 } from "./chain.js";
 import { callsInScope, type Call } from "./scope.js";
-import type { AgentWalletRecord, AgentWalletStore, SessionKeyVault } from "./store.js";
+import type { AgentWalletRecord, AgentWalletStore, SessionKeyVault, TickAttempt, TickOperationRecord } from "./store.js";
 
 export interface WalletsSettings {
   scope: readonly AllowedCall[];
@@ -34,9 +35,11 @@ export type FailureReason =
   | "paymaster-unavailable"
   | "rejected"
   | "reverted"
-  | "submission-unknown";
+  | "submission-unknown"
+  | "busy";
 
-export type Failure = { ok: false; reason: FailureReason; detail?: string };
+/** `userOpHash` is set whenever an operation may have been submitted, so it can always be found again. */
+export type Failure = { ok: false; reason: FailureReason; detail?: string; userOpHash?: Hex };
 
 export interface OperationOutcome {
   userOpHash: Hex;
@@ -50,6 +53,21 @@ export type ExecuteResult = ({ ok: true } & OperationOutcome) | Failure;
 export type RevokeResult =
   | { ok: true; revokedLocallyAt: number; onChain: "verified"; operation: OperationOutcome | null }
   | { ok: false; revokedLocallyAt: number | null; reason: FailureReason; detail?: string };
+
+export type TickStatus =
+  | { state: "absent" }
+  | { state: "pending"; userOpHash: Hex }
+  | { state: "included"; userOpHash: Hex; receipt: OperationReceipt };
+
+/**
+ * `ok: true`: the operation is in a block; `receipt.success` says whether its calls succeeded. `pending` and
+ * `submission-unknown` carry the hash of an operation that may still land. Every other reason means nothing for this
+ * call was submitted.
+ */
+export type TickExecuteResult =
+  | { ok: true; userOpHash: Hex; receipt: OperationReceipt }
+  | { ok: false; reason: "pending"; userOpHash: Hex; detail?: string }
+  | Failure;
 
 export interface RevocationStatus {
   revoked: boolean;
@@ -296,21 +314,189 @@ export class WalletsService {
   }
 
   /**
+   * Session-key execution for one tick, at most once across restarts. The operation's hash is computed from the
+   * prepared operation and written to the store, keyed by (agent ID, tick key), before it is submitted. A repeated
+   * call for the same tick never prepares blindly: it looks the tick up first and returns what it finds, and sends
+   * again only when every earlier attempt is provably not included and cannot be (see `lookupTick`). A re-attempt
+   * reuses the nonce of the attempt it replaces, so at most one of them can ever be included.
+   *
+   * While an earlier tick of the same agent may still land, a new tick is refused with `busy`, so two ticks never
+   * race for one nonce. Every result where an operation may have been submitted carries its `userOpHash`.
+   */
+  executeForTick(input: { agentId: string; tickKey: string; calls: Call[] }): Promise<TickExecuteResult> {
+    return this.exclusive(input.agentId, () => this.executeForTickOnce(input));
+  }
+
+  /**
+   * Where a tick's operation stands, answered from the store, the bundler, and the chain: `absent` (nothing was
+   * submitted, or every attempt is provably dead), `pending` (the bundler holds it), or `included` with the full
+   * receipt. Throws when it cannot tell, for example when the bundler is unreachable, or when an attempt's nonce was
+   * consumed by an operation it cannot identify; the caller must not treat that as absent.
+   */
+  lookupTick(agentId: string, tickKey: string): Promise<TickStatus> {
+    return this.exclusive(agentId, async (): Promise<TickStatus> => {
+      const op = await this.store.getOperation(agentId, tickKey);
+      return op ? (await this.statusOf(op)).status : { state: "absent" };
+    });
+  }
+
+  /** The agent that owns an account, for callers that know only the account address. */
+  async agentIdOf(account: Address): Promise<string | undefined> {
+    return (await this.store.findByAccount(account))?.agentId;
+  }
+
+  private async executeForTickOnce(input: { agentId: string; tickKey: string; calls: Call[] }): Promise<TickExecuteResult> {
+    const { agentId, tickKey, calls } = input;
+    const record = await this.store.get(agentId);
+    if (!record) return { ok: false, reason: "unknown-agent" };
+    if (record.deployment.status !== "deployed") return { ok: false, reason: "not-deployed" };
+    const session = record.session;
+    if (!session) return { ok: false, reason: "no-session" };
+    const callsHash = keccak256(encodeAbiParameters(parseAbiParameters("(address to, uint256 value, bytes data)[]"), [calls]));
+
+    let op = await this.store.getOperation(agentId, tickKey);
+    let pinnedNonce: bigint | undefined;
+    if (op) {
+      if (op.callsHash !== callsHash) return { ok: false, reason: "conflict", detail: "tick key already used with different calls" };
+      let found: { status: TickStatus; superseded: boolean };
+      try {
+        found = await this.statusOf(op);
+      } catch (error) {
+        return { ok: false, reason: "submission-unknown", detail: brief(error), userOpHash: op.attempts.at(-1)?.userOpHash };
+      }
+      if (found.status.state === "included") return { ok: true, userOpHash: found.status.userOpHash, receipt: found.status.receipt };
+      if (found.status.state === "pending") return { ok: false, reason: "pending", userOpHash: found.status.userOpHash };
+      const last = op.attempts.filter((a) => !a.rejected).at(-1);
+      if (last && !found.superseded) pinnedNonce = last.nonce;
+      // Earlier attempts are dead: return their reservations before a new one is taken.
+      let released = false;
+      for (const a of op.attempts) {
+        if (a.reserved > 0n) {
+          await this.ledger.release(agentId, a.reserved);
+          a.reserved = 0n;
+          released = true;
+        }
+      }
+      if (released) await this.store.updateOperation(op);
+    }
+
+    if (session.status !== "active") return { ok: false, reason: "revoked" };
+    if (!callsInScope(this.settings.scope, calls)) return { ok: false, reason: "out-of-scope" };
+    const sessionKey = await this.vault.get(agentId);
+    if (!sessionKey) return { ok: false, reason: "revoked", detail: "session key is not held" };
+
+    if (!op) {
+      for (const other of await this.store.listOperations(agentId)) {
+        if (other.included || other.attempts.every((a) => a.rejected)) continue;
+        try {
+          const s = await this.statusOf(other);
+          if (s.status.state === "pending") return { ok: false, reason: "busy", detail: `tick ${other.tickKey} is pending` };
+        } catch (error) {
+          return { ok: false, reason: "busy", detail: `tick ${other.tickKey} is unresolved: ${brief(error)}` };
+        }
+      }
+      op = { agentId, tickKey, account: record.account, callsHash, attempts: [], included: null };
+      if (!(await this.store.claimOperation(op))) return { ok: false, reason: "conflict", detail: "tick claimed concurrently" };
+    }
+    const tick = op;
+
+    const approval = { permissionId: session.permissionId, enableSignature: session.enableSignature, enableNonce: session.enableNonce };
+    const chosen = await this.choose(agentId, record.account, (sponsored) =>
+      this.chain.prepareSessionOperation({
+        owner: record.owner, index: record.index, account: record.account, sessionKey, approval, calls, sponsored, nonce: pinnedNonce,
+      }), "budgeted");
+    if (!chosen.ok) return chosen;
+    const { prepared, reserved } = chosen;
+    if (pinnedNonce !== undefined && prepared.nonce !== pinnedNonce) {
+      if (reserved > 0n) await this.ledger.release(agentId, reserved);
+      return { ok: false, reason: "rejected", detail: "prepared operation does not carry the pinned nonce" };
+    }
+
+    // Durable before submission: after this write, a crash can never lose the operation's hash.
+    const attempt: TickAttempt = { userOpHash: prepared.userOpHash, nonce: prepared.nonce, sponsored: prepared.sponsored, reserved, rejected: false };
+    tick.attempts.push(attempt);
+    await this.store.updateOperation(tick);
+
+    let hash: Hex;
+    try {
+      hash = await prepared.submit();
+    } catch (error) {
+      if (error instanceof SubmissionRejectedError) {
+        if (reserved > 0n) await this.ledger.release(agentId, reserved);
+        attempt.reserved = 0n;
+        attempt.rejected = true;
+        await this.store.updateOperation(tick);
+        return { ok: false, reason: "rejected", detail: brief(error) };
+      }
+      return { ok: false, reason: "submission-unknown", detail: brief(error), userOpHash: prepared.userOpHash };
+    }
+    if (hash.toLowerCase() !== prepared.userOpHash.toLowerCase()) {
+      return { ok: false, reason: "submission-unknown", detail: `bundler returned ${hash}, expected ${prepared.userOpHash}`, userOpHash: prepared.userOpHash };
+    }
+
+    let receipt: OperationReceipt;
+    try {
+      receipt = await this.chain.waitForReceipt(hash);
+    } catch (error) {
+      return { ok: false, reason: "submission-unknown", detail: brief(error), userOpHash: hash };
+    }
+    await this.markIncluded(tick, attempt, receipt);
+    return { ok: true, userOpHash: hash, receipt };
+  }
+
+  /** Records inclusion, then settles the attempt's reservation. A crash between the two leaves the worst case reserved. */
+  private async markIncluded(op: TickOperationRecord, attempt: TickAttempt, receipt: OperationReceipt) {
+    const reserved = attempt.reserved;
+    op.included = { userOpHash: attempt.userOpHash, receipt };
+    attempt.reserved = 0n;
+    await this.store.updateOperation(op);
+    if (reserved > 0n) await this.ledger.settle(op.agentId, reserved, receipt.sponsored ? receipt.actualGasCost : 0n);
+  }
+
+  /**
+   * `superseded`: an attempt's nonce was consumed by another tick's recorded, included operation, so none of this
+   * tick's attempts can ever be included and a new attempt must take a fresh nonce.
+   */
+  private async statusOf(op: TickOperationRecord): Promise<{ status: TickStatus; superseded: boolean }> {
+    if (op.included) return { status: { state: "included", userOpHash: op.included.userOpHash, receipt: op.included.receipt }, superseded: false };
+    const live = op.attempts.filter((a) => !a.rejected);
+    for (const a of live) {
+      const receipt = await this.chain.getReceipt(a.userOpHash);
+      if (receipt) {
+        await this.markIncluded(op, a, receipt);
+        return { status: { state: "included", userOpHash: a.userOpHash, receipt }, superseded: false };
+      }
+    }
+    for (const a of live) {
+      if (await this.chain.isPending(a.userOpHash)) return { status: { state: "pending", userOpHash: a.userOpHash }, superseded: false };
+    }
+    let superseded = false;
+    for (const nonce of new Set(live.map((a) => a.nonce))) {
+      if ((await this.chain.nextNonce(op.account, nonce)) <= nonce) continue;
+      // The nonce was used, and not by any of this tick's attempts. Only another tick's known inclusion proves by what.
+      const others = await this.store.listOperations(op.agentId);
+      const takenBy = others.find((o) => o.tickKey !== op.tickKey && o.included &&
+        o.attempts.some((a) => a.userOpHash === o.included!.userOpHash && a.nonce === nonce));
+      if (!takenBy) throw new Error(`nonce ${nonce} of tick ${op.tickKey} was consumed by an operation this module cannot identify`);
+      superseded = true;
+    }
+    // Not in a block, not held by the bundler, and its nonce unused or taken by another tick: nothing of it can land.
+    return { status: { state: "absent" }, superseded };
+  }
+
+  /**
    * The gas decision for every operation, ARCHITECTURE.md sections 7 and 14. A budgeted operation is sponsored only
    * if the paymaster is configured, the agent has budget left, the paymaster answers, and the worst-case cost fits
    * the remaining budget. A revocation is sponsored whenever the paymaster answers, and is never charged to the
    * budget. Otherwise the account pays in native MON, and only if its balance covers the worst case; if not, the
-   * operation is not sent.
+   * operation is not sent. Nothing is submitted here; a returned reservation must be settled or released.
    */
-  private async send(
+  private async choose(
     agentId: string,
     account: Address,
     prepare: (sponsored: boolean) => Promise<PreparedOperation>,
-    onSubmitted?: (hash: Hex) => Promise<void>,
-    kind: "budgeted" | "revocation" = "budgeted",
-  ): Promise<({ ok: true } & OperationOutcome) | Failure> {
-    let prepared: PreparedOperation | null = null;
-    let reserved = 0n;
+    kind: "budgeted" | "revocation",
+  ): Promise<{ ok: true; prepared: PreparedOperation; reserved: bigint } | Failure> {
     let paymasterDown = !this.settings.paymaster;
     try {
       const sponsorable = kind === "revocation" || hasHeadroom(await this.ledger.usage(agentId), this.settings.budget);
@@ -320,10 +506,9 @@ export class WalletsService {
           if (!candidate.sponsored) {
             paymasterDown = true;
           } else if (kind === "revocation") {
-            prepared = candidate;
+            return { ok: true, prepared: candidate, reserved: 0n };
           } else if (await this.ledger.reserve(agentId, candidate.maxCost, this.settings.budget)) {
-            prepared = candidate;
-            reserved = candidate.maxCost;
+            return { ok: true, prepared: candidate, reserved: candidate.maxCost };
           }
         } catch (error) {
           if (!(error instanceof PaymasterUnavailableError)) throw error;
@@ -331,17 +516,27 @@ export class WalletsService {
           paymasterDown = true;
         }
       }
-      if (!prepared) {
-        const own = await prepare(false);
-        if (own.sponsored) return { ok: false, reason: "rejected", detail: "unsponsored operation carries paymaster data" };
-        if ((await this.chain.nativeBalance(account)) < own.maxCost) {
-          return { ok: false, reason: kind === "revocation" && paymasterDown ? "paymaster-unavailable" : "insufficient-gas" };
-        }
-        prepared = own;
+      const own = await prepare(false);
+      if (own.sponsored) return { ok: false, reason: "rejected", detail: "unsponsored operation carries paymaster data" };
+      if ((await this.chain.nativeBalance(account)) < own.maxCost) {
+        return { ok: false, reason: kind === "revocation" && paymasterDown ? "paymaster-unavailable" : "insufficient-gas" };
       }
+      return { ok: true, prepared: own, reserved: 0n };
     } catch (error) {
       return { ok: false, reason: "rejected", detail: brief(error) };
     }
+  }
+
+  private async send(
+    agentId: string,
+    account: Address,
+    prepare: (sponsored: boolean) => Promise<PreparedOperation>,
+    onSubmitted?: (hash: Hex) => Promise<void>,
+    kind: "budgeted" | "revocation" = "budgeted",
+  ): Promise<({ ok: true } & OperationOutcome) | Failure> {
+    const chosen = await this.choose(agentId, account, prepare, kind);
+    if (!chosen.ok) return chosen;
+    const { prepared, reserved } = chosen;
 
     let hash: Hex;
     try {
@@ -352,7 +547,7 @@ export class WalletsService {
         return { ok: false, reason: "rejected", detail: brief(error) };
       }
       // The bundler may have accepted it. Keep the reservation: the budget fails closed, never open.
-      return { ok: false, reason: "submission-unknown", detail: brief(error) };
+      return { ok: false, reason: "submission-unknown", detail: brief(error), userOpHash: prepared.userOpHash };
     }
     await onSubmitted?.(hash);
 
@@ -360,10 +555,10 @@ export class WalletsService {
     try {
       receipt = await this.chain.waitForReceipt(hash);
     } catch (error) {
-      return { ok: false, reason: "submission-unknown", detail: brief(error) };
+      return { ok: false, reason: "submission-unknown", detail: brief(error), userOpHash: hash };
     }
     if (reserved > 0n) await this.ledger.settle(agentId, reserved, receipt.sponsored ? receipt.actualGasCost : 0n);
-    if (!receipt.success) return { ok: false, reason: "reverted", detail: hash };
+    if (!receipt.success) return { ok: false, reason: "reverted", detail: hash, userOpHash: hash };
     return { ok: true, userOpHash: hash, sponsored: receipt.sponsored, gasCost: receipt.actualGasCost };
   }
 }
