@@ -14,7 +14,7 @@ The original starting hypothesis was a single Next.js frontend, a NestJS API, an
 
 2. **Spending limits are enforced twice, at two structurally independent layers, not once.** Research into self-evolving agent systems found that when the safety/policy layer is itself part of what evolution can influence, evolutionary pressure toward higher fitness can erode exactly the constraints meant to protect capital. This means an application-layer policy engine alone is not sufficient if the same codebase or configuration is ever touched by an automated "improve this agent" process. The mitigation used elsewhere in production (Coinbase's Agentic Wallets product enforces spending policy at the smart-contract level, so that an agent cannot exceed its limit "even if the application logic is compromised, because the blockchain rejects out-of-policy transactions") is adopted directly: every agent's spending cap is encoded on-chain, in its own smart account, not only in the NestJS policy engine.
 
-3. **An indexer was added as its own component, not folded into the API.** The chain is the source of truth for identity, custody, and reproduction events; Postgres is a read-model for the dashboard. Conflating "write path" (API enqueuing agent actions) with "read path" (indexer syncing on-chain events into a queryable store) would make the API responsible for two jobs with very different failure and retry semantics.
+3. **An indexer was added as its own component, not folded into the API.** The chain is the source of truth for identity, custody, and reallocation and retirement events; Postgres is a read-model for the dashboard. Conflating "write path" (API enqueuing agent actions) with "read path" (indexer syncing on-chain events into a queryable store) would make the API responsible for two jobs with very different failure and retry semantics.
 
 ## 2. Component diagram
 
@@ -79,21 +79,26 @@ Agent smart account spends on:
 
 Agent smart account never spends on:
   - transfers to arbitrary addresses (contract allowlist excludes anything but
-    Kuru's router, the reproduction contract, and the settlement asset, and a
+    Kuru's router, the reallocation contract, and the settlement asset, and a
     settlement-asset transfer or approval must name one of the first two; see
     section 16.3)
   - withdrawals back to the user above the user's own configured limits
     (protects against a compromised agent silently draining back "to the user"
     as a laundering step, see THREAT-MODEL.md)
 
-Reproduction:
-  - moves a bounded fraction of a parent's realized profit (never principal)
-    into a newly deployed child smart account
-  - is the only capital-creating-looking event in the system, and it creates
-    nothing: it reallocates capital that already exists in the parent's account
+Reallocation (only while the owner's signed reallocation policy is in force):
+  - moves a bounded share of one agent's capital to another agent with the
+    same owner, both accounts already existing; never across owners, never
+    into a new account
+  - creates nothing: it moves capital that already exists among one owner's
+    agents, and each owner's total is unchanged
+
+Retirement:
+  - moves nothing: a retired agent's balance stays in its own account,
+    recoverable by the owner
 ```
 
-Full reproduction accounting rules are defined in `EVOLUTION.md`. The architectural guarantee this document makes is narrower: reproduction is implemented as an on-chain transfer between two smart accounts that both already exist under the platform's custody model, gated by the same policy engine and subject to the same on-chain spend-limit mechanism as any other agent action, not a special, less-scrutinized code path.
+Full reallocation and retirement rules are defined in `EVOLUTION.md` sections 3 and 6. The architectural guarantee this document makes is narrower: a reallocation is one atomic on-chain transfer between two smart accounts that both already exist under the platform's custody model and share an owner, executed through the owner-scoped reallocation contract, gated by the same policy engine and subject to the same on-chain spend-limit mechanism as any other agent action, not a special, less-scrutinized code path. The contract checks on-chain what can be checked there: same owner, the owner's policy in force and naming both agents, the reallocation cap, the capital floor, and the slot ceiling. The ranking that picks source and sink is computed off-chain and is not verifiable on-chain (`THREAT-MODEL.md` section 8). The reproduction mechanism this section previously described, a profit-only transfer into a newly deployed child account, is superseded (`EVOLUTION.md` section 3.6).
 
 ## 4. Agent lifecycle
 
@@ -103,8 +108,9 @@ Created (user funds it, smart account deployed, genome initialized)
       -> each tick: observe -> decide whether to buy information -> reason ->
          propose action -> policy engine evaluates -> execution (if approved)
          -> outcome recorded -> fitness updated
-      -> may become eligible to reproduce (EVOLUTION.md defines eligibility)
-      -> may reproduce (creates a Child, does not stop the parent)
+      -> at each evaluation, if its owner's reallocation policy covers it, may
+         be a source or a sink of reallocation among the owner's agents
+         (EVOLUTION.md section 3); never creates another agent
   -> Retired (capital below minimum viable floor, or sustained bottom-percentile
      fitness, or explicit user action)
       -> stops trading, remains queryable, on-chain identity persists with
@@ -113,24 +119,31 @@ Created (user funds it, smart account deployed, genome initialized)
      not removed, matching ERC-8004's own identity-persistence model)
 ```
 
-## 5. Reproduction lifecycle
+## 5. Reallocation and retirement lifecycle
 
 ```
-Scheduler evaluates reproduction eligibility for every Active agent on a
-fixed cadence (not on every tick, to avoid reproduction decisions being made
-on noisy single-tick data)
-  -> eligibility check (age, fitness percentile, profit-above-principal
-     threshold, cooldown since last reproduction) - see EVOLUTION.md
-  -> if eligible: genome is copied, mutation operator applied
-  -> child smart account deployed (paymaster-sponsored)
-  -> capital transferred: parent -> child, bounded fraction of parent's
-     realized profit only
-  -> on-chain reproduction event recorded (parent ID, child ID, generation,
-     genome hash, capital amount) - this is the one on-chain event type
-     the indexer treats as authoritative for lineage
-  -> child enters Active state independently; parent is unaffected except
-     for the capital transferred out
+Scheduler runs an evaluation on a fixed cadence (every 20 ticks, proposed
+default; never on every tick, to avoid decisions on noisy single-tick data)
+  -> FitnessModule updates adjusted fitness, niches, and the starvation count
+     for every Active agent, population-wide (EVOLUTION.md section 2)
+  -> retirement: an agent below the capital floor, or starved for K windows,
+     becomes Retired; its capital stays in its account (EVOLUTION.md section 6)
+  -> for each owner with a reallocation policy in force:
+       rank the owner's covered Active agents by adjusted fitness
+       pick sources and sinks by the small-pool rule
+       compute debits and credits under the cap, floor, and ceiling
+         (EVOLUTION.md section 3.1)
+  -> for each move: one atomic transfer, source account -> reallocation
+     contract -> sink account; the contract checks same owner, policy in
+     force, cap, floor, and ceiling on-chain, and reverts otherwise
+  -> on-chain reallocation event recorded (owner, source agent ID, sink agent
+     ID, amount, evaluation sequence number); retirement recorded as a status
+     change in the identity registry
 ```
+
+Every move is idempotent against (owner, evaluation sequence number, source, sink). A move that fails is not retried inside the same evaluation; the next evaluation recomputes the ranking from fresh state. No account is deployed and no genome is written at any step.
+
+**Superseded lifecycle, kept as a record.** Under the reproduction mechanism (`EVOLUTION.md` section 3.6), an eligible parent's genome was copied and mutated, a child smart account was deployed with paymaster sponsorship, a bounded fraction of the parent's realized profit was transferred to it, and an on-chain reproduction event (parent ID, child ID, generation, genome hash, capital amount) was the authoritative lineage record.
 
 ## 6. Wallet and account architecture
 
@@ -184,10 +197,11 @@ The agent worker's x402 client treats every external service response as untrust
 ## 9. On-chain vs off-chain boundary
 
 **On-chain** (Monad, ERC-8004-compatible identity registry plus each agent's own smart account state):
-- agent identity: owner address, agent smart account address, parent agent ID, generation number, status (active / retired), genome hash, strategy-version hash
+- agent identity: owner address, agent smart account address, status (active / retired), genome hash, strategy-version hash. Parent agent ID and generation number are not recorded: the adopted mechanism creates no descendants (`EVOLUTION.md` section 3)
 - capital custody: the smart account's own balance, this is inherent to the account existing on-chain, not a separate design choice
 - spend-limit parameters enforced by the smart account's validator module (daily cap, per-transaction cap, contract allowlist)
-- reproduction events (parent, child, generation, capital transferred, genome hash of the child)
+- reallocation events (owner, source agent, sink agent, amount, evaluation sequence number) and retirement status changes
+- the hash of each owner's current reallocation policy, so the bounds the contract enforces are the ones the owner signed
 
 **Off-chain** (PostgreSQL, written by agent workers and the indexer):
 - full genome definition (the JSON the hash commits to)
@@ -195,9 +209,9 @@ The agent worker's x402 client treats every external service response as untrust
 - detailed fitness history (per-tick PnL, running Sharpe/Sortino-style metrics, trade-by-trade log)
 - x402 payment logs (provider, price, response summary, outcome)
 - trade logs (venue, pair, size, slippage realized, fees paid)
-- strategy mutation diffs between parent and child
+- each owner's signed reallocation policy (the content its on-chain hash commits to)
 
-**Hash-committed on-chain, full content off-chain**: genome and strategy-version data. This follows the same pattern ERC-8004 itself uses for reputation and validation data: keep the commitment (a hash, an event) cheap and on-chain, keep the payload (the actual content) off-chain where it is cheap to store and query, and make tampering detectable by re-hashing the off-chain copy and comparing it to the on-chain commitment.
+**Hash-committed on-chain, full content off-chain**: genome and strategy-version data, and the owner's reallocation policy. A genome is fixed for the life of its agent (`EVOLUTION.md` section 3.1), so its hash is committed once, at creation; the commitment is what lets anyone check that the genome credited with a track record is the one that earned it. This follows the same pattern ERC-8004 itself uses for reputation and validation data: keep the commitment (a hash, an event) cheap and on-chain, keep the payload (the actual content) off-chain where it is cheap to store and query, and make tampering detectable by re-hashing the off-chain copy and comparing it to the on-chain commitment.
 
 **Reasoning for this split**: the brief's own instruction is not to put expensive or unnecessary AI data on-chain. The line drawn here is: anything that is either (a) required to trust the agent's identity and capital custody without trusting the platform's database, or (b) itself a security-critical limit (the spend cap) goes on-chain; everything that exists to explain or audit a decision after the fact, which by nature is large, mutable, and not itself a source of financial authority, goes off-chain with a cheap on-chain fingerprint.
 
@@ -215,7 +229,7 @@ Modules, using domain-driven boundaries rather than one module per brief-listed 
 - **RiskModule**: the app-layer Policy/Risk Engine described in section 1, packaged as a shared internal library, not a network service. The agent worker imports it directly and calls it in-process for every proposed action before submitting execution; the API imports the same package for read-only preview or dry-run use (for example, letting a user see whether a hypothetical action would pass policy before an agent proposes it for real), but the API never invokes it as part of any live agent decision, since the API has no agent loop to make that decision in. One rule implementation, two processes importing it, no network hop on the enforcement path.
 - **TradingModule**: Kuru integration, order submission, fill tracking. Kuru is the MVP's primary venue. An earlier pass at venue choice leaned toward Monorail as the default router, with Kuru as a fallback where an order book was required. The decision here diverges from that lean, for two reasons checked again on 2026-09-22. First, Kuru's own SDK documents an EIP-7702 market-maker entrypoint: an EOA delegates to that contract and can batch cancel and place in one transaction (`https://docs.kuru.io/sdk/py-sdk-quickstart`). That is delegated trading, which is the property a session key needs from a venue. It does not reverse section 6: the agent account stays ERC-4337, and 7702 stays deferred as an account-architecture choice. Second, autonomous agents have already traded on Kuru's book in public. Kuru's own account described bots trading live on that book during Agent Arena (31 July 2026). A check of Monorail's public introduction the same day describes the aggregator and does not specify a caller contract an autonomous agent can build on. That is a stronger existence proof for Kuru than an unconfirmed autonomous API on Monorail. This paragraph is not a full survey of either venue, and it does not read Kuru's audit reports (see `SECURITY.md` section 13).
 - **FitnessModule**: computes and stores the fitness metric defined in `EVOLUTION.md` on the fixed evaluation cadence
-- **ReproductionModule**: eligibility evaluation, mutation operator, child provisioning orchestration
+- **ReallocationModule** (previously ReproductionModule): per-owner ranking, source and sink selection, the reallocation plan under the cap, floor, and ceiling, owner policy storage and verification, and submission of reallocation transfers; triggers section 6 retirement from the FitnessModule's starvation count. It has no mutation operator and provisions no accounts. The existing `libs/reproduction` package implements the superseded allocation and is replaced under issue #30.
 - **SimulationModule**: a thin NestJS wrapper that triggers and stores results from the standalone simulation engine (the top-level `simulation/` package, reusable outside the API, matching the brief's requirement to build the simulator before real trading). The engine itself does not touch real wallets or real chain state; SimulationModule's job is only to run it on demand and persist its output for the dashboard, not to reimplement its logic.
 
 Not created as an API module: an Indexer. Per section 1, the indexer is a separate deployable component, not one of the API's NestJS modules, because it has a different failure and retry profile (syncing on-chain events into Postgres) than the API's request/response workload. It may share code with the API (for example, the same database models), but it runs and scales independently.
@@ -226,9 +240,9 @@ Not created for the MVP: a separate BlockchainModule (RPC access is a thin share
 
 **Decision**: BullMQ backed by Redis, with agent workers as separate deployable processes from the API, one job type per agent "tick."
 
-**Why BullMQ over Temporal for the MVP**: Temporal gives stronger guarantees for long-running, multi-step workflows with complex compensation logic, which is a real future need (a reproduction event that spans multiple on-chain confirmations with rollback semantics is exactly that kind of workflow). But it is materially more operational complexity than this project needs to prove its core loop first: observe, decide whether to buy information, reason, propose, policy-check, execute, measure. BullMQ's retry, backoff, and idempotency-key primitives are sufficient for that loop, it has strong support in the Node and NestJS ecosystem already in use, and it scales horizontally the direct way the brief asks for, more agents means more worker processes consuming the same queue, not a redesign.
+**Why BullMQ over Temporal for the MVP**: Temporal gives stronger guarantees for long-running, multi-step workflows with complex compensation logic, which would be a real need for a multi-step on-chain workflow with rollback semantics (the superseded reproduction event, which deployed an account and then funded it, was that kind of workflow; a reallocation, one atomic transfer between existing accounts, is not). But it is materially more operational complexity than this project needs to prove its core loop first: observe, decide whether to buy information, reason, propose, policy-check, execute, measure. BullMQ's retry, backoff, and idempotency-key primitives are sufficient for that loop, it has strong support in the Node and NestJS ecosystem already in use, and it scales horizontally the direct way the brief asks for, more agents means more worker processes consuming the same queue, not a redesign.
 
-**Revisit trigger, stated explicitly rather than left implicit**: if reproduction workflows grow complex enough to need durable, multi-day sagas with compensating transactions (for example, a reproduction that must be rolled back if the child's smart account deployment succeeds but the capital transfer fails hours later due to a paymaster outage), that is the point to introduce Temporal for the ReproductionModule specifically, not to migrate the whole worker fleet preemptively.
+**Revisit trigger, stated explicitly rather than left implicit**: if any capital workflow grows complex enough to need durable, multi-day sagas with compensating transactions, that is the point to introduce Temporal for that module specifically, not to migrate the whole worker fleet preemptively. The adopted reallocation mechanism does not meet this trigger, because each move is one atomic transfer between accounts that already exist.
 
 **Idempotency**: every job carries an idempotency key derived from (agent ID, tick sequence number). A worker crash mid-tick and a subsequent retry must not double-spend or double-log; the RiskModule's approval and the TradingModule's order submission both check this key before acting.
 
@@ -236,7 +250,7 @@ Not created for the MVP: a separate BlockchainModule (RPC access is a thin share
 
 ## 12. Multi-strategy architecture
 
-Every agent's genome includes a `strategyType` field and a strategy-specific parameter schema (see `EVOLUTION.md`). The agent worker's decision step calls into a strategy plugin implementing one shared interface: given the agent's current state and any purchased information, propose zero or one economic action. Trading is the only plugin implemented for the MVP. Adding a second strategy (for instance an information-arbitrage or data-reselling strategy suggested in the original brief) means writing a new plugin against the existing interface, not modifying the RiskModule, the WalletsModule, or the reproduction mechanism, all of which are strategy-agnostic by construction.
+Every agent's genome includes a `strategyType` field and a strategy-specific parameter schema (see `EVOLUTION.md`). The agent worker's decision step calls into a strategy plugin implementing one shared interface: given the agent's current state and any purchased information, propose zero or one economic action. Trading is the only plugin implemented for the MVP. Adding a second strategy (for instance an information-arbitrage or data-reselling strategy suggested in the original brief) means writing a new plugin against the existing interface, not modifying the RiskModule, the WalletsModule, or the reallocation mechanism, all of which are strategy-agnostic by construction.
 
 ## 13. Agent-to-agent economy
 
@@ -248,15 +262,17 @@ Deferred past the MVP, explicitly, not by omission. The infrastructure precondit
 - **An x402 provider is unreachable or returns malformed data**: treated as "no information available," not as a reason to proceed with a default assumption; a failed external call must never silently allow a trade to proceed as if the call had succeeded, per the invariant in `THREAT-MODEL.md`.
 - **The paymaster is out of budget or down**: the agent's transaction falls back to being paid from the agent's own smart account balance; if that is also insufficient, the tick fails closed (no action taken) rather than executing an underfunded transaction.
 - **The RPC provider is degraded**: the agent worker backs off and retries on the next scheduled tick rather than busy-polling; a missed tick is a bounded, recoverable cost (one cycle of inaction), not a reason to bypass any check to force an action through.
-- **A reproduction event's capital transfer fails after the child account is deployed**: the child exists on-chain but is not yet Active until the capital transfer confirms; a stuck deployment-without-capital is a detectable, queryable state (via the indexer), not a silent capital leak, and is the concrete scenario flagged in section 11 as a future Temporal-migration trigger.
+- **A reallocation transfer fails or reverts**: nothing moves, because the move is one atomic transfer between two existing accounts, so there is no intermediate state to repair. The failure is logged, the move is not retried in the same evaluation, and the next evaluation recomputes from fresh state. A revert because a bound would be crossed (owner mismatch, policy not in force, cap, floor, ceiling) is logged as an anomaly, since the off-chain plan should never propose one.
+- **The owner revokes the reallocation policy mid-evaluation**: moves not yet executed revert on-chain, because the contract checks the policy at execution time; moves already executed stand, each within bounds.
+- **Superseded scenario, kept as a record**: under the reproduction mechanism, a capital transfer could fail after the child account was deployed, leaving a child without capital; the adopted mechanism deploys no accounts, so this state cannot arise.
 
 ## 15. Frontend
 
 Next.js, TypeScript, Tailwind, viem. Wagmi is not adopted as a core dependency: the primary onboarding path is embedded-wallet-driven (Privy's own SDK handles that path directly), and the autonomous agent runtime never touches React or Wagmi at all, it runs entirely in the worker processes described in section 11. Wagmi would add a dependency whose main value (multi-external-wallet connector UX) only matters on the advanced, external-wallet path, which is a smaller share of the intended product surface than the primary social-login path.
 
-Priority order for the dashboard, matching the brief's own list: onboarding and agent creation, funding, population view, lineage view, per-agent performance and transparency (wallet address, transactions, x402 spend, trades visible without reading logs), evolution event feed.
+Priority order for the dashboard, matching the brief's own list with the brief's lineage view replaced by the adopted mechanism's equivalent: onboarding and agent creation, funding, population view, a per-owner capital-flow view (reallocations between the owner's agents and retirements, replacing the lineage view, since nothing has descendants), per-agent performance and transparency (wallet address, transactions, x402 spend, trades visible without reading logs, and why the agent did or did not send or receive capital at the last evaluation), selection event feed (reallocations and retirements).
 
-**Current state (`apps/web`).** The frontend exists as `apps/web`: Next.js App Router, Tailwind CSS, and strict TypeScript, with the screens above plus a landing page. No API exists yet, so every screen reads a deterministic sample data source behind one typed interface, `PopulationSource`, and says on screen that the data is a sample. Replacing that source is the only change needed when the API lands. viem and the Privy SDK are not installed yet, because nothing is read on-chain and nothing is signed; they arrive with the login and API work. The frontend never restates a protocol constant: it imports them from `@monadeum/fitness/math`, `@monadeum/reproduction/allocate`, `@monadeum/recovery/decide`, and `monadeum-simulation/protocol`, so a change to a proposed default in `EVOLUTION.md` reaches the UI through the same code the simulation uses. The five reproduction eligibility conditions still live in the simulation, so the frontend evaluates them with those same imported constants; they move into `libs/reproduction` when the worker needs them, and the frontend then imports them from there.
+**Current state (`apps/web`).** The frontend exists as `apps/web`: Next.js App Router, Tailwind CSS, and strict TypeScript, with the screens above plus a landing page. No API exists yet, so every screen reads a deterministic sample data source behind one typed interface, `PopulationSource`, and says on screen that the data is a sample. Replacing that source is the only change needed when the API lands. viem and the Privy SDK are not installed yet, because nothing is read on-chain and nothing is signed; they arrive with the login and API work. The frontend never restates a protocol constant: it imports them from `@monadeum/fitness/math`, `@monadeum/reproduction/allocate`, `@monadeum/recovery/decide`, and `monadeum-simulation/protocol`, so a change to a proposed default in `EVOLUTION.md` reaches the UI through the same code the simulation uses. The five reproduction eligibility conditions still live in the simulation, so the frontend evaluates them with those same imported constants. Those screens, the lineage view, and `@monadeum/reproduction/allocate` show the superseded reproduction mechanism (`EVOLUTION.md` section 3.6); they are sample screens, and replacing them with the reallocation and retirement views above is frontend work under issue #43, not a statement that reproduction is current.
 
 ## 16. Interface contracts (addendum)
 
@@ -285,7 +301,7 @@ export interface PolicyDocument {
   previousHash: Hex | null;        // 16.4 hash of version - 1; null only for version 1
   effectiveFrom: string;           // ISO 8601, UTC
   settlementAsset: Hex;            // token address of the settlement asset (USDC)
-  allowedCalls: { target: Hex; selector: Hex; label: "kuru-router" | "reproduction" | "settlement-asset" }[];
+  allowedCalls: { target: Hex; selector: Hex; label: "kuru-router" | "reproduction" | "settlement-asset" }[]; // "reproduction" designates the owner-scoped reallocation contract; renaming the label is issue #31 work
   allowedPairs: string[];
   perActionCap: BaseUnits;
   sessionDailyCap: BaseUnits;      // SECURITY.md section 9, layer 2; must not exceed the on-chain dailyCap
@@ -327,7 +343,7 @@ The RiskModule derives how much each call spends from its calldata, and never fr
 
 **How a rule change is authorized and audited, separately from genome mutation**:
 
-- Policy documents live in an append-only table, one row per version: the document, its 16.4 hash, the signer address, and the signature. No application database role has `UPDATE` or `DELETE` on it. The worker's role can only `SELECT`. The role that writes genomes (ReproductionModule) has no grant on it at all. Only a separate operator role can `INSERT`.
+- Policy documents live in an append-only table, one row per version: the document, its 16.4 hash, the signer address, and the signature. No application database role has `UPDATE` or `DELETE` on it. The worker's role can only `SELECT`. The role that writes genomes (agent creation, in AgentsModule; the ReproductionModule under the superseded mechanism) has no grant on it at all. Only a separate operator role can `INSERT`.
 - Each version is signed by an operator key over its 16.4 hash (EIP-191). That key is distinct from every session key and from any key a worker process holds. The allowed signer address is pinned in the worker's deployment configuration.
 - On load, the RiskModule verifies the signature and the `previousHash` chain back to version 1, and that `effectiveFrom` never moves backward from one version to the next. If either check fails, it evaluates nothing and returns `policy-unverified` for every request. That is the fail-closed behavior of `SECURITY.md` section 8.
 - Every `Decision` is logged with `policyVersion` and `policyHash`, so any past approval can be replayed against the exact document that produced it.
@@ -401,11 +417,11 @@ export interface ExecutionPlan {
 - **Validation phase** (`check`): the call allowlist at `(target, selector)` granularity, the recipient rule below, a zero native value, and the per-transaction cap. `check` receives every call the operation executes, single or batched, and the per-transaction cap applies to their sum: a check that saw one call at a time would let one batched operation of `k` calls move `k` times the cap. None of these needs the current time, so all of them can reject an operation before it is included.
 - **Execution phase** (`record`, called from a pre-execution hook): the rolling daily cap. ERC-7562's validation rules forbid the `TIMESTAMP` opcode during validation, so a check that needs "the last 24 hours" cannot run there. This is a constraint of the ERC-4337 validation rules as documented. The issue #18 spike did not exercise it, so it remains to be confirmed against the bundlers actually used on Monad. Its consequence is stated plainly: a daily-cap breach surfaces as a reverted execution that still pays gas, not as an operation rejected before inclusion.
 
-**How an amount is counted**: only calls that move the settlement asset count. `transfer(to, amount)` and `approve(spender, amount)` on the settlement asset count `amount` in full, at the moment of the call. A call to the Kuru router or the reproduction contract counts 0, on the assumption that each pulls funds only through an allowance the account set with a counted `approve`. That assumption is not yet verified for Kuru's router, and is checked in issue #20. Counting an approval in full when it is set is conservative: an unbounded approval exceeds `perTxCap` and is rejected, and unused allowance only reduces headroom. `setAllowed` refuses any selector on the settlement asset other than `transfer` and `approve` (`UncountedSettlementSelector`), so no allowlist entry, mistaken or not, can move the settlement asset through a call that counts 0, such as `transferFrom` or `increaseAllowance`. This is the same counting rule as `libs/risk` (16.1), which rejects a settlement-asset call it cannot decode as `transfer` or `approve`.
+**How an amount is counted**: only calls that move the settlement asset count. `transfer(to, amount)` and `approve(spender, amount)` on the settlement asset count `amount` in full, at the moment of the call. A call to the Kuru router or the reallocation contract counts 0, on the assumption that each pulls funds only through an allowance the account set with a counted `approve`. That assumption is not yet verified for Kuru's router, and is checked in issue #20. Counting an approval in full when it is set is conservative: an unbounded approval exceeds `perTxCap` and is rejected, and unused allowance only reduces headroom. `setAllowed` refuses any selector on the settlement asset other than `transfer` and `approve` (`UncountedSettlementSelector`), so no allowlist entry, mistaken or not, can move the settlement asset through a call that counts 0, such as `transferFrom` or `increaseAllowance`. This is the same counting rule as `libs/risk` (16.1), which rejects a settlement-asset call it cannot decode as `transfer` or `approve`.
 
-**Recipients are checked on-chain** (decided in issue #21): the first argument of a counted call, the `to` of `transfer` or the `spender` of `approve`, must be an address on which the account has at least one allowed selector, and must not be the settlement asset, the policy contract, or the account itself (`RecipientNotAllowed` otherwise). With the MVP allowlist that leaves Kuru's router and the reproduction contract, which is exactly the set the RiskModule's `recipient-not-allowed` rule in 16.1 derives from `allowedCalls`. The rule is derived from the call allowlist rather than kept as a second list, so there is nothing extra to configure and the on-chain and off-chain recipient sets cannot drift apart.
+**Recipients are checked on-chain** (decided in issue #21): the first argument of a counted call, the `to` of `transfer` or the `spender` of `approve`, must be an address on which the account has at least one allowed selector, and must not be the settlement asset, the policy contract, or the account itself (`RecipientNotAllowed` otherwise). With the MVP allowlist that leaves Kuru's router and the reallocation contract (labeled `reproduction` in 16.1), which is exactly the set the RiskModule's `recipient-not-allowed` rule in 16.1 derives from `allowedCalls`. The rule is derived from the call allowlist rather than kept as a second list, so there is nothing extra to configure and the on-chain and off-chain recipient sets cannot drift apart.
 
-Why it is added before issue #25 rather than deferred: the attacker this control answers is a compromised session key, which by definition bypasses the RiskModule, the only place the recipient was checked before. Without the rule, that key can send up to `perTxCap` per operation, and up to `dailyCap` inside any window, to an address of its choosing, every day until the owner notices. With it, every counted call pays an allowlisted contract, so a compromised key can still make bad trades through the router or misdirect a reproduction, within the caps, but it cannot pay itself directly. The cost is one decoded argument and one storage read per counted call, all in validation, with no time dependence. What the rule does not close: router and reproduction calls count 0 and are not decoded (16.1, known gap on declared pairs), so whether the router can be made to forward funds to an arbitrary address is a property of the router, checked in issue #20. x402 payments do not pass through `check` at all (open question below).
+Why it is added before issue #25 rather than deferred: the attacker this control answers is a compromised session key, which by definition bypasses the RiskModule, the only place the recipient was checked before. Without the rule, that key can send up to `perTxCap` per operation, and up to `dailyCap` inside any window, to an address of its choosing, every day until the owner notices. With it, every counted call pays an allowlisted contract, so a compromised key can still make bad trades through the router or push a reallocation that the contract's own owner, policy, cap, floor, and ceiling checks allow, within the caps, but it cannot pay itself directly. The cost is one decoded argument and one storage read per counted call, all in validation, with no time dependence. What the rule does not close: router and reallocation contract calls count 0 and are not decoded (16.1, known gap on declared pairs), so whether the router can be made to forward funds to an arbitrary address is a property of the router, checked in issue #20. x402 payments do not pass through `check` at all (open question below).
 
 **The policy contract protects itself**: `setLimits` and `setAllowed` read the account from `msg.sender`, and a call a session key makes also executes from the account, so the contract alone cannot tell the owner from a session key. Two rules close that gap, and neither depends on the allowlist being configured correctly. `check` rejects any call whose target is the policy contract itself or the account itself, whatever the allowlist says, so a session-key operation can never reach the owner functions or the account's own module-management functions. The owner reaches them only through the root-wallet validator, whose operations do not run the session key's hook or policy. Without both rules, one mistaken allowlist entry would let a compromised session key raise its own caps. An account whose limits were never set has both caps at 0, so any counted call fails closed.
 
@@ -472,10 +488,10 @@ tag: "monadeum:genome:v1" | "monadeum:strategy:v1" | "monadeum:policy:v1" | "mon
 
 **Normalization, applied before JCS**, because JCS does not do any of it:
 
-1. Set-valued fields (`assetUniverse`, `informationSources`) are deduplicated and sorted in the same UTF-16 code unit order. JCS preserves array order, and mutation (`EVOLUTION.md` section 3.3) adds and removes elements, so element order is an accident of history, not meaning.
+1. Set-valued fields (`assetUniverse`, `informationSources`) are deduplicated and sorted in the same UTF-16 code unit order. JCS preserves array order, and the order in which an owner picks elements at creation, or in which the simulation's mutation operator (`EVOLUTION.md` section 3.6.3) adds and removes them, is an accident of history, not meaning.
 2. Numbers must be finite. Integer-valued fields (`executionFrequency`, `timeHorizon`) must be integers. JCS already rejects `NaN` and infinities and writes `-0` as `0`. Base-unit amounts are decimal strings, per the rule at the top of this section. That includes the genome's `informationBudget`, which is money: `"500000"` in the example below is 0.5 of a six-decimal settlement asset.
 3. An absent optional field is omitted, never written as `null`.
-4. Only genome fields are hashed. Derived values (fitness, reproduction eligibility, `EVOLUTION.md` section 1) and storage metadata (row IDs, timestamps) are excluded. The hashed object carries `schemaVersion`. Renaming or adding a field is a `schemaVersion` change, because key names are part of the hashed bytes.
+4. Only genome fields are hashed. Derived values (fitness, reallocation rank, `EVOLUTION.md` section 1) and storage metadata (row IDs, timestamps) are excluded. The hashed object carries `schemaVersion`. Renaming or adding a field is a `schemaVersion` change, because key names are part of the hashed bytes.
 
 Example. The genome below, with a duplicated and unsorted `assetUniverse` and a `-0` threshold:
 

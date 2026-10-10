@@ -2,7 +2,7 @@
 
 The founding product brief for Monadeum, as given at project start. Every other document in this repository, `ARCHITECTURE.md`, `EVOLUTION.md`, `ECONOMICS.md`, `THREAT-MODEL.md`, and `SECURITY.md`, cites this brief as the source of a requirement or a worked example. This file exists so those citations resolve to a real, in-repository document instead of an external reference.
 
-Where a later document departs from this brief (for example, the reproduction mechanism in `EVOLUTION.md` section 3 deliberately changes the capital-split example below), that departure is stated and justified in the later document, not hidden.
+Where a later document departs from this brief (for example, `EVOLUTION.md` section 3 replaces the reproduction model below with owner-scoped capital reallocation and retirement, after simulation showed reproduction added no population-level benefit), that departure is stated and justified in the later document, not hidden.
 
 ---
 
