@@ -1,16 +1,9 @@
 import type { Hex } from "viem";
-import {
-  hashGenome,
-  hashReallocationPolicy,
-  hashStrategyVersion,
-  type Address,
-  type GenomeV1,
-  type ReallocationPolicyV1,
-  type StrategyVersionV1,
-} from "./documents.js";
+import { hashGenome, hashStrategyVersion, type Address, type GenomeV1, type StrategyVersionV1 } from "./documents.js";
+import { hashReallocationPolicy, type ReallocationPolicyV1 } from "./reallocation.js";
 
 // Typed seams for the on-chain writes. No contract is implemented here: agent creation belongs to AgentsModule and
-// the identity registry, and the policy hash is checked by the reallocation contract (issue #31).
+// the identity registry, and the policy commitment is stored and checked by contracts/src/AgentReallocation.sol.
 
 /** Written once, in the same transaction that creates the agent (ARCHITECTURE.md section 9). */
 export interface AgentCreationCommitment {
@@ -41,9 +34,9 @@ export interface AgentCommitmentReader {
 /** Committed on every owner change to the policy, including revocation (EVOLUTION.md section 3.1, item 8). */
 export interface ReallocationPolicyCommitment {
   owner: Address;
-  /** Section 16.4 hash of the policy document, or null to revoke. */
+  /** EIP-712 struct hash of the policy (ARCHITECTURE.md section 16.5), or null to revoke. */
   policyHash: Hex | null;
-  /** The owner's root-wallet signature over the policy hash; absent on revocation. */
+  /** The owner's root-wallet EIP-712 signature over the policy digest in the contract's domain; absent on revocation. */
   signature?: Hex;
 }
 

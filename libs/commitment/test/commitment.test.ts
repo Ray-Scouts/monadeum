@@ -13,7 +13,6 @@ import {
   hashReallocationPolicy,
   hashStrategyVersion,
   normalizeGenome,
-  normalizeReallocationPolicy,
   taggedHash,
   verifyCommitment,
   type GenomeV1,
@@ -81,7 +80,7 @@ test("a single-field change changes the hash, for every genome field", () => {
     seen.add(h);
   }
   assert.notEqual(hashStrategyVersion({ ...STRATEGY, version: "1.0.1" }), hashStrategyVersion(STRATEGY));
-  assert.notEqual(hashReallocationPolicy({ ...POLICY, sequence: 2 }), hashReallocationPolicy(POLICY));
+  assert.notEqual(hashReallocationPolicy({ ...POLICY, nonce: 1n }), hashReallocationPolicy(POLICY));
 });
 
 test("key order and set order are irrelevant; set duplicates are dropped", () => {
@@ -124,9 +123,6 @@ test("base-unit amounts: bigint and canonical decimal string hash the same, floa
 });
 
 test("missing versus null: an absent optional field is omitted, null is always rejected", () => {
-  const { reallocationCap: _, ...withoutCap } = POLICY;
-  assert.equal(hashReallocationPolicy({ ...withoutCap, reallocationCap: undefined }), hashReallocationPolicy(withoutCap));
-  assert.throws(() => hashCommitment("reallocationPolicy", { ...withoutCap, reallocationCap: null }), CanonicalizationError);
   assert.throws(() => canonicalJson({ a: null }), CanonicalizationError);
   assert.throws(() => canonicalJson([1, undefined]), CanonicalizationError);
   const { modelConfiguration: __, ...missingRequired } = GENOME;
@@ -159,17 +155,8 @@ test("unicode: RFC 8785 key order by UTF-16 code units, minimal escaping, no nor
 
 test("domain tags separate kinds whose JSON is identical", () => {
   const value = { schemaVersion: 1 };
-  const hashes = new Set([taggedHash("monadeum:genome:v1", value), taggedHash("monadeum:strategy:v1", value), taggedHash("monadeum:reallocation:v1", value), taggedHash("monadeum:policy:v1", value), taggedHash("monadeum:plan:v1", value)]);
-  assert.equal(hashes.size, 5);
-});
-
-test("reallocation policy: agent IDs are a set of decimal strings, owner hex is lowercased, fewer than two agents is rejected", () => {
-  const normalized = normalizeReallocationPolicy(POLICY);
-  assert.deepEqual(normalized.agents, ["12", "7"]);
-  assert.equal(normalized.owner, "0x00000000000000000000000000000000000000aa");
-  assert.equal(hashReallocationPolicy({ ...POLICY, owner: "0x00000000000000000000000000000000000000AA" }), hashReallocationPolicy(POLICY));
-  assert.throws(() => hashReallocationPolicy({ ...POLICY, agents: [7n, "7"] }), CanonicalizationError);
-  assert.throws(() => hashReallocationPolicy({ ...POLICY, owner: "0x1234" }), CanonicalizationError);
+  const hashes = new Set([taggedHash("monadeum:genome:v1", value), taggedHash("monadeum:strategy:v1", value), taggedHash("monadeum:policy:v1", value), taggedHash("monadeum:plan:v1", value)]);
+  assert.equal(hashes.size, 4);
 });
 
 test("verification: a matching record passes", () => {

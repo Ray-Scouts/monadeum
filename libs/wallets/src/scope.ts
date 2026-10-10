@@ -4,8 +4,9 @@ import { getAddress, isAddress, isAddressEqual, isHex, toFunctionSelector, type 
 // The session key scope is the call allowlist of SECURITY.md section 1 and ARCHITECTURE.md section 16.3: Kuru's
 // router, the owner-scoped reallocation contract, and `transfer` and `approve` on the settlement asset, nothing
 // else. The x402 facilitator is not a call target (16.3, x402 signature path), so it is not in scope.
-// The reallocation entry keeps the allowlist label "reproduction", as ARCHITECTURE.md section 16.1 does until
-// issue #31 renames it.
+// The reallocation entry carries the allowlist label "reallocation" (ARCHITECTURE.md sections 16.1 and 16.5). Its only
+// selector in production is AgentReallocation's `reallocate`, so the session key cannot reach the contract's owner or
+// operator functions.
 
 export const TRANSFER_SELECTOR = toFunctionSelector("transfer(address,uint256)");
 export const APPROVE_SELECTOR = toFunctionSelector("approve(address,uint256)");
@@ -44,7 +45,7 @@ export function buildScope(targets: ScopeTargets): readonly AllowedCall[] {
     { target: getAddress(targets.settlementAsset), selector: TRANSFER_SELECTOR, label: "settlement-asset" },
     { target: getAddress(targets.settlementAsset), selector: APPROVE_SELECTOR, label: "settlement-asset" },
     ...targets.kuruRouterSelectors.map((s) => ({ target: getAddress(targets.kuruRouter), selector: selector(s, "kuru router"), label: "kuru-router" as const })),
-    ...targets.reallocationSelectors.map((s) => ({ target: getAddress(targets.reallocation), selector: selector(s, "reallocation"), label: "reproduction" as const })),
+    ...targets.reallocationSelectors.map((s) => ({ target: getAddress(targets.reallocation), selector: selector(s, "reallocation"), label: "reallocation" as const })),
   ];
   const keys = new Set(scope.map((c) => `${c.target.toLowerCase()}:${c.selector.toLowerCase()}`));
   if (keys.size !== scope.length) throw new ScopeError("duplicate allowlist entry");

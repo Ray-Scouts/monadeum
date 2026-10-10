@@ -1,5 +1,6 @@
 import type { Hex } from "viem";
 import { CanonicalizationError, canonicalSet, taggedHash, type CommitmentTag } from "./canonical.js";
+import { hashReallocationPolicy, parseReallocationPolicy } from "./reallocation.js";
 
 /** Integer amount in settlement-asset base units: bigint in memory, canonical decimal string in JSON. */
 export type BaseUnits = bigint | string;
@@ -31,31 +32,17 @@ export interface StrategyVersionV1 {
 }
 
 /**
- * An owner's reallocation policy (EVOLUTION.md section 3.1, item 8). Field set is provisional
- * until the reallocation contract (issue #31) fixes what it checks (section 16.4).
+ * Every committed kind. All but `reallocationPolicy` use the section 16.4 scheme; an owner's reallocation policy is
+ * committed as its EIP-712 struct hash instead (reallocation.ts, ARCHITECTURE.md section 16.5).
  */
-export interface ReallocationPolicyV1 {
-  schemaVersion: 1;
-  /** The owner's root wallet, which signs the policy. */
-  owner: Address;
-  /** Monotonic per owner, so every owner change commits a distinct hash. */
-  sequence: number;
-  /** Agent IDs covered by the policy, at least two. */
-  agents: readonly BaseUnits[];
-  /** Optional tightening of the protocol reallocation cap; never higher than the protocol value. */
-  reallocationCap?: number;
-  /** Optional tightening of the protocol slot ceiling; never higher than the protocol value. */
-  slotCeiling?: number;
-  /** Optional raised capital floor in base units; never lower than the protocol value. */
-  capitalFloor?: BaseUnits;
-}
-
 export type CommitmentKind = "genome" | "strategyVersion" | "reallocationPolicy" | "riskPolicy" | "executionPlan";
 
-export const TAGS: Record<CommitmentKind, CommitmentTag> = {
+/** The kinds hashed with the section 16.4 JCS scheme. */
+export type JcsKind = Exclude<CommitmentKind, "reallocationPolicy">;
+
+export const TAGS: Record<JcsKind, CommitmentTag> = {
   genome: "monadeum:genome:v1",
   strategyVersion: "monadeum:strategy:v1",
-  reallocationPolicy: "monadeum:reallocation:v1",
   riskPolicy: "monadeum:policy:v1",
   executionPlan: "monadeum:plan:v1",
 };
@@ -155,27 +142,6 @@ export function normalizeStrategyVersion(input: unknown): Doc {
   };
 }
 
-export function normalizeReallocationPolicy(input: unknown): Doc {
-  const p = asObject(input, "$");
-  onlyKeys(p, ["schemaVersion", "owner", "sequence", "agents"], ["reallocationCap", "slotCeiling", "capitalFloor"], "$");
-  if (!Array.isArray(p.agents)) throw new CanonicalizationError("$.agents", "expected an array");
-  // Agent IDs are uint256 token IDs: canonical decimal strings, a set, ordered as strings like every other set field
-  const agents = canonicalSet(p.agents.map((a, i) => baseUnits(a, `$.agents[${i}]`)));
-  if (agents.length < 2) throw new CanonicalizationError("$.agents", "a policy covers at least two distinct agents");
-  const sequence = integer(p.sequence, "$.sequence");
-  if (sequence < 0) throw new CanonicalizationError("$.sequence", "expected a non-negative integer");
-  const out: Doc = {
-    schemaVersion: literal(p.schemaVersion, 1, "$.schemaVersion"),
-    owner: hex(p.owner, 20, "$.owner"),
-    sequence,
-    agents,
-  };
-  if (p.reallocationCap !== undefined) out.reallocationCap = finite(p.reallocationCap, "$.reallocationCap");
-  if (p.slotCeiling !== undefined) out.slotCeiling = finite(p.slotCeiling, "$.slotCeiling");
-  if (p.capitalFloor !== undefined) out.capitalFloor = baseUnits(p.capitalFloor, "$.capitalFloor");
-  return out;
-}
-
 function hexData(value: unknown, path: string): string {
   const s = str(value, path);
   if (!/^0x([0-9a-fA-F]{2})*$/.test(s)) throw new CanonicalizationError(path, "expected 0x-prefixed hex bytes");
@@ -236,25 +202,25 @@ export function normalizeExecutionPlan(input: unknown): Doc {
   };
 }
 
-const NORMALIZERS: Record<CommitmentKind, (input: unknown) => Doc> = {
+const NORMALIZERS: Record<JcsKind, (input: unknown) => Doc> = {
   genome: normalizeGenome,
   strategyVersion: normalizeStrategyVersion,
-  reallocationPolicy: normalizeReallocationPolicy,
   riskPolicy: normalizeRiskPolicy,
   executionPlan: normalizeExecutionPlan,
 };
 
-export function normalize(kind: CommitmentKind, input: unknown): Doc {
+export function normalize(kind: JcsKind, input: unknown): Doc {
   return NORMALIZERS[kind](input);
 }
 
+/** The on-chain commitment of a record of any kind: the section 16.4 hash, or a reallocation policy's EIP-712 struct hash. */
 export function hashCommitment(kind: CommitmentKind, input: unknown): Hex {
+  if (kind === "reallocationPolicy") return hashReallocationPolicy(parseReallocationPolicy(input));
   return taggedHash(TAGS[kind], normalize(kind, input));
 }
 
 export const hashGenome = (genome: GenomeV1): Hex => hashCommitment("genome", genome);
 export const hashStrategyVersion = (version: StrategyVersionV1): Hex => hashCommitment("strategyVersion", version);
-export const hashReallocationPolicy = (policy: ReallocationPolicyV1): Hex => hashCommitment("reallocationPolicy", policy);
 export const hashRiskPolicy = (document: unknown): Hex => hashCommitment("riskPolicy", document);
 export const hashExecutionPlan = (plan: { tickKey: string; calls: readonly { target: string; data: string }[] }): Hex =>
   hashCommitment("executionPlan", plan);

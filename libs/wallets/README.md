@@ -28,8 +28,8 @@ The spend policy contract is `contracts/src/AgentSpendPolicy.sol` (issue #25). T
 | `WALLETS_SETTLEMENT_ASSET` | yes | Settlement asset (USDC). Its `transfer` and `approve` are allowlisted, nothing else on it. |
 | `WALLETS_KURU_ROUTER` | yes | Kuru router address. |
 | `WALLETS_KURU_ROUTER_SELECTORS` | yes | Comma-separated 4-byte selectors allowed on the router, pending issue #20. |
-| `WALLETS_REALLOCATION_CONTRACT` | yes | Owner-scoped reallocation contract address (allowlist label `reproduction`, ARCHITECTURE.md section 16.1). |
-| `WALLETS_REALLOCATION_SELECTORS` | yes | Comma-separated 4-byte selectors allowed on it. |
+| `WALLETS_REALLOCATION_CONTRACT` | yes | Owner-scoped reallocation contract address (`contracts/src/AgentReallocation.sol`, allowlist label `reallocation`, ARCHITECTURE.md sections 16.1 and 16.5). |
+| `WALLETS_REALLOCATION_SELECTORS` | yes | Comma-separated 4-byte selectors allowed on it. In production, only `reallocate(uint256,bytes32,(address,uint256)[])`, `0x4c329bba`. |
 | `WALLETS_SPONSORED_OPERATIONS` | yes | Sponsored operations per agent, deployment included, revocations excluded. |
 | `WALLETS_SPONSORED_GAS_WEI` | yes | Sponsored gas per agent in wei, deployment included, revocations excluded. |
 

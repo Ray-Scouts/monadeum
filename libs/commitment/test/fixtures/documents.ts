@@ -17,10 +17,15 @@ export const STRATEGY: StrategyVersionV1 = {
   codeDigest: `0x${"ab".repeat(32)}`,
 };
 
+/**
+ * The owner reallocation policy of the cross-implementation vector shared with
+ * contracts/test/ReallocationCommitmentVector.t.sol. The owner is the address of private key 0xa11ce.
+ */
 export const POLICY: ReallocationPolicyV1 = {
-  schemaVersion: 1,
-  owner: "0x00000000000000000000000000000000000000aA",
-  sequence: 1,
-  agents: [12n, "7", 7n],
-  reallocationCap: 0.1,
+  owner: "0xe05fcC23807536bEe418f142D19fa0d21BB0cfF7",
+  agents: ["0x0000000000000000000000000000000000000a01", "0x0000000000000000000000000000000000000A02"],
+  capBps: 1_500,
+  slotCeilingBps: 30_000,
+  capitalFloor: 60_000n,
+  nonce: 0n,
 };

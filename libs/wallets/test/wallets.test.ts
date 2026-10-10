@@ -59,7 +59,7 @@ test("the scope is exactly the SECURITY.md section 1 allowlist", () => {
     ["settlement-asset", USDC, TRANSFER_SELECTOR],
     ["settlement-asset", USDC, APPROVE_SELECTOR],
     ["kuru-router", ROUTER, ROUTER_SWAP],
-    ["reproduction", REALLOC, REALLOC_MOVE],
+    ["reallocation", REALLOC, REALLOC_MOVE],
   ]);
   assert.ok(Object.isFrozen(scope));
 });
