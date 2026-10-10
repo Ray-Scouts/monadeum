@@ -31,7 +31,7 @@ test("apps/worker does not depend on apps/indexer", () => {
 });
 
 test("the database packages the worker depends on do not depend on apps/indexer either", () => {
-  for (const lib of ["db", "read-model"]) {
+  for (const lib of ["db", "read-model", "agent-registry"]) {
     const dir = join(root, "..", "..", "libs", lib);
     const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as Record<string, Record<string, string> | undefined>;
     for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {

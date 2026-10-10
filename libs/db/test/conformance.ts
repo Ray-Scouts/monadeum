@@ -3,6 +3,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import type { AgentRecord, AgentRegistry, AgentState, DebitRecord, DebitStore } from "@monadeum/agent-registry";
 import type { ChallengeStore, SessionStore, UserRecord, UserStore, WalletChallenge } from "@monadeum/auth";
 import type { TickRecord, TickStore } from "@monadeum/tick";
 import type { BlockHash, ChainEvent, ReadModelStore, SyncBatch } from "@monadeum/read-model";
@@ -21,6 +22,8 @@ export interface Stores {
   payments: PaymentLog;
   ticks: TickStore;
   readModel: ReadModelStore;
+  agents: AgentRegistry;
+  debits: DebitStore;
 }
 
 /** `fresh` returns stores over empty storage. Called once per test. */
@@ -94,6 +97,22 @@ export function payment(key: string, settlementRef: string | null = null): Payme
 
 export function tickRecord(agentId: string, tick: number): TickRecord {
   return { key: `${agentId}:${tick}`, agentId, tick, status: "started", purchase: null, approved: null, outcome: null };
+}
+
+export function agentRecord(agentId: string, overrides: Partial<AgentRecord> = {}): AgentRecord {
+  return {
+    agentId, owner: mixed(addr(30)) as Hex, account: addr(31) as Hex, genomeHash: hash(32),
+    genome: { riskTolerance: 0.25, executionFrequency: 4, informationBudget: BIG, informationSources: ["nansen", "defillama"], pair: "MON/USDC", assetUniverse: ["MON/USDC"] },
+    principal: BIG, status: "active", ...overrides,
+  };
+}
+
+export function debitRecord(key: string, status: DebitRecord["status"] = "approved"): DebitRecord {
+  return {
+    key, status, planHash: hash(40),
+    decision: status === "rejected" ? { approved: false, violations: ["reallocation-bound"], policyVersion: 2, policyHash: hash(41) } : { approved: true, policyVersion: 2, policyHash: hash(41), planHash: hash(40) },
+    reason: status === "rejected" ? "reallocation-bound" : null,
+  };
 }
 
 const block = (n: number, salt = 0): BlockHash => ({ number: BigInt(n), hash: hash(n * 1000 + salt) });
@@ -528,6 +547,64 @@ export function conformance(name: string, harness: Harness): void {
     it("lets exactly one of several concurrent enqueues for a tick win", async () => {
       const { ticks } = await harness.fresh();
       const results = await Promise.all(Array.from({ length: 8 }, () => ticks.claim(tickRecord("a", 1))));
+      assert.equal(results.filter(Boolean).length, 1);
+    });
+  });
+
+  describe(`${name}: AgentStore`, () => {
+    it("adds agents once, lists them by ID, and lowercases the owner", async () => {
+      const { agents } = await harness.fresh();
+      await agents.add(agentRecord("b"));
+      await agents.add(agentRecord("a"));
+      await assert.rejects(agents.add(agentRecord("a")), /exists/);
+      assert.deepEqual((await agents.list()).map((a) => a.agentId), ["a", "b"]);
+      const stored = await agents.get("a");
+      assert.deepEqual(stored, { ...agentRecord("a"), owner: addr(30) });
+      assert.equal(await agents.get("missing"), undefined);
+    });
+
+    it("updates an existing agent and refuses an unknown one", async () => {
+      const { agents } = await harness.fresh();
+      await agents.add(agentRecord("a"));
+      await agents.update({ ...agentRecord("a"), status: "retired" });
+      assert.equal((await agents.get("a"))?.status, "retired");
+      await assert.rejects(agents.update(agentRecord("missing")), /no agent/);
+    });
+
+    it("returns the initial state until one is saved, then the saved state exactly", async () => {
+      const { agents } = await harness.fresh();
+      await agents.add(agentRecord("a"));
+      const initial = await agents.state("a");
+      assert.deepEqual(initial, { ticksSinceTrade: 4, informationByDay: {}, returns: [], tradeCounts: [], measured: [], net: 0, lowFitnessWindows: 0 });
+      assert.equal((await agents.state("missing")).ticksSinceTrade, 1);
+      const saved: AgentState = {
+        ticksSinceTrade: 0, informationByDay: { "2026-10-10": BIG }, returns: [0.0125, -0.5e-7], tradeCounts: [1, 0],
+        measured: ["a:1", "a:2"], net: -1.25, lowFitnessWindows: 2,
+      };
+      await agents.saveState("a", saved);
+      assert.deepEqual(await agents.state("a"), saved);
+      await agents.saveState("a", { ...saved, lowFitnessWindows: 3 });
+      assert.equal((await agents.state("a")).lowFitnessWindows, 3);
+      await assert.rejects(agents.saveState("missing", saved), /no agent/);
+    });
+  });
+
+  describe(`${name}: DebitStore`, () => {
+    it("claims a key once, then replaces the record on write", async () => {
+      const { debits } = await harness.fresh();
+      assert.equal(await debits.claim(debitRecord("o:1:a")), true);
+      assert.equal(await debits.claim(debitRecord("o:1:a", "rejected")), false);
+      assert.deepEqual(await debits.get("o:1:a"), debitRecord("o:1:a"));
+      await debits.write({ ...debitRecord("o:1:a"), status: "settled" });
+      assert.equal((await debits.get("o:1:a"))?.status, "settled");
+      await debits.write(debitRecord("o:1:b", "rejected"));
+      assert.deepEqual(await debits.get("o:1:b"), debitRecord("o:1:b", "rejected"));
+      assert.equal(await debits.get("missing"), undefined);
+    });
+
+    it("lets exactly one of several concurrent claims for a key win", async () => {
+      const { debits } = await harness.fresh();
+      const results = await Promise.all(Array.from({ length: 8 }, () => debits.claim(debitRecord("o:1:a"))));
       assert.equal(results.filter(Boolean).length, 1);
     });
   });

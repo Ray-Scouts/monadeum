@@ -1,6 +1,6 @@
 # @monadeum/db
 
-Postgres storage for the module stores: `AgentWalletStore` and `SponsorshipLedger` (`@monadeum/wallets`), `UserStore`, `ChallengeStore` and `SessionStore` (`@monadeum/auth`), `TradeStore` (`@monadeum/trading`), `PaymentLog` (`@monadeum/x402`), `TickStore` (`@monadeum/tick`), and `ReadModelStore` (`@monadeum/read-model`, written by `apps/indexer`), plus the append-only policy-document table (`PgPolicyVersions`) and the database roles and grants. The decisions behind it are in `ARCHITECTURE.md` section 10, database layer entry.
+Postgres storage for the module stores: `AgentWalletStore` and `SponsorshipLedger` (`@monadeum/wallets`), `UserStore`, `ChallengeStore` and `SessionStore` (`@monadeum/auth`), `TradeStore` (`@monadeum/trading`), `PaymentLog` (`@monadeum/x402`), `TickStore` (`@monadeum/tick`), `AgentStore` and `DebitStore` (`@monadeum/agent-registry`, used by `apps/worker`), and `ReadModelStore` (`@monadeum/read-model`, written by `apps/indexer`), plus the append-only policy-document table (`PgPolicyVersions`) and the database roles and grants. The decisions behind it are in `ARCHITECTURE.md` section 10, database layer entry.
 
 ## Use
 
@@ -27,13 +27,13 @@ const wallets = new PgAgentWalletStore(db);
 
 ## Roles
 
-Migrations 0004 and 0005 create the group roles and their grants. Each process's login role is made a member of one; no process connects as the table owner.
+Migrations 0004, 0005, and 0006 create the group roles and their grants. Each process's login role is made a member of one; no process connects as the table owner.
 
 | Role | Writes | Reads |
 |---|---|---|
 | `monadeum_indexer` | read-model tables | read-model tables, migration ledger |
-| `monadeum_worker` | wallet, trade, x402, and tick tables (`SELECT`, `INSERT`, `UPDATE`; no `DELETE`) | those tables, policy versions, migration ledger |
-| `monadeum_reader` | nothing | read-model tables and views, wallet, trade, x402, and tick tables, migration ledger |
+| `monadeum_worker` | wallet, trade, x402, tick, agent state, and debit tables (`SELECT`, `INSERT`, `UPDATE`; no `DELETE`); agents (`UPDATE` only: it retires agents but never creates one) | those tables, agents, policy versions, migration ledger |
+| `monadeum_reader` | nothing | read-model tables and views, wallet, trade, x402, tick, agent, agent state, and debit tables, migration ledger |
 | `monadeum_policy_operator` | policy versions (`INSERT` only) | nothing |
 
 No process role has any privilege on the auth tables yet: their writer, the API, has no role until it exists.

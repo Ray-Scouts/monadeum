@@ -10,3 +10,4 @@ export { PgChallengeStore, PgSessionStore, PgUserStore } from "./auth.js";
 export { PgPaymentLog, PgTickStore, PgTradeStore } from "./logs.js";
 export { PgReadModelStore } from "./indexer.js";
 export { PgPolicyVersions } from "./policy.js";
+export { PgAgentStore, PgDebitStore } from "./agents.js";
