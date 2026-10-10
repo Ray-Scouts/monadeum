@@ -477,14 +477,14 @@ interface IAgentSpendPolicy {
 ```
 hash = keccak256( utf8(tag) || 0x00 || utf8(JCS(normalize(value))) )
 
-tag: "monadeum:genome:v1" | "monadeum:strategy:v1" | "monadeum:policy:v1" | "monadeum:plan:v1"
+tag: "monadeum:genome:v1" | "monadeum:strategy:v1" | "monadeum:policy:v1" | "monadeum:plan:v1" | "monadeum:reallocation:v1"
 ```
 
 **Why JCS**: it is a published specification with an exact key order (lexicographic by UTF-16 code units) and an exact number format (ECMAScript number serialization). A TypeScript implementation and any later implementation in another language produce the same bytes without relying on a private convention. RFC 8785 was designed so that, in JavaScript, it matches `JSON.stringify` applied to an object whose keys are recursively sorted with the default sort. Any implementation is still checked against the RFC's own test vectors, not against that equivalence.
 
 **Why keccak256**: it is a native EVM opcode, so a contract can recompute or compare a commitment cheaply, and it is the hash the surrounding Ethereum tooling already uses for commitments. SHA-256 is available on the EVM only as a precompile.
 
-**Why a domain tag**: genome, strategy-version, policy (16.1), and plan (16.2) hashes all use this one scheme. The tag guarantees that a hash of one kind never equals a hash of another kind whose JSON happens to be identical.
+**Why a domain tag**: genome, strategy-version, policy (16.1), plan (16.2), and owner reallocation policy (`EVOLUTION.md` section 3.1, item 8) hashes all use this one scheme. `monadeum:policy:v1` is the Policy/Risk Engine rule set of 16.1; an owner's reallocation policy is a different document checked by a different contract, so it has its own tag, `monadeum:reallocation:v1`. The tag guarantees that a hash of one kind never equals a hash of another kind whose JSON happens to be identical.
 
 **Normalization, applied before JCS**, because JCS does not do any of it:
 
@@ -505,4 +505,20 @@ normalizes and canonicalizes to exactly these bytes, which are then hashed:
 {"assetUniverse":["PAIR_A","PAIR_B"],"entryThreshold":0.002,"executionFrequency":5,"exitThreshold":0,"informationBudget":"500000","informationSources":["defillama","nansen"],"modelConfiguration":"low","riskTolerance":0.1,"schemaVersion":1,"strategyType":"trading","timeHorizon":20}
 ```
 
-The first implementation adds the resulting keccak256 value as a fixed test vector, computed by two independent implementations and checked to agree, so a later change to either side fails a test instead of surfacing as an on-chain mismatch.
+The first implementation adds the resulting keccak256 value as a fixed test vector, computed by two independent implementations and checked to agree, so a later change to either side fails a test instead of surfacing as an on-chain mismatch. That implementation is `libs/commitment` (issue #32), and the vector, computed by viem's keccak256 and by a separate reference Keccak-256 written for the test, is:
+
+```
+0x2d9f122951f7536592f0abc24282c094bba5d43ee5ea4414091d1c0a3b8ce589
+```
+
+**Strict readings, fixed by the first implementation.** Where the rules above left a choice, `libs/commitment` takes the strictest reasonable reading, and these readings are part of the specification:
+
+1. **Null.** `null` is rejected anywhere in a committed document, not only for absent optional fields. None of the committed schemas has a nullable field, so a `null` can only be an absent field written the wrong way. A property whose value is `undefined` in memory is an absent field and is omitted. An array element that is missing or `undefined` is rejected.
+2. **Unknown fields.** A field that is not in the document's schema version is rejected, not hashed and not dropped, because key names are hashed bytes (rule 4): a stray storage or derived field must fail loudly, and a new field needs a `schemaVersion` change.
+3. **Integers.** Integer-valued fields must be integers within the IEEE 754 safe range (absolute value below 2^53), so a value cannot silently lose precision before it is serialized.
+4. **Base-unit strings.** A base-unit amount is a `bigint` in memory or an already canonical non-negative decimal string in JSON: digits only, no sign, no leading zero, no exponent, no fraction. `"0500000"` and `"500000"` are not two spellings of one amount; the first is rejected. A JSON number in a money field is rejected.
+5. **Unicode.** Strings are hashed exactly as given. JCS applies no Unicode normalization, so a precomposed and a decomposed spelling of the same text are different hashes; producers must emit the allowlisted identifiers byte for byte. A string with an unpaired UTF-16 surrogate is rejected, as RFC 8785 requires I-JSON input.
+6. **Hex values.** A 20-byte address or 32-byte digest inside a committed document is lowercased before hashing, so EIP-55 checksum case does not change a commitment. A malformed hex value is rejected.
+7. **Strategy-version and reallocation-policy fields (provisional).** The strategy-version document is `{schemaVersion, strategyType, version, codeDigest}`, where `codeDigest` is the 32-byte digest of the plugin build a genome runs under. The reallocation policy document is `{schemaVersion, owner, sequence, agents, reallocationCap?, slotCeiling?, capitalFloor?}`: `agents` is a set of agent IDs written as canonical decimal strings (sorted as strings, like every set field) with at least two distinct entries, `sequence` is a non-negative integer that increases with every owner change so that re-enabling an identical policy still commits a new hash, and the three optional bounds can only tighten the protocol values (`EVOLUTION.md` section 3.1, item 8). The bound check itself is the contract's job (issue #31), not canonicalization's. Both field sets may change when AgentsModule and issue #31 fix what the chain checks; such a change is a `schemaVersion` change.
+
+**Verification and alerting.** A verifier recomputes the hash of the off-chain record and compares it with the 32-byte value read from the chain. Every failure, whether the hashes differ, the chain holds the zero hash, the on-chain value is malformed, or the off-chain record cannot be canonicalized, is reported as the `SECURITY.md` section 12 alert: a record that cannot be verified is treated as one that does not match.
