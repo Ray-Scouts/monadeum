@@ -36,6 +36,20 @@ Signing in deploys nothing. An agent account is deployed per agent, when AgentsM
 | `AUTH_CHALLENGE_TTL_SECONDS` | no | Wallet challenge lifetime. Proposed default 300. |
 | `AUTH_WALLET_SESSION_TTL_SECONDS` | no | Session lifetime on the external wallet path. Proposed default 3600. |
 
+### Rotating the Privy verification key
+
+The verification key is configured statically, so verification never depends on Privy being reachable at request time. The cost is that a key change at Privy needs a configuration change here. `PrivyTokenVerifier` accepts exactly one key, so there is no overlap window in which tokens signed under both keys verify. The procedure:
+
+1. Copy the new verification key from the Privy dashboard (the app's settings, where the current key is shown).
+2. Set `AUTH_PRIVY_VERIFICATION_KEY` to the new PEM in the secrets or configuration store of every API environment. It is a public key, not a secret, but it is an authentication input, so change it only through the reviewed configuration path.
+3. Restart or redeploy every API process; the key is read once, by `loadAuthConfig()`, at startup.
+4. Expect tokens signed under the old key to be refused with `invalid-token` from that point on. Affected users sign in again through Privy and receive tokens signed under the new key. Wallet sessions on the external path do not depend on this key and are not affected.
+5. Confirm with the opt-in live test (`AUTH_PRIVY_LIVE=1`) using freshly issued tokens.
+
+If Privy rotates its key without notice, every Privy-path request fails closed with `invalid-token` until step 2 is done. That is the intended failure direction: no request is accepted on a key the platform did not configure.
+
+**Follow-up, not decided here:** verify against Privy's published JWKS endpoint, as `@privy-io/node` can (`createRemoteJWKSet` with caching), so a rotation needs no configuration change. That trades the offline property for a runtime dependency on Privy's endpoint and its cache behavior, and is left as a separate decision.
+
 The consuming app also supplies the three stores and the `OwnerWalletHandoff`, then builds the module with `AuthModule.forRoot(new AuthService(...))`.
 
 ## Tests
@@ -49,5 +63,5 @@ The consuming app also supplies the three stores and the `OwnerWalletHandoff`, t
 - No live run: the claim layout of Privy's identity token is taken from the installed SDK's parser, and has not been compared with a token Privy issued for this project's app. The live test is the check.
 - Privy issues identity tokens only when they are enabled for the app in the Privy dashboard; this is an assumption about the dashboard setting to confirm with the live run.
 - The issue #19 spike used Privy's React SDK 3.48.0 only; it did not exercise any server SDK. `@privy-io/node` is the package Privy's npm registry entry for the earlier `@privy-io/server-auth` points to as its replacement (checked 2026-10-10).
-- The verification key is configured statically, so verification never depends on Privy being reachable, but a key rotation at Privy needs a configuration change. Privy also publishes a JWKS endpoint; using it is not decided.
+- The rotation procedure above has not been exercised against a real Privy key change.
 - The frontend (`apps/web`) still runs on sample data: its sign-in step already lists social login first and the external wallet below an "advanced" divider, but it does not call Privy or this module.
