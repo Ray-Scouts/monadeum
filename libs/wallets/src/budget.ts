@@ -18,6 +18,7 @@ export interface SponsorshipUsage {
 /**
  * Durable per-agent ledger. `reserve` must be atomic with respect to other reservations for the same agent: a
  * durable store implements it as a conditional update, so two concurrent operations cannot both take the last slot.
+ * `settle` and `release` throw when the agent has no ledger row. `@monadeum/db` provides the Postgres implementation.
  */
 export interface SponsorshipLedger {
   usage(agentId: string): Promise<SponsorshipUsage>;

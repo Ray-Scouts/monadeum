@@ -33,7 +33,7 @@ The spend policy contract is `contracts/src/AgentSpendPolicy.sol` (issue #25). T
 | `WALLETS_SPONSORED_OPERATIONS` | yes | Sponsored operations per agent, deployment included, revocations excluded. |
 | `WALLETS_SPONSORED_GAS_WEI` | yes | Sponsored gas per agent in wei, deployment included, revocations excluded. |
 
-The consuming app also supplies an `AgentWalletStore` and a `SponsorshipLedger` backed by Postgres, and a `SessionKeyVault` backed by a secrets manager. The in-memory implementations here are for tests and local development only.
+The consuming app also supplies an `AgentWalletStore` and a `SponsorshipLedger` backed by Postgres (`PgAgentWalletStore` and `PgSponsorshipLedger` in `@monadeum/db`), and a `SessionKeyVault` backed by a secrets manager, which is not built yet; session keys never go to Postgres. The in-memory implementations here are for tests and local development only.
 
 ## Tests
 

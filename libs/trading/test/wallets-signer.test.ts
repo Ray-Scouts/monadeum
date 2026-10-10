@@ -153,7 +153,7 @@ test("crash between the wallet's submission and the trade record: lookup by tick
   // Restart: reconciliation asks by tick key alone, and WalletsModule's record answers it.
   const again = await trading().reconcile("agent-1:7");
   assert.equal(again.state === "recorded" && again.record.status, "filled");
-  assert.ok(stores.trades.get("agent-1:7")!.ref);
+  assert.ok((await stores.trades.get("agent-1:7"))!.ref);
   const retry = await trading().submit(trade, approved(trade.plan.planHash));
   assert.equal(retry.status, "filled");
   assert.equal(sessions(), 1);

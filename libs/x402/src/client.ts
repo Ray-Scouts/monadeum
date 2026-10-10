@@ -32,12 +32,17 @@ export interface PaymentLogEntry {
   influencedDecision: boolean | null;
 }
 
+/**
+ * Durable payment log. `claim` inserts only if the key is absent, atomically, and reports whether it did; `write`
+ * replaces the entry under its key. A write must be durable before it resolves, because an entry is written before
+ * the payment it records. `findBySettlement` returns the earliest-claimed entry with that settlement reference.
+ * `@monadeum/db` provides the Postgres implementation.
+ */
 export interface PaymentLog {
-  /** Inserts only if the key is absent, atomically, and reports whether it did. A durable store implements this as insert-if-absent. */
-  claim(entry: PaymentLogEntry): boolean;
-  write(entry: PaymentLogEntry): void;
-  get(key: string): PaymentLogEntry | undefined;
-  findBySettlement(ref: string): PaymentLogEntry | undefined;
+  claim(entry: PaymentLogEntry): Promise<boolean>;
+  write(entry: PaymentLogEntry): Promise<void>;
+  get(key: string): Promise<PaymentLogEntry | undefined>;
+  findBySettlement(ref: string): Promise<PaymentLogEntry | undefined>;
 }
 
 export interface Purchase {
@@ -72,8 +77,8 @@ export class X402Client {
       key, provider: purchase.provider, price: 0n, summary: null, settlementRef: null,
       anomaly: "not-paid", influencedDecision: null,
     };
-    // Claimed before any await, so two concurrent buys for the same key cannot both reach the payer.
-    if (!this.log.claim(base)) return { ok: false, reason: "already-paid" };
+    // Claimed atomically before any request, so two concurrent buys for the same key cannot both reach the payer.
+    if (!(await this.log.claim(base))) return { ok: false, reason: "already-paid" };
 
     const first = await this.fetch(url, {});
     if (!first || first.status !== 402) return { ok: false, reason: "unreachable" };
@@ -82,36 +87,36 @@ export class X402Client {
 
     const entry = (patch: Partial<PaymentLogEntry>): PaymentLogEntry => ({ ...base, price: terms.amount, anomaly: null, ...patch });
     // Logged before paying: a crash after payment leaves "unconfirmed-payment" for monitoring, never a second payment.
-    this.log.write(entry({ anomaly: "unconfirmed-payment" }));
+    await this.log.write(entry({ anomaly: "unconfirmed-payment" }));
 
     let authorization: string;
     try {
       authorization = await this.payer.authorize(terms);
     } catch {
-      this.log.write(entry({ price: 0n, anomaly: "authorize-failed" }));
+      await this.log.write(entry({ price: 0n, anomaly: "authorize-failed" }));
       return { ok: false, reason: "anomaly" };
     }
     const paid = await this.fetch(url, { "x-payment": authorization });
     if (!paid || paid.status !== 200) {
-      this.log.write(entry({ anomaly: "paid-without-response" }));
+      await this.log.write(entry({ anomaly: "paid-without-response" }));
       return { ok: false, reason: "anomaly" };
     }
     const settlementRef = paid.headers.get("x-payment-response");
     if (!settlementRef) {
-      this.log.write(entry({ anomaly: "no-settlement-reference" }));
+      await this.log.write(entry({ anomaly: "no-settlement-reference" }));
       return { ok: false, reason: "anomaly" };
     }
-    if (this.log.findBySettlement(settlementRef)) {
-      this.log.write(entry({ settlementRef, anomaly: "duplicate-grant" }));
+    if (await this.log.findBySettlement(settlementRef)) {
+      await this.log.write(entry({ settlementRef, anomaly: "duplicate-grant" }));
       return { ok: false, reason: "anomaly" };
     }
     const accepted = acceptQuote(await readJson(paid));
     if (!accepted.ok || accepted.value.provider !== purchase.provider) {
-      this.log.write(entry({ settlementRef, anomaly: accepted.ok ? "provider-mismatch" : accepted.anomaly }));
+      await this.log.write(entry({ settlementRef, anomaly: accepted.ok ? "provider-mismatch" : accepted.anomaly }));
       return { ok: false, reason: "malformed" };
     }
     const q = accepted.value;
-    this.log.write(entry({ settlementRef, summary: `${q.provider} price=${q.price} at ${q.observedAt}` }));
+    await this.log.write(entry({ settlementRef, summary: `${q.provider} price=${q.price} at ${q.observedAt}` }));
     return { ok: true, quote: q, price: terms.amount, paymentRef: key };
   }
 
@@ -119,9 +124,9 @@ export class X402Client {
    * What this purchase may have cost, from the payment log: the agreed price once payment was attempted, 0 when it
    * never was or the payer refused. An unconfirmed or anomalous payment counts in full, so costs are never understated.
    */
-  spent(purchase: Purchase): bigint {
+  async spent(purchase: Purchase): Promise<bigint> {
     const target = this.target(purchase);
-    return target ? (this.log.get(target.key)?.price ?? 0n) : 0n;
+    return target ? ((await this.log.get(target.key))?.price ?? 0n) : 0n;
   }
 
   private target(purchase: Purchase): { endpoint: ProviderEndpoint; url: URL; key: string } | null {
@@ -139,9 +144,9 @@ export class X402Client {
   }
 
   /** Called after the strategy decides, so the log records whether the purchase changed the decision. */
-  recordInfluence(paymentRef: string, influenced: boolean): void {
-    const entry = this.log.get(paymentRef);
-    if (entry) this.log.write({ ...entry, influencedDecision: influenced });
+  async recordInfluence(paymentRef: string, influenced: boolean): Promise<void> {
+    const entry = await this.log.get(paymentRef);
+    if (entry) await this.log.write({ ...entry, influencedDecision: influenced });
   }
 
   private async fetch(url: URL, headers: Record<string, string>): Promise<Response | null> {
@@ -181,20 +186,21 @@ function parseTerms(body: unknown, asset: string, payTo: string, network: string
   return null;
 }
 
+/** In-memory log for tests and local development only. */
 export class MemoryPaymentLog implements PaymentLog {
   private readonly rows = new Map<string, PaymentLogEntry>();
-  claim(entry: PaymentLogEntry): boolean {
+  async claim(entry: PaymentLogEntry): Promise<boolean> {
     if (this.rows.has(entry.key)) return false;
     this.rows.set(entry.key, entry);
     return true;
   }
-  write(entry: PaymentLogEntry): void {
+  async write(entry: PaymentLogEntry): Promise<void> {
     this.rows.set(entry.key, entry);
   }
-  get(key: string): PaymentLogEntry | undefined {
+  async get(key: string): Promise<PaymentLogEntry | undefined> {
     return this.rows.get(key);
   }
-  findBySettlement(ref: string): PaymentLogEntry | undefined {
+  async findBySettlement(ref: string): Promise<PaymentLogEntry | undefined> {
     return [...this.rows.values()].find((r) => r.settlementRef === ref);
   }
 }

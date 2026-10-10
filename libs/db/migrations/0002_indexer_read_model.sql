@@ -1,12 +1,10 @@
--- Chain-sourced read-model written by apps/indexer.
---
--- Status: schema only. No Postgres store implements ReadModelStore yet, and no migration runner applies this file;
--- the indexer runs on InMemoryReadModelStore until one does. The tables mirror that store one to one, so the Postgres
--- store is a translation of its methods: apply() is one transaction over the four tables, rollback() is one
--- transaction of DELETE ... WHERE block_number > $ancestor plus the cursor update.
+-- Chain-sourced read-model written by apps/indexer, moved here from apps/indexer/sql/001_read_model.sql so one
+-- runner applies every table. `PgReadModelStore` implements the indexer's ReadModelStore on it: apply() is one
+-- transaction over the four tables and the cursor, rollback() is one transaction of DELETE ... WHERE block_number >
+-- the ancestor plus the cursor update.
 --
 -- Writer rule (ARCHITECTURE.md section 10): the indexer is the only writer of these tables. Every other service reads.
--- The grants at the end enforce that when the two roles exist.
+-- The grants are in 0004_roles_and_grants.sql.
 
 CREATE TABLE indexer_cursor (
   id           smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -77,13 +75,3 @@ SELECT i.account, i.data->>'permissionId' AS permission_id, (i.data->>'nonce')::
       AND (u.block_number, u.log_index) > (i.block_number, i.log_index)
   ) AS uninstalled
 FROM chain_events i WHERE i.kind = 'kernel.permission-installed';
-
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'monadeum_indexer') AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'monadeum_reader') THEN
-    REVOKE ALL ON indexer_cursor, indexer_blocks, indexer_tracked_accounts, chain_events FROM PUBLIC;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON indexer_cursor, indexer_blocks, indexer_tracked_accounts, chain_events TO monadeum_indexer;
-    GRANT SELECT ON indexer_cursor, indexer_tracked_accounts, chain_events, agent_account_deployments, agent_spend_limits,
-      agent_spend_allowlist, agent_spends, agent_session_permissions TO monadeum_reader;
-  END IF;
-END $$;

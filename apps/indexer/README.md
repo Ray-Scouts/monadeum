@@ -17,7 +17,7 @@ The read path described in `ARCHITECTURE.md` sections 1, 9 and 10: a separately 
 
 ## Boundaries
 
-- **The indexer is the only writer of chain-sourced rows.** Nothing else inserts, updates, or deletes them. `sql/001_read_model.sql` grants writes to a `monadeum_indexer` role only.
+- **The indexer is the only writer of chain-sourced rows.** Nothing else inserts, updates, or deletes them. The schema in `libs/db` (migration 0004) grants writes to the `monadeum_indexer` role only.
 - **The worker never depends on the indexer.** Agent decisions read the chain or their own records, never this read-model, so an indexer outage or lag cannot change what an agent does. `apps/worker/test/boundary.test.ts` fails if `apps/worker` declares or imports this package.
 - **Being followed is not ownership.** The factory rule keeps arbitrary addresses that call `setLimits` out of the followed set, but the Kernel factory is public: anyone can deploy a Kernel account through it and configure the policy in the same operation. The API must join the followed set against its own agent records (`THREAT-MODEL.md` boundary 10), never treat a row here as proof the platform created an account.
 - **Session key status here is derived.** `live` in the projection comes from indexed events. The authoritative revocation check reads the account directly (`WalletsService.revocationStatus`).
@@ -59,7 +59,7 @@ Checked against Monad's documentation on 2026-10-10 (`docs.monad.xyz`: Block Sta
 
 ## Not done yet
 
-- **Postgres is not wired.** `sql/001_read_model.sql` defines the schema, projections, and grants, and was applied to a local Postgres to check that it parses; no store implements `ReadModelStore` on it, and no migration runner applies it. The Postgres store is planned as follow-up work on the shared database package (`libs/db`, in progress), not a separate driver in this app. Until then the service runs on the in-memory store and a restart re-indexes from `INDEXER_START_BLOCK`.
+- **Postgres is not wired into this service.** The schema, projections, and grants are migrations 0002 and 0004 in `libs/db`, and `PgReadModelStore` there implements `ReadModelStore` on them, tested against the same conformance suite as `InMemoryReadModelStore`. `@monadeum/db` depends on this package for the interface, so this package cannot import it back without a dependency cycle; until the interface moves to a shared library or a separate entry point wires it, the service runs on the in-memory store and a restart re-indexes from `INDEXER_START_BLOCK`.
 - The testnet run above synced real blocks but indexed no rows: the spend policy is not deployed there yet, so no handler has seen a real event.
 - No identity registry or genome hash commitment contract exists yet (`ARCHITECTURE.md` section 9), so the indexer has nothing to read for them; each becomes a handler when its contract lands.
 - The read API the dashboard will call, and the replacement of `apps/web`'s sample `PopulationSource`, are separate work (issue #42).
