@@ -25,3 +25,19 @@ export { ZeroDevChain, entryPoint, kernelVersion, maxOperationCost, permissionVa
 export type { SpendPolicyConfig, ZeroDevChainConfig } from "./zerodev.js";
 export { WalletsConfigError, loadWalletsConfig } from "./config.js";
 export type { WalletsConfig } from "./config.js";
+export {
+  X402Error,
+  X402_EPOCHS_PER_24H_BOUND,
+  X402_EPOCH_SECONDS,
+  X402_MAX_PAYEES,
+  X402_NONCE_TAG,
+  X402_VALID_AFTER_SKEW,
+  buildX402Authorization,
+  kernelWrappedHash,
+  signX402Authorization,
+  x402AuthorizationDigest,
+  x402MaxOutflowPer24h,
+  x402Nonce,
+  x402ValidatorInstallData,
+} from "./x402.js";
+export type { RawHashSigner, SettlementAssetDomain, X402Authorization, X402ValidatorConfig } from "./x402.js";
