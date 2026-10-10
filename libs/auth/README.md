@@ -20,7 +20,7 @@ Signing in deploys nothing. An agent account is deployed per agent, when AgentsM
 
 ## Storage
 
-`UserStore`, `ChallengeStore` and `SessionStore` are interfaces. No database layer exists in this repository yet, so only in-memory implementations are provided, for tests and local development. A production `UserStore` must enforce, atomically, that a Privy user ID and a wallet address each belong to at most one user: that uniqueness is what keeps one person from becoming two accounts under concurrent requests.
+`UserStore`, `ChallengeStore` and `SessionStore` are interfaces. The in-memory implementations here are for tests and local development; `@monadeum/db` provides the Postgres implementations. A production `UserStore` must enforce, atomically, that a Privy user ID and a wallet address each belong to at most one user: that uniqueness is what keeps one person from becoming two accounts under concurrent requests. The Postgres store does it with unique constraints and one transaction per write, and a shared conformance suite holds both implementations to the same behavior.
 
 ## Configuration
 

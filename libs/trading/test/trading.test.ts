@@ -142,7 +142,7 @@ test("a filled trade records executed price, size, fee, slippage, and gas, and f
   const costed = toCostedFill(record, M.quoteDecimals)!;
   assert.deepEqual(costed, { realizedPnl: 0, x402: 0, gas: 0.043, fees: 0.005, slippage: 0.005 });
   assert.ok(Math.abs(netEconomicPerformance([costed]) + 0.053) < 1e-12);
-  assert.deepEqual(store.get("agent-1:7"), record);
+  assert.deepEqual(await store.get("agent-1:7"), record);
 });
 
 test("without Trade events the fee falls back to the market's taker fee rate", async () => {
@@ -230,13 +230,13 @@ test("a crash between send and record is reconciled from the signer by tick key,
   const service = new TradingService(M, venue().v, first.s, store);
   const trade = await prepared(service);
   await service.submit(trade, approved(trade.plan.planHash));
-  assert.equal(store.get("agent-1:7")!.ref, null);
+  assert.equal((await store.get("agent-1:7"))!.ref, null);
 
   const after = signer({ lookup: async () => ({ state: "included", ref: "0xabc", receipt: receipt([swapLog(1_000_000n, 99n * 10n ** 16n)]) }) });
   const restarted = new TradingService(M, venue().v, after.s, store);
   const found = await restarted.reconcile("agent-1:7");
   assert.equal(found.state, "recorded");
-  assert.equal(store.get("agent-1:7")!.status, "filled");
+  assert.equal((await store.get("agent-1:7"))!.status, "filled");
   assert.equal(after.sent.length, 0);
 });
 

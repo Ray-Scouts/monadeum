@@ -50,8 +50,11 @@ export interface TickOperationRecord {
 
 /**
  * Durable store. `claim` and `claimOperation` are insert-if-absent. `claim` is keyed by agent ID and, separately,
- * unique by account address; `claimOperation` by (agent ID, tick key). A write must be durable before it returns:
- * the service submits an operation only after its attempt has been written.
+ * unique by account address (compared case-insensitively); `claimOperation` by (agent ID, tick key). `update` and
+ * `updateOperation` throw when the record does not exist, and `update` throws when the new account address belongs
+ * to another agent. `listOperations` returns an agent's operations in claim order. A write must be durable before it
+ * returns: the service submits an operation only after its attempt has been written. `@monadeum/db` provides the
+ * Postgres implementation.
  */
 export interface AgentWalletStore {
   get(agentId: string): Promise<AgentWalletRecord | undefined>;
@@ -66,7 +69,8 @@ export interface AgentWalletStore {
 
 /**
  * Holds session private keys. Production backs this with a secrets manager (SECURITY.md section 11); keys never
- * go to the database, a log, or source control. `destroy` must make the key unrecoverable from this store.
+ * go to the database, a log, or source control, so `@monadeum/db` deliberately provides no implementation of this
+ * interface. `destroy` must make the key unrecoverable from this store.
  */
 export interface SessionKeyVault {
   put(agentId: string, privateKey: Hex): Promise<void>;
@@ -126,6 +130,11 @@ export class MemoryAgentWalletStore implements AgentWalletStore {
 
   async update(record: AgentWalletRecord) {
     if (!this.byAgent.has(record.agentId)) throw new Error(`no wallet record for ${record.agentId}`);
+    for (const r of this.byAgent.values()) {
+      if (r.agentId !== record.agentId && r.account.toLowerCase() === record.account.toLowerCase()) {
+        throw new Error(`account ${record.account} belongs to another agent`);
+      }
+    }
     this.byAgent.set(record.agentId, copy(record));
   }
 }

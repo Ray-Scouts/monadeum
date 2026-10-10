@@ -30,10 +30,11 @@ export interface UserRecord {
 
 /**
  * Durable user store. Uniqueness is the store's job, because it is what keeps one person from becoming two
- * accounts: a Privy user ID and a wallet address each belong to at most one user. `create` and `update` return
- * false, and change nothing, when the record would take a Privy ID or a wallet that another user holds, or when
- * `create` finds the ID taken. Production backs this with Postgres unique constraints; no database layer exists
- * in this repository yet.
+ * accounts: a Privy user ID and a wallet address (compared case-insensitively) each belong to at most one user.
+ * `create` and `update` return false, and change nothing, when the record would take a Privy ID or a wallet that
+ * another user holds, when the record lists a wallet twice, when `create` finds the ID taken, when `update` finds
+ * no such user, or when `update` would change an owner wallet that is already set. `@monadeum/db` provides the
+ * Postgres implementation, which enforces these with unique constraints and one transaction per write.
  */
 export interface UserStore {
   get(id: string): Promise<UserRecord | undefined>;
@@ -54,7 +55,7 @@ export interface WalletChallenge {
   expiresAt: number;
 }
 
-/** One-time challenges. `consume` returns a challenge at most once, then forgets it. */
+/** One-time challenges. `put` throws when the nonce was already issued. `consume` returns a challenge at most once, then forgets it. */
 export interface ChallengeStore {
   put(challenge: WalletChallenge): Promise<void>;
   consume(nonce: string): Promise<WalletChallenge | undefined>;
@@ -68,7 +69,11 @@ export interface WalletSession {
   expiresAt: number;
 }
 
-/** Platform sessions for the external wallet path. The Privy path uses Privy's own access token instead. */
+/**
+ * Platform sessions for the external wallet path. The Privy path uses Privy's own access token instead. `put`
+ * replaces a session with the same hash, and throws when `tokenHash` is not a lowercase 32-byte hex digest, so a
+ * plaintext token can never be stored by mistake.
+ */
 export interface SessionStore {
   put(session: WalletSession): Promise<void>;
   get(tokenHash: Hex): Promise<WalletSession | undefined>;
@@ -76,6 +81,12 @@ export interface SessionStore {
 }
 
 const lower = (a: string) => a.toLowerCase();
+const TOKEN_HASH = /^0x[0-9a-f]{64}$/;
+
+/** True when `next` would change an owner wallet that `current` already set. */
+function changesOwnerWallet(current: UserRecord, next: UserRecord): boolean {
+  return current.ownerWallet !== null && (next.ownerWallet === null || lower(next.ownerWallet) !== lower(current.ownerWallet));
+}
 const copy = (r: UserRecord): UserRecord => ({ ...r, wallets: r.wallets.map((w) => ({ ...w })) });
 
 /** In-memory store for tests and local development only. */
@@ -104,7 +115,8 @@ export class MemoryUserStore implements UserStore {
   }
 
   async update(record: UserRecord) {
-    if (!this.users.has(record.id) || this.collides(record)) return false;
+    const current = this.users.get(record.id);
+    if (!current || changesOwnerWallet(current, record) || this.collides(record)) return false;
     this.users.set(record.id, copy(record));
     return true;
   }
@@ -140,6 +152,7 @@ export class MemoryChallengeStore implements ChallengeStore {
 export class MemorySessionStore implements SessionStore {
   private readonly sessions = new Map<Hex, WalletSession>();
   async put(session: WalletSession) {
+    if (!TOKEN_HASH.test(session.tokenHash)) throw new Error("tokenHash must be a lowercase SHA-256 hex digest");
     this.sessions.set(session.tokenHash, { ...session });
   }
   async get(tokenHash: Hex) {

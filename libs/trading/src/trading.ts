@@ -39,8 +39,9 @@ const FINAL = new Set(["filled", "failed", "needs-review"]);
  * hash. Every attempt, including a policy rejection, is written to the TradeStore with the order and the failure.
  */
 export class TradingService {
-  // In-process guard for the reconcile-then-resend path. Across processes, the signer's lookup contract is the guard.
-  private readonly inflight = new Set<string>();
+  // In-process guard: one submission per tick key at a time in this process, set before the first await. Across
+  // processes, the store's atomic claim and the signer's lookup contract are the guard.
+  private readonly inflight = new Map<string, Promise<TradeRecord>>();
 
   constructor(
     private readonly market: KuruMarket,
@@ -117,29 +118,29 @@ export class TradingService {
     if (rejection) {
       const failed = { ...record, status: "failed" as const, failure: rejection };
       // Claimed like any other attempt, so a rejected tick cannot later be submitted under the same key.
-      if (this.store.claim(failed)) return failed;
-      return this.store.get(order.tickKey)!;
+      if (await this.store.claim(failed)) return failed;
+      return (await this.store.get(order.tickKey))!;
     }
 
-    // Claimed before any await, so two concurrent submits for one key cannot both reach the signer.
-    if (!this.store.claim(record)) {
-      const existing = this.store.get(order.tickKey)!;
-      if (existing.planHash !== plan.planHash || this.inflight.has(order.tickKey)) return existing;
-      this.inflight.add(order.tickKey);
-      try {
-        const found = await this.reconcile(order.tickKey);
-        if (found.state !== "resubmittable") return found.state === "absent" ? existing : found.record;
-        return await this.send(found.record);
-      } finally {
-        this.inflight.delete(order.tickKey);
-      }
-    }
-    this.inflight.add(order.tickKey);
+    // A concurrent submit for a key this process is already handling never reaches the signer.
+    const running = this.inflight.get(order.tickKey);
+    if (running) return (await this.store.get(order.tickKey)) ?? (await running);
+    const work = this.claimAndSend(record);
+    this.inflight.set(order.tickKey, work);
     try {
-      return await this.send(record);
+      return await work;
     } finally {
       this.inflight.delete(order.tickKey);
     }
+  }
+
+  private async claimAndSend(record: TradeRecord): Promise<TradeRecord> {
+    if (await this.store.claim(record)) return this.send(record);
+    const existing = (await this.store.get(record.key))!;
+    if (existing.planHash !== record.planHash) return existing;
+    const found = await this.reconcile(record.key);
+    if (found.state !== "resubmittable") return found.state === "absent" ? existing : found.record;
+    return this.send(found.record);
   }
 
   /**
@@ -148,7 +149,7 @@ export class TradingService {
    * Only when both come back empty is the tick resubmittable.
    */
   async reconcile(tickKey: string): Promise<Reconciled> {
-    const record = this.store.get(tickKey);
+    const record = await this.store.get(tickKey);
     if (!record) return { state: "absent" };
     if (FINAL.has(record.status)) return { state: "recorded", record };
 
@@ -156,23 +157,24 @@ export class TradingService {
     try {
       status = await this.signer.lookup({ tickKey, account: record.order.account, ref: record.ref });
     } catch (error) {
-      return { state: "recorded", record: this.write(record, { failure: network(error) }) };
+      return { state: "recorded", record: await this.write(record, { failure: network(error) }) };
     }
-    if (status.state === "included") return { state: "recorded", record: this.finalize(record, status.ref, status.receipt) };
-    if (status.state === "pending") return { state: "recorded", record: this.write(record, { status: "submitted", ref: status.ref, failure: null }) };
+    if (status.state === "included") return { state: "recorded", record: await this.finalize(record, status.ref, status.receipt) };
+    if (status.state === "pending") return { state: "recorded", record: await this.write(record, { status: "submitted", ref: status.ref, failure: null }) };
 
     let swaps;
     try {
       swaps = await this.venue.swapsSince(record.order.account, record.order.preparedAtBlock);
     } catch (error) {
-      return { state: "recorded", record: this.write(record, { failure: network(error) }) };
+      return { state: "recorded", record: await this.write(record, { failure: network(error) }) };
     }
-    const unattributed = swaps.filter((s) => !this.store.findByTransaction(s.transactionHash));
+    const unattributed = [];
+    for (const s of swaps) if (!(await this.store.findByTransaction(s.transactionHash))) unattributed.push(s);
     if (unattributed.length > 0) {
       const reason = `signer reports no operation, but the router shows unattributed swaps by this account: ${unattributed.map((s) => s.transactionHash).join(", ")}`;
-      return { state: "recorded", record: this.write(record, { status: "needs-review", failure: { kind: "execution", reason } }) };
+      return { state: "recorded", record: await this.write(record, { status: "needs-review", failure: { kind: "execution", reason } }) };
     }
-    return { state: "resubmittable", record: this.write(record, { status: "claimed", ref: null }) };
+    return { state: "resubmittable", record: await this.write(record, { status: "claimed", ref: null }) };
   }
 
   private async send(record: TradeRecord): Promise<TradeRecord> {
@@ -181,36 +183,36 @@ export class TradingService {
       ({ ref } = await this.signer.submit({ tickKey: record.key, account: record.order.account, calls: record.calls }));
     } catch (error) {
       if (error instanceof SignerRejected) {
-        return this.write(record, { status: "failed", failure: { kind: "execution", reason: error.message } });
+        return await this.write(record, { status: "failed", failure: { kind: "execution", reason: error.message } });
       }
       // Unknown outcome: stays claimed, and the next attempt reconciles before anything is resent.
-      return this.write(record, { failure: network(error) });
+      return await this.write(record, { failure: network(error) });
     }
-    const submitted = this.write(record, { status: "submitted", ref, failure: null });
+    const submitted = await this.write(record, { status: "submitted", ref, failure: null });
     const found = await this.reconcile(record.key);
     return found.state === "absent" ? submitted : found.record;
   }
 
-  private finalize(record: TradeRecord, ref: Hex, receipt: OperationReceipt): TradeRecord {
+  private async finalize(record: TradeRecord, ref: Hex, receipt: OperationReceipt): Promise<TradeRecord> {
     if (!receipt.success) {
-      return this.write(record, {
+      return await this.write(record, {
         status: "failed", ref, costs: costsOf(this.market, record.order, receipt.gasCostWei, null),
         failure: { kind: "execution", reason: receipt.revertReason ?? "operation reverted without a reason" },
       });
     }
     const fill = decodeFill(this.market, record.order, receipt);
     if (!fill) {
-      return this.write(record, {
+      return await this.write(record, {
         status: "needs-review", ref, costs: costsOf(this.market, record.order, receipt.gasCostWei, null),
         failure: { kind: "execution", reason: `operation ${receipt.transactionHash} succeeded but no single swap by the account was decoded` },
       });
     }
-    return this.write(record, { status: "filled", ref, fill, costs: costsOf(this.market, record.order, receipt.gasCostWei, fill), failure: null });
+    return await this.write(record, { status: "filled", ref, fill, costs: costsOf(this.market, record.order, receipt.gasCostWei, fill), failure: null });
   }
 
-  private write(record: TradeRecord, patch: Partial<TradeRecord>): TradeRecord {
+  private async write(record: TradeRecord, patch: Partial<TradeRecord>): Promise<TradeRecord> {
     const next = { ...record, ...patch };
-    this.store.write(next);
+    await this.store.write(next);
     return next;
   }
 }

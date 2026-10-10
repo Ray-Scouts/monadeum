@@ -48,8 +48,8 @@ test("a paid response is validated, logged with its outcome, and every request i
     assert.equal(new Headers(c.init.headers).get("cache-control"), "no-store");
     assert.equal(c.init.redirect, "error");
   }
-  client.recordInfluence(result.paymentRef, true);
-  const entry = log.get(result.paymentRef);
+  await client.recordInfluence(result.paymentRef, true);
+  const entry = await log.get(result.paymentRef);
   assert.equal(entry?.anomaly, null);
   assert.equal(entry?.settlementRef, "settle-1");
   assert.equal(entry?.influencedDecision, true);
@@ -62,7 +62,7 @@ test("the same purchase is never paid twice, and a reused settlement is a duplic
   assert.deepEqual(await client.buy(purchase), { ok: false, reason: "already-paid" });
   const replay = await client.buy({ ...purchase, tickKey: "agent-1:8" });
   assert.deepEqual(replay, { ok: false, reason: "anomaly" });
-  assert.equal(log.get("agent-1:8:nansen:/signal?pair=MON")?.anomaly, "duplicate-grant");
+  assert.equal((await log.get("agent-1:8:nansen:/signal?pair=MON"))?.anomaly, "duplicate-grant");
   assert.equal(authorized.length, 2);
 });
 
@@ -84,11 +84,11 @@ test("terms over budget, for another asset, or to another payee are not paid", a
 test("a malformed or failed paid response is no information, never partially trusted", async () => {
   const malformed = setup(okResponse("s", { provider: "nansen", price: "1" }));
   assert.deepEqual(await malformed.client.buy(purchase), { ok: false, reason: "malformed" });
-  assert.equal(malformed.log.get("agent-1:7:nansen:/signal?pair=MON")?.anomaly, "price");
+  assert.equal((await malformed.log.get("agent-1:7:nansen:/signal?pair=MON"))?.anomaly, "price");
 
   const failed = setup(() => new Response("boom", { status: 500 }));
   assert.deepEqual(await failed.client.buy(purchase), { ok: false, reason: "anomaly" });
-  assert.equal(failed.log.get("agent-1:7:nansen:/signal?pair=MON")?.anomaly, "paid-without-response");
+  assert.equal((await failed.log.get("agent-1:7:nansen:/signal?pair=MON"))?.anomaly, "paid-without-response");
 
   const noRef = setup(() => Response.json(quote, { status: 200 }));
   assert.deepEqual(await noRef.client.buy(purchase), { ok: false, reason: "anomaly" });
@@ -106,7 +106,7 @@ test("a payer failure is an anomaly result with no payment recorded, not an exce
   const payer: Payer = { authorize: async () => { throw new Error("wallet down"); } };
   const client = new X402Client(endpoints, USDC, "monad-testnet", payer, log, server(okResponse()).http);
   assert.deepEqual(await client.buy(purchase), { ok: false, reason: "anomaly" });
-  const entry = log.get("agent-1:7:nansen:/signal?pair=MON");
+  const entry = await log.get("agent-1:7:nansen:/signal?pair=MON");
   assert.equal(entry?.anomaly, "authorize-failed");
   assert.equal(entry?.price, 0n);
 });
@@ -114,19 +114,19 @@ test("a payer failure is an anomaly result with no payment recorded, not an exce
 test("a quote from another provider than the one paid is malformed", async () => {
   const { client, log } = setup(okResponse("s", { ...quote, provider: "defillama" }));
   assert.deepEqual(await client.buy(purchase), { ok: false, reason: "malformed" });
-  assert.equal(log.get("agent-1:7:nansen:/signal?pair=MON")?.anomaly, "provider-mismatch");
+  assert.equal((await log.get("agent-1:7:nansen:/signal?pair=MON"))?.anomaly, "provider-mismatch");
 });
 
 test("spent reports the agreed price once payment was attempted, and 0 when it never was", async () => {
   const paid = setup();
-  assert.equal(paid.client.spent(purchase), 0n);
+  assert.equal(await paid.client.spent(purchase), 0n);
   await paid.client.buy(purchase);
-  assert.equal(paid.client.spent(purchase), 10000n);
+  assert.equal(await paid.client.spent(purchase), 10000n);
   const lost = setup(() => new Response("boom", { status: 500 }));
   await lost.client.buy(purchase);
-  assert.equal(lost.client.spent(purchase), 10000n, "paid without a response still counts");
+  assert.equal(await lost.client.spent(purchase), 10000n, "paid without a response still counts");
   const refused = setup(okResponse(), terms({ payTo: "0xdead" }));
   await refused.client.buy(purchase);
-  assert.equal(refused.client.spent(purchase), 0n);
-  assert.equal(paid.client.spent({ ...purchase, resource: "https://evil.example/x" }), 0n);
+  assert.equal(await refused.client.spent(purchase), 0n);
+  assert.equal(await paid.client.spent({ ...purchase, resource: "https://evil.example/x" }), 0n);
 });

@@ -121,28 +121,34 @@ export interface TradeRecord {
   failure: TradeFailure | null;
 }
 
+/**
+ * Durable trade store. `claim` inserts only if the key is absent, atomically, and reports whether it did; `write`
+ * replaces the record under its key. A write must be durable before it resolves. `findByTransaction` matches the
+ * fill's transaction hash case-insensitively and returns the earliest-claimed match. `@monadeum/db` provides the
+ * Postgres implementation.
+ */
 export interface TradeStore {
-  /** Inserts only if the key is absent, atomically, and reports whether it did. A durable store implements insert-if-absent. */
-  claim(record: TradeRecord): boolean;
-  write(record: TradeRecord): void;
-  get(key: string): TradeRecord | undefined;
-  findByTransaction(hash: Hex): TradeRecord | undefined;
+  claim(record: TradeRecord): Promise<boolean>;
+  write(record: TradeRecord): Promise<void>;
+  get(key: string): Promise<TradeRecord | undefined>;
+  findByTransaction(hash: Hex): Promise<TradeRecord | undefined>;
 }
 
+/** In-memory store for tests and local development only. */
 export class MemoryTradeStore implements TradeStore {
   private readonly rows = new Map<string, TradeRecord>();
-  claim(record: TradeRecord): boolean {
+  async claim(record: TradeRecord): Promise<boolean> {
     if (this.rows.has(record.key)) return false;
     this.rows.set(record.key, record);
     return true;
   }
-  write(record: TradeRecord): void {
+  async write(record: TradeRecord): Promise<void> {
     this.rows.set(record.key, record);
   }
-  get(key: string): TradeRecord | undefined {
+  async get(key: string): Promise<TradeRecord | undefined> {
     return this.rows.get(key);
   }
-  findByTransaction(hash: Hex): TradeRecord | undefined {
+  async findByTransaction(hash: Hex): Promise<TradeRecord | undefined> {
     const h = hash.toLowerCase();
     return [...this.rows.values()].find((r) => r.fill?.transactionHash.toLowerCase() === h);
   }

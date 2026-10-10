@@ -72,9 +72,9 @@ test("ticks and evaluations over the real modules: only approved plans are sent,
     assert.equal(state.returns.length, 2 * EVALUATION_CADENCE);
     const entries = [];
     for (let tick = 1; tick <= 2 * EVALUATION_CADENCE; tick++) {
-      const record = w.stores.trades.get(`${id}:${tick}`);
+      const record = await w.stores.trades.get(`${id}:${tick}`);
       if (record) entries.push(toCostedFill(record, DECIMALS)!);
-      const paid = w.stores.payments.get(`${id}:${tick}:nansen:/signal?pair=MON%2FUSDC`);
+      const paid = await w.stores.payments.get(`${id}:${tick}:nansen:/signal?pair=MON%2FUSDC`);
       if (paid) {
         purchases++;
         assert.ok(record, "information is bought only on a tick that goes on to trade");
@@ -108,7 +108,7 @@ test("a malformed or malicious provider response fails the tick with no action, 
     assert.equal(result?.outcome?.kind === "failed" && result.outcome.step, "information", mode);
     assert.equal(result?.outcome?.kind === "failed" && result.outcome.reason, reason, mode);
     assert.equal(sessions(w), 0, `${mode}: nothing was sent`);
-    assert.equal(w.stores.trades.get("1:1"), undefined, `${mode}: no plan was even built`);
+    assert.equal(await w.stores.trades.get("1:1"), undefined, `${mode}: no plan was even built`);
     const state = await w.stores.agents.state("1");
     assert.ok(Math.abs(state.net + Number(cost) / 10 ** DECIMALS) < 1e-12, `${mode}: the payment, if any, is a cost`);
   }
@@ -162,7 +162,7 @@ test("budget exhaustion fails closed: x402 daily cap, paymaster budget with no g
   const over = d.get(3);
   assert.equal(over?.outcome?.kind === "failed" && over.outcome.step, "policy");
   assert.ok(over?.outcome?.kind === "failed" && over.outcome.violations?.includes("session-daily-cap"));
-  assert.equal(daily.stores.trades.get("1:3")?.failure?.kind, "policy");
+  assert.equal((await daily.stores.trades.get("1:3"))?.failure?.kind, "policy");
   assert.equal(sessions(daily), 1);
 });
 
@@ -218,7 +218,7 @@ test("crash after submission, before the result was recorded: the restart resend
   const third = await w.boot();
   assert.equal((await third.worker.tick("1", 1))?.action, "executed");
   assert.equal(sessions(w), 1);
-  assert.equal(w.stores.trades.get("1:1")?.status, "filled");
+  assert.equal((await w.stores.trades.get("1:1"))?.status, "filled");
   assert.equal((await w.stores.agents.state("1")).returns.length, 1);
 });
 
