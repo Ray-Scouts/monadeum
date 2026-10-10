@@ -1,10 +1,11 @@
 import "reflect-metadata";
 import { Module } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import { ReallocationModule } from "@monadeum/reallocation";
 import { TickModule } from "@monadeum/tick";
 
 @Module({
-  imports: [TickModule],
+  imports: [TickModule, ReallocationModule],
 })
 export class WorkerModule {}
 
