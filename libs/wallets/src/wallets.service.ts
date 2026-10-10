@@ -31,6 +31,7 @@ export type FailureReason =
   | "revoked"
   | "out-of-scope"
   | "insufficient-gas"
+  | "paymaster-unavailable"
   | "rejected"
   | "reverted"
   | "submission-unknown";
@@ -224,6 +225,11 @@ export class WalletsService {
    * record marked before anything else, so this process cannot sign with it again. Then an owner-signed operation
    * uninstalls the permission validator and invalidates the Kernel nonce, and the result is read back from chain.
    * Bulk revocation holds (SECURITY.md section 9) are decided by the caller with RecoveryService before this call.
+   *
+   * The on-chain operation is always sponsored, outside the per-agent budget, because it is the emergency stop
+   * (ARCHITECTURE.md section 7). If the paymaster is down or refuses, the account pays if its balance covers the
+   * worst case; otherwise the result is `paymaster-unavailable`: the key is already destroyed here, but the chain
+   * still accepts it until this call is retried and succeeds.
    */
   revokeSessionKey(input: { agentId: string; owner: OwnerSigner }): Promise<RevokeResult> {
     return this.exclusive(input.agentId, async () => {
@@ -258,7 +264,7 @@ export class WalletsService {
         this.chain.prepareOwnerOperation({ owner: input.owner, index: record.index, account: record.account, calls, sponsored }), async (hash) => {
           session.revokeUserOpHash = hash;
           await this.store.update(record);
-        });
+        }, "revocation");
       if (!sent.ok) return { ok: false, revokedLocallyAt, reason: sent.reason, detail: sent.detail };
 
       const after = await this.chain.permissionState(record.account, session.permissionId);
@@ -290,35 +296,47 @@ export class WalletsService {
   }
 
   /**
-   * The gas decision for every operation, ARCHITECTURE.md sections 7 and 14. Sponsored only if the paymaster is
-   * configured, the agent has budget left, the paymaster answers, and the worst-case cost fits the remaining budget.
-   * Otherwise the account pays, and only if its balance covers the worst case; if not, the operation is not sent.
+   * The gas decision for every operation, ARCHITECTURE.md sections 7 and 14. A budgeted operation is sponsored only
+   * if the paymaster is configured, the agent has budget left, the paymaster answers, and the worst-case cost fits
+   * the remaining budget. A revocation is sponsored whenever the paymaster answers, and is never charged to the
+   * budget. Otherwise the account pays in native MON, and only if its balance covers the worst case; if not, the
+   * operation is not sent.
    */
   private async send(
     agentId: string,
     account: Address,
     prepare: (sponsored: boolean) => Promise<PreparedOperation>,
     onSubmitted?: (hash: Hex) => Promise<void>,
+    kind: "budgeted" | "revocation" = "budgeted",
   ): Promise<({ ok: true } & OperationOutcome) | Failure> {
     let prepared: PreparedOperation | null = null;
     let reserved = 0n;
+    let paymasterDown = !this.settings.paymaster;
     try {
-      if (this.settings.paymaster && hasHeadroom(await this.ledger.usage(agentId), this.settings.budget)) {
+      const sponsorable = kind === "revocation" || hasHeadroom(await this.ledger.usage(agentId), this.settings.budget);
+      if (this.settings.paymaster && sponsorable) {
         try {
           const candidate = await prepare(true);
-          if (candidate.sponsored && (await this.ledger.reserve(agentId, candidate.maxCost, this.settings.budget))) {
+          if (!candidate.sponsored) {
+            paymasterDown = true;
+          } else if (kind === "revocation") {
+            prepared = candidate;
+          } else if (await this.ledger.reserve(agentId, candidate.maxCost, this.settings.budget)) {
             prepared = candidate;
             reserved = candidate.maxCost;
           }
         } catch (error) {
           if (!(error instanceof PaymasterUnavailableError)) throw error;
           // Paymaster down: never assume sponsorship. Fall through to the account paying (section 14).
+          paymasterDown = true;
         }
       }
       if (!prepared) {
         const own = await prepare(false);
         if (own.sponsored) return { ok: false, reason: "rejected", detail: "unsponsored operation carries paymaster data" };
-        if ((await this.chain.nativeBalance(account)) < own.maxCost) return { ok: false, reason: "insufficient-gas" };
+        if ((await this.chain.nativeBalance(account)) < own.maxCost) {
+          return { ok: false, reason: kind === "revocation" && paymasterDown ? "paymaster-unavailable" : "insufficient-gas" };
+        }
         prepared = own;
       }
     } catch (error) {

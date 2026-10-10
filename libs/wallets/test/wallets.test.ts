@@ -20,10 +20,10 @@ import { FakeChain, type FakeOptions } from "./fake-chain.js";
 
 const USDC = getAddress("0x00000000000000000000000000000000000000a1");
 const ROUTER = getAddress("0x00000000000000000000000000000000000000b1");
-const REPRO = getAddress("0x00000000000000000000000000000000000000c1");
+const REALLOC = getAddress("0x00000000000000000000000000000000000000c1");
 const ROUTER_SWAP = "0x12345678" as Hex;
-const REPRO_SPAWN = "0x9abcdef0" as Hex;
-const scope = buildScope({ settlementAsset: USDC, kuruRouter: ROUTER, kuruRouterSelectors: [ROUTER_SWAP], reproduction: REPRO, reproductionSelectors: [REPRO_SPAWN] });
+const REALLOC_MOVE = "0x9abcdef0" as Hex;
+const scope = buildScope({ settlementAsset: USDC, kuruRouter: ROUTER, kuruRouterSelectors: [ROUTER_SWAP], reallocation: REALLOC, reallocationSelectors: [REALLOC_MOVE] });
 const limits = { perTxCap: 1_000_000n, dailyCap: 5_000_000n };
 
 function ownerSigner(): OwnerSigner {
@@ -59,16 +59,16 @@ test("the scope is exactly the SECURITY.md section 1 allowlist", () => {
     ["settlement-asset", USDC, TRANSFER_SELECTOR],
     ["settlement-asset", USDC, APPROVE_SELECTOR],
     ["kuru-router", ROUTER, ROUTER_SWAP],
-    ["reproduction", REPRO, REPRO_SPAWN],
+    ["reproduction", REALLOC, REALLOC_MOVE],
   ]);
   assert.ok(Object.isFrozen(scope));
 });
 
 test("the scope rejects aliased targets, empty selector lists, and malformed selectors", () => {
-  const base = { settlementAsset: USDC, kuruRouter: ROUTER, kuruRouterSelectors: [ROUTER_SWAP], reproduction: REPRO, reproductionSelectors: [REPRO_SPAWN] };
-  assert.throws(() => buildScope({ ...base, reproduction: USDC }), ScopeError);
+  const base = { settlementAsset: USDC, kuruRouter: ROUTER, kuruRouterSelectors: [ROUTER_SWAP], reallocation: REALLOC, reallocationSelectors: [REALLOC_MOVE] };
+  assert.throws(() => buildScope({ ...base, reallocation: USDC }), ScopeError);
   assert.throws(() => buildScope({ ...base, kuruRouterSelectors: [] }), ScopeError);
-  assert.throws(() => buildScope({ ...base, reproductionSelectors: ["0x1234"] }), ScopeError);
+  assert.throws(() => buildScope({ ...base, reallocationSelectors: ["0x1234"] }), ScopeError);
   assert.throws(() => buildScope({ ...base, kuruRouterSelectors: [ROUTER_SWAP, ROUTER_SWAP] }), ScopeError);
   assert.throws(() => buildScope({ ...base, kuruRouter: "0x0000000000000000000000000000000000000000" }), ScopeError);
 });
@@ -212,21 +212,46 @@ test("a key revoked before its first use cannot enable itself with the owner's a
   }), /AA24/);
 });
 
-test("revocation destroys the key even when the on-chain operation cannot be paid, and reports it", async () => {
-  const { service, chain, vault, owner, account } = await deployed({}, { operations: 1, gasWei: 10_000n });
+test("revocation is sponsored outside the per-agent budget, even when the budget is exhausted", async () => {
+  const { service, chain, ledger, owner, account } = await deployed({}, { operations: 1, gasWei: 10_000n });
+  await service.issueSessionKey({ agentId: "agent-1", owner });
+  const usage = await ledger.usage("agent-1");
+  assert.equal((await service.sponsorship("agent-1")).exhausted, true);
+  assert.equal(chain.acct(account).balance, 0n);
+  const r = await service.revokeSessionKey({ agentId: "agent-1", owner });
+  assert.equal(r.ok && r.operation?.sponsored, true);
+  assert.deepEqual(await ledger.usage("agent-1"), usage, "the revocation is not charged to the budget");
+  assert.equal((await service.revocationStatus("agent-1"))!.revoked, true);
+});
+
+test("paymaster down at revocation: the key is destroyed, the account pays if it can, otherwise paymaster-unavailable", async () => {
+  const { service, chain, vault, ledger, owner, account } = await deployed({}, { operations: 1, gasWei: 10_000n });
   await service.issueSessionKey({ agentId: "agent-1", owner });
   chain.options.paymaster = "down";
   const r = await service.revokeSessionKey({ agentId: "agent-1", owner });
   assert.equal(r.ok, false);
-  assert.equal(!r.ok && r.reason, "insufficient-gas");
+  assert.equal(!r.ok && r.reason, "paymaster-unavailable");
   assert.equal(typeof r.revokedLocallyAt, "number");
   assert.equal(await vault.get("agent-1"), null);
   assert.deepEqual(await service.execute({ agentId: "agent-1", calls: [swap] }), { ok: false, reason: "revoked" });
   assert.equal((await service.revocationStatus("agent-1"))!.revoked, false, "the chain still accepts the key until the owner operation lands");
-  // Retried once the account can pay, the on-chain half completes.
+
+  // Paymaster still down, but the account now holds MON: it pays its own revocation (section 14).
   chain.acct(account).balance = 10_000n;
-  assert.equal((await service.revokeSessionKey({ agentId: "agent-1", owner })).ok, true);
+  const paid = await service.revokeSessionKey({ agentId: "agent-1", owner });
+  assert.equal(paid.ok && paid.operation?.sponsored, false);
   assert.equal((await service.revocationStatus("agent-1"))!.revoked, true);
+  assert.deepEqual(await ledger.usage("agent-1"), { operations: 1, gasWei: 900n });
+});
+
+test("without a configured paymaster, revocation is paid by the account or reported as paymaster-unavailable", async () => {
+  const s = setup({}, { operations: 10, gasWei: 1_000_000n }, false);
+  const account = await s.chain.accountAddress(s.owner.address, 0n);
+  s.chain.acct(account).balance = 1_000n;
+  assert.equal((await s.service.deploy({ agentId: "agent-1", owner: s.owner, index: 0n, limits })).ok, true);
+  await s.service.issueSessionKey({ agentId: "agent-1", owner: s.owner });
+  const r = await s.service.revokeSessionKey({ agentId: "agent-1", owner: s.owner });
+  assert.equal(!r.ok && r.reason, "paymaster-unavailable");
 });
 
 test("a new key can be issued after revocation, and the old one stays dead", async () => {
@@ -237,7 +262,7 @@ test("a new key can be issued after revocation, and the old one stays dead", asy
   await service.revokeSessionKey({ agentId: "agent-1", owner });
   const second = await service.issueSessionKey({ agentId: "agent-1", owner });
   assert.equal(first.ok && second.ok && first.keyAddress !== second.keyAddress, true);
-  chain.acct(account).balance = 10_000n; // the three sponsored operations are used up
+  chain.acct(account).balance = 10_000n; // covers any operation past the sponsorship budget
   assert.equal((await service.execute({ agentId: "agent-1", calls: [swap] })).ok, true);
   assert.equal(chain.revoked(account, old.permissionId, old.enableNonce), true);
 });

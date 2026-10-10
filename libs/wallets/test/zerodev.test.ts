@@ -35,9 +35,9 @@ import {
 
 const USDC = getAddress("0x00000000000000000000000000000000000000a1");
 const ROUTER = getAddress("0x00000000000000000000000000000000000000b1");
-const REPRO = getAddress("0x00000000000000000000000000000000000000c1");
+const REALLOC = getAddress("0x00000000000000000000000000000000000000c1");
 const POLICY = getAddress("0x00000000000000000000000000000000000000e1");
-const scope = buildScope({ settlementAsset: USDC, kuruRouter: ROUTER, kuruRouterSelectors: ["0x12345678"], reproduction: REPRO, reproductionSelectors: ["0x9abcdef0"] });
+const scope = buildScope({ settlementAsset: USDC, kuruRouter: ROUTER, kuruRouterSelectors: ["0x12345678"], reallocation: REALLOC, reallocationSelectors: ["0x9abcdef0"] });
 const spendPolicy = { address: POLICY, policyData: "0x" as Hex, hookData: "0x" as Hex };
 
 type Handler = (method: string, params: unknown[]) => unknown;
@@ -179,8 +179,8 @@ test("configuration is read from the environment and rejects anything but Monad 
     WALLETS_SETTLEMENT_ASSET: USDC,
     WALLETS_KURU_ROUTER: ROUTER,
     WALLETS_KURU_ROUTER_SELECTORS: "0x12345678",
-    WALLETS_REPRODUCTION_CONTRACT: REPRO,
-    WALLETS_REPRODUCTION_SELECTORS: "0x9abcdef0",
+    WALLETS_REALLOCATION_CONTRACT: REALLOC,
+    WALLETS_REALLOCATION_SELECTORS: "0x9abcdef0",
     WALLETS_SPONSORED_OPERATIONS: "5",
     WALLETS_SPONSORED_GAS_WEI: "1000000000000000000",
   };

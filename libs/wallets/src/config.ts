@@ -60,8 +60,8 @@ export function loadWalletsConfig(env: Env = process.env): WalletsConfig {
     settlementAsset: address(env, "WALLETS_SETTLEMENT_ASSET"),
     kuruRouter: address(env, "WALLETS_KURU_ROUTER"),
     kuruRouterSelectors: selectors(env, "WALLETS_KURU_ROUTER_SELECTORS"),
-    reproduction: address(env, "WALLETS_REPRODUCTION_CONTRACT"),
-    reproductionSelectors: selectors(env, "WALLETS_REPRODUCTION_SELECTORS"),
+    reallocation: address(env, "WALLETS_REALLOCATION_CONTRACT"),
+    reallocationSelectors: selectors(env, "WALLETS_REALLOCATION_SELECTORS"),
   });
   const operations = nonNegativeInteger(env, "WALLETS_SPONSORED_OPERATIONS");
   if (operations > BigInt(Number.MAX_SAFE_INTEGER)) throw new WalletsConfigError("WALLETS_SPONSORED_OPERATIONS is too large");
