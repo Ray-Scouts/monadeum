@@ -1,0 +1,23 @@
+{
+  "name": "@monadeum/wallets",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./dist/src/index.js"
+  },
+  "scripts": {
+    "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js"
+  },
+  "dependencies": {
+    "@monadeum/risk": "workspace:*",
+    "@nestjs/common": "^11.1.6",
+    "@zerodev/ecdsa-validator": "5.4.9",
+    "@zerodev/permissions": "5.6.3",
+    "@zerodev/sdk": "5.5.10",
+    "viem": "2.56.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "typescript": "^5.8.3"
+  }
+}
