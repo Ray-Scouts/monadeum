@@ -1,0 +1,118 @@
+import {
+  AuthService,
+  MemoryChallengeStore,
+  MemorySessionStore,
+  MemoryUserStore,
+  type AuthSettings,
+  type ChallengeStore,
+  type OwnerWalletHandoff,
+  type PrivyVerifier,
+  type SessionStore,
+  type UserStore,
+} from "@monadeum/auth";
+import { MemoryAgentStore, type AgentStore } from "@monadeum/agent-registry";
+import type { ReallocationPolicyWriter } from "@monadeum/commitment";
+import { PgAgentStore, PgAgentWalletStore, PgChallengeStore, PgReadModelStore, PgSessionStore, PgSponsorshipLedger, PgUserStore, type Database } from "@monadeum/db";
+import { InMemoryReadModelStore, type ReadModelStore } from "@monadeum/indexer";
+import { MemoryAgentWalletStore, MemorySponsorshipLedger, type AgentWalletStore, type SponsorshipLedger, type WalletsService } from "@monadeum/wallets";
+import type { ApiSettings } from "./config.js";
+import { API_ROLE, READER_ROLE, roleScoped } from "./database.js";
+import { defaultClock, type ApiDependencies } from "./dependencies.js";
+import { SignatureRelay } from "./relay.js";
+import {
+  MemoryAgentRegistry,
+  MemoryPolicyLedger,
+  MemoryRecoveryLog,
+  PgAgentRegistry,
+  PgPolicyLedger,
+  PgRecoveryLog,
+  type AgentRegistry,
+  type PolicyLedger,
+  type RecoveryLog,
+} from "./stores.js";
+
+/** Every store the API reads or writes. */
+export interface ApiStores {
+  users: UserStore;
+  challenges: ChallengeStore;
+  sessions: SessionStore;
+  walletStore: AgentWalletStore;
+  /** The worker's agent registry; the API only reads it. */
+  workerAgents: AgentStore;
+  ledger: SponsorshipLedger;
+  agents: AgentRegistry;
+  recovery: RecoveryLog;
+  policies: PolicyLedger;
+  readModel: ReadModelStore;
+}
+
+/** In-memory stores, for tests and local development only. Nothing survives a restart. */
+export function memoryStores(): ApiStores {
+  return {
+    users: new MemoryUserStore(),
+    challenges: new MemoryChallengeStore(),
+    sessions: new MemorySessionStore(),
+    walletStore: new MemoryAgentWalletStore(),
+    workerAgents: new MemoryAgentStore(),
+    ledger: new MemorySponsorshipLedger(),
+    agents: new MemoryAgentRegistry(),
+    recovery: new MemoryRecoveryLog(),
+    policies: new MemoryPolicyLedger(),
+    readModel: new InMemoryReadModelStore(),
+  };
+}
+
+/**
+ * Postgres stores on one migrated database. The module stores and the API's own tables run as `monadeum_api`; the
+ * indexer read-model runs as `monadeum_reader`, which can only read it. The API never runs migrations: the schema is
+ * applied by the owning role, and the API's login role holds only membership in the two group roles.
+ */
+export function postgresStores(db: Database): ApiStores {
+  const api = roleScoped(db, API_ROLE);
+  return {
+    users: new PgUserStore(api),
+    challenges: new PgChallengeStore(api),
+    sessions: new PgSessionStore(api),
+    walletStore: new PgAgentWalletStore(api),
+    workerAgents: new PgAgentStore(api),
+    ledger: new PgSponsorshipLedger(api),
+    agents: new PgAgentRegistry(api),
+    recovery: new PgRecoveryLog(api),
+    policies: new PgPolicyLedger(api),
+    readModel: new PgReadModelStore(roleScoped(db, READER_ROLE)),
+  };
+}
+
+export interface BuildInput {
+  stores: ApiStores;
+  privy: PrivyVerifier;
+  authSettings: AuthSettings;
+  settings: ApiSettings;
+  /** Builds WalletsModule over the API's wallet store and ledger; omitted or null leaves wallet operations unavailable. */
+  wallets?: ((stores: ApiStores) => WalletsService | null) | null;
+  policyWriter?: ReallocationPolicyWriter | null;
+  handoff?: OwnerWalletHandoff;
+  now?: () => number;
+  newId?: () => string;
+}
+
+export function buildDependencies(input: BuildInput): ApiDependencies {
+  const now = input.now ?? defaultClock.now;
+  const newId = input.newId ?? defaultClock.newId;
+  const { stores } = input;
+  return {
+    auth: new AuthService(input.privy, stores.users, stores.challenges, stores.sessions, input.authSettings, input.handoff, now),
+    wallets: input.wallets ? input.wallets(stores) : null,
+    walletStore: stores.walletStore,
+    workerAgents: stores.workerAgents,
+    agents: stores.agents,
+    recovery: stores.recovery,
+    policies: stores.policies,
+    policyWriter: input.policyWriter ?? null,
+    readModel: stores.readModel,
+    relay: new SignatureRelay(input.settings.signatureTimeoutMs, input.settings.operationWaitMs),
+    settings: input.settings,
+    now,
+    newId,
+  };
+}
