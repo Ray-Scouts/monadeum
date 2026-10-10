@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ApiAgent } from "@/components/api/screens";
 import { Icon } from "@/components/Icon";
 import { Kpi } from "@/components/ui";
+import { USES_API } from "@/data/config";
 import { outcomeShort, type Counterpart } from "@/data/explain";
 import { getSource, IS_SAMPLE_DATA } from "@/data/source";
 import { agentLabel, usd } from "@/lib/format";
@@ -16,12 +18,15 @@ type Props = { params: Promise<{ id: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
+  // In api mode the agent is read in the browser with the user's credential, so the server cannot name it.
+  if (USES_API) return { title: "Agent" };
   const agent = await getSource().getAgent(id);
   return { title: agent ? `${agentLabel(agent)}` : "Agent not found" };
 }
 
 export default async function Page({ params }: Props) {
   const { id } = await params;
+  if (USES_API) return <ApiAgent id={id} />;
   const source = getSource();
   const agent = await source.getAgent(id);
   if (!agent) notFound();

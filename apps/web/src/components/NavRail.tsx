@@ -12,7 +12,8 @@ const LINKS: { href: string; label: string; short?: string; icon: IconName }[] =
   { href: "/create", label: "New agent", short: "New", icon: "plus" },
 ];
 
-export function NavRail({ live, cap }: { live: number; cap: number }) {
+/** `live` is null when the data source does not serve a live count; the cap is then stated without one. */
+export function NavRail({ live, cap }: { live: number | null; cap: number }) {
   const path = usePathname();
   const active = (href: string) => path === href || (href === "/population" && path.startsWith("/agents"));
   return (
@@ -37,8 +38,8 @@ export function NavRail({ live, cap }: { live: number; cap: number }) {
         </Link>
       ))}
       <div className="mt-auto hidden gap-2 rounded-[14px] bg-surface-2 p-3.5 text-xs text-muted md:grid">
-        <div className="flex justify-between"><span>Population cap</span><span className="font-mono">{live}/{cap}</span></div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-line-soft"><span className="block h-full rounded-full bg-accent" style={{ width: `${(live / cap) * 100}%` }} /></div>
+        <div className="flex justify-between"><span>Population cap</span><span className="font-mono">{live === null ? cap : `${live}/${cap}`}</span></div>
+        {live !== null && <div className="h-1.5 overflow-hidden rounded-full bg-line-soft"><span className="block h-full rounded-full bg-accent" style={{ width: `${(live / cap) * 100}%` }} /></div>}
         <span>At the cap, creating a new agent is refused. No agent is retired to make room.</span>
       </div>
     </aside>

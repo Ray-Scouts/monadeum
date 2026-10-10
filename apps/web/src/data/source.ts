@@ -37,10 +37,14 @@ export interface PopulationSource {
 
 let source: PopulationSource | undefined;
 
-/** The single switch point. Only sample data exists until the API does. */
+/**
+ * The sample source. It backs every screen in `sample` mode (`data/config.ts`), the default for local development and
+ * tests. In `api` mode the screens read `apps/api` through `data/api/client.ts` instead, in the browser, because the
+ * credential (a Privy access token or the wallet session cookie) lives there.
+ */
 export function getSource(): PopulationSource {
   return (source ??= createMockSource());
 }
 
-/** True while screens show sample data, so they can label it. */
+/** The screens that read `getSource()` always show sample data, so they label it. */
 export const IS_SAMPLE_DATA = true;

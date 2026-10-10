@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { ApiCapitalFlow } from "@/components/api/screens";
 import { Card, CardHead, Identicon, Kpi, Pill, SampleBadge, ScreenHead } from "@/components/ui";
+import { USES_API } from "@/data/config";
 import { boundsFor } from "@/data/evaluate";
 import { flowMatrix } from "@/data/flow";
 import { IS_SAMPLE_DATA, getSource } from "@/data/source";
@@ -10,6 +12,7 @@ const TH = "whitespace-nowrap border-b border-line-soft px-2.5 py-2.5 text-left 
 const TD = "whitespace-nowrap border-b border-line-soft px-2.5 py-2.5 align-middle";
 
 export default async function CapitalFlowPage({ searchParams }: { searchParams: Promise<{ owner?: string | string[] }> }) {
+  if (USES_API) return <ApiCapitalFlow />;
   const source = getSource();
   const [owners, agents, allMoves, range, params] = await Promise.all([
     source.listOwners(),
