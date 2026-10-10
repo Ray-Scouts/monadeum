@@ -1,11 +1,19 @@
 import { RISK_CUTS, SHRINKAGE_K, TRAILING_WINDOW } from "@monadeum/fitness/math";
+import {
+  CAPITAL_FLOOR,
+  EVALUATION_CADENCE,
+  REALLOCATION_CAP,
+  RETIREMENT_WINDOWS,
+  SLOT_CEILING,
+  STARVATION_PERCENTILE,
+} from "@monadeum/reallocation/constants";
 
 /** Proposed defaults from EVOLUTION.md. The simulation tunes these. It does not treat them as final. */
 export const PROTOCOL = {
   k: SHRINKAGE_K,
   nMin: 20,
   trailingWindow: TRAILING_WINDOW,
-  evalEvery: 20,
+  evalEvery: EVALUATION_CADENCE,
   cooldown: 40,
   riskFloor: 0.01,
   riskCeiling: 0.25,
@@ -27,8 +35,11 @@ export const PROTOCOL = {
   maxDescendants: 5,
   testnetPopulationCap: 50,
   experimentCapMultiple: 2,
-  capitalFloor: 0.06,
-  retirementWindows: 3,
+  capitalFloor: CAPITAL_FLOOR,
+  retirementWindows: RETIREMENT_WINDOWS,
+  starvationPercentile: STARVATION_PERCENTILE,
+  reallocationCap: REALLOCATION_CAP,
+  slotCeiling: SLOT_CEILING,
   principal: 10,
   allowedPairs: ["PAIR_A", "PAIR_B", "PAIR_C"] as const,
   allowedModels: ["low", "mid"] as const,

@@ -511,7 +511,7 @@ export function run(config: RunConfig): RunResult {
           .map((item) => item.adjustedFitness)
           .filter((value): value is number => value !== null);
         const rank = percentile(agent.adjustedFitness, scores);
-        if (rank <= 0.1) agent.lowFitnessWindows += 1;
+        if (rank <= PROTOCOL.starvationPercentile) agent.lowFitnessWindows += 1;
         else agent.lowFitnessWindows = 0;
         if (agent.lowFitnessWindows >= PROTOCOL.retirementWindows) {
           // In slots mode the starvation rule of section 6 is a replacement trigger, not a retirement (issue #85).
