@@ -19,7 +19,7 @@ contract AgentSpendPolicyTest is PolicyTestBase {
         assertEq(l.perTxCap, PER_TX_CAP);
         assertEq(l.dailyCap, DAILY_CAP);
         assertTrue(policy.isAllowed(account, router, SWAP));
-        assertFalse(policy.isAllowed(account, router, REPRODUCE));
+        assertFalse(policy.isAllowed(account, router, REALLOCATE));
         assertTrue(policy.isRecipientAllowed(account, router));
         assertTrue(policy.isRecipientAllowed(account, repro));
         assertFalse(policy.isRecipientAllowed(account, asset), "settlement asset is never a recipient");
@@ -48,13 +48,13 @@ contract AgentSpendPolicyTest is PolicyTestBase {
         vm.startPrank(other);
         policy.setAllowed(router, SWAP, true);
         policy.setAllowed(router, SWAP, true); // idempotent, must not double count
-        policy.setAllowed(router, REPRODUCE, true);
+        policy.setAllowed(router, REALLOCATE, true);
         assertTrue(policy.isRecipientAllowed(other, router));
         policy.setAllowed(router, SWAP, false);
         assertTrue(policy.isRecipientAllowed(other, router), "one selector still allowed");
-        policy.setAllowed(router, REPRODUCE, false);
+        policy.setAllowed(router, REALLOCATE, false);
         assertFalse(policy.isRecipientAllowed(other, router));
-        policy.setAllowed(router, REPRODUCE, false); // idempotent, must not underflow
+        policy.setAllowed(router, REALLOCATE, false); // idempotent, must not underflow
         vm.stopPrank();
         assertFalse(policy.isAllowed(other, router, SWAP));
     }
@@ -225,7 +225,7 @@ contract AgentSpendPolicyTest is PolicyTestBase {
 
     function test_check_recipientRuleFollowsAllowlistRemoval() public {
         vm.prank(account);
-        policy.setAllowed(repro, REPRODUCE, false);
+        policy.setAllowed(repro, REALLOCATE, false);
         vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.RecipientNotAllowed.selector, repro));
         policy.check(account, _one(_approve(repro, 1)));
     }

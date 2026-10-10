@@ -6,14 +6,14 @@ import {AgentSpendPolicy} from "../../src/AgentSpendPolicy.sol";
 import {IAgentSpendPolicy} from "../../src/IAgentSpendPolicy.sol";
 
 /// Shared fixture: one policy, one configured account with the MVP allowlist shape (settlement asset transfer and
-/// approve, one router selector, one reproduction selector).
+/// approve, one router selector, one selector on the owner-scoped reallocation contract, the allowlist entry labeled `reproduction` in ARCHITECTURE.md 16.1).
 abstract contract PolicyTestBase is Test {
     bytes4 internal constant TRANSFER = 0xa9059cbb;
     bytes4 internal constant APPROVE = 0x095ea7b3;
     bytes4 internal constant TRANSFER_FROM = 0x23b872dd;
     bytes4 internal constant INCREASE_ALLOWANCE = 0x39509351;
     bytes4 internal constant SWAP = bytes4(keccak256("swap(bytes)"));
-    bytes4 internal constant REPRODUCE = bytes4(keccak256("reproduce(bytes32)"));
+    bytes4 internal constant REALLOCATE = bytes4(keccak256("reallocate(bytes32)"));
 
     uint128 internal constant PER_TX_CAP = 100e6;
     uint128 internal constant DAILY_CAP = 300e6;
@@ -29,7 +29,7 @@ abstract contract PolicyTestBase is Test {
         vm.warp(1_790_000_000);
         asset = makeAddr("settlementAsset");
         router = makeAddr("router");
-        repro = makeAddr("reproduction");
+        repro = makeAddr("reallocation");
         account = makeAddr("account");
         policy = new AgentSpendPolicy(asset);
         _configure(account, PER_TX_CAP, DAILY_CAP);
@@ -41,7 +41,7 @@ abstract contract PolicyTestBase is Test {
         policy.setAllowed(asset, TRANSFER, true);
         policy.setAllowed(asset, APPROVE, true);
         policy.setAllowed(router, SWAP, true);
-        policy.setAllowed(repro, REPRODUCE, true);
+        policy.setAllowed(repro, REALLOCATE, true);
         vm.stopPrank();
     }
 

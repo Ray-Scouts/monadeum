@@ -14,7 +14,7 @@ contract SpendPolicyHandler is Test {
     bytes4 internal constant TRANSFER = 0xa9059cbb;
     bytes4 internal constant APPROVE = 0x095ea7b3;
     bytes4 internal constant SWAP = bytes4(keccak256("swap(bytes)"));
-    bytes4 internal constant REPRODUCE = bytes4(keccak256("reproduce(bytes32)"));
+    bytes4 internal constant REALLOCATE = bytes4(keccak256("reallocate(bytes32)"));
 
     uint128 public constant PER_TX_CAP = 100e6;
     uint128 public constant DAILY_CAP = 300e6;
@@ -55,7 +55,7 @@ contract SpendPolicyHandler is Test {
         selectors.push(TRANSFER);
         selectors.push(APPROVE);
         selectors.push(SWAP);
-        selectors.push(REPRODUCE);
+        selectors.push(REALLOCATE);
         selectors.push(0x23b872dd); // transferFrom
         selectors.push(bytes4(keccak256("setLimits((uint128,uint128))")));
 
@@ -64,7 +64,7 @@ contract SpendPolicyHandler is Test {
         _setAllowed(asset_, TRANSFER, true);
         _setAllowed(asset_, APPROVE, true);
         _setAllowed(router, SWAP, true);
-        _setAllowed(repro, REPRODUCE, true);
+        _setAllowed(repro, REALLOCATE, true);
         // Allowlist entries on the policy and the account must never let a call through.
         _setAllowed(address(policy_), selectors[5], true);
         _setAllowed(account_, SWAP, true);
@@ -136,8 +136,8 @@ contract SpendPolicyHandler is Test {
 
     // --- model -----------------------------------------------------------------------------------------------------
 
-    /// Three in four calls are shaped like legitimate agent calls (a counted call to the router or the reproduction
-    /// contract, or an uncounted router or reproduction call), so accepted spend actually accumulates; the rest are
+    /// Three in four calls are shaped like legitimate agent calls (a counted call to the router or the reallocation
+    /// contract, or an uncounted router or reallocation call), so accepted spend actually accumulates; the rest are
     /// drawn from the whole pool, including non-allowlisted targets, foreign selectors, and nonzero native value.
     function _randomCall(uint256 seed) internal view returns (IAgentSpendPolicy.Call memory c) {
         uint256 raw = seed >> 64;
@@ -155,7 +155,7 @@ contract SpendPolicyHandler is Test {
             } else if (shape == 2) {
                 c = IAgentSpendPolicy.Call(targets[1], 0, abi.encodeWithSelector(SWAP, recipient, amount));
             } else {
-                c = IAgentSpendPolicy.Call(targets[2], 0, abi.encodeWithSelector(REPRODUCE, recipient, amount));
+                c = IAgentSpendPolicy.Call(targets[2], 0, abi.encodeWithSelector(REALLOCATE, recipient, amount));
             }
             return c;
         }
@@ -239,7 +239,7 @@ contract AgentSpendPolicyInvariantTest is StdInvariant, Test {
         address asset = makeAddr("settlementAsset");
         account = makeAddr("account");
         policy = new AgentSpendPolicy(asset);
-        handler = new SpendPolicyHandler(policy, account, asset, makeAddr("router"), makeAddr("reproduction"));
+        handler = new SpendPolicyHandler(policy, account, asset, makeAddr("router"), makeAddr("reallocation"));
 
         bytes4[] memory sels = new bytes4[](3);
         sels[0] = SpendPolicyHandler.operate.selector;

@@ -31,7 +31,8 @@ pragma solidity ^0.8.24;
 ///
 /// Fail-closed default: an account whose limits were never set has both caps at 0, so any counted call fails.
 ///
-/// Integration with ZeroDev Kernel v3.1 (assumption, to be verified in issue #25, not exercised by any spike):
+/// Integration with ZeroDev Kernel v3.1 (implemented in AgentSpendPolicy and checked against Kernel's source and a
+/// test double, not yet on a deployed Kernel account; ARCHITECTURE.md section 16.3 holds the current status):
 /// - The implementation is installed on the session key's permission as a policy and as that validator's hook.
 /// - The policy entry point (Kernel's user-operation policy check) decodes `userOp.callData` into `Call[]` and
 ///   calls `check(account, calls)`. It accepts only `execute` with call type single or batch, optionally wrapped
