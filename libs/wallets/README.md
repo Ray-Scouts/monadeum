@@ -44,6 +44,6 @@ The consuming app also supplies an `AgentWalletStore` and a `SponsorshipLedger` 
 ## Not verified yet
 
 - No run on Monad testnet: the spend policy contract is implemented but not yet deployed there. The opt-in test is the check.
-- Installing `AgentSpendPolicy` as policy and hook is verified against the Kernel v3.1 source and Foundry tests (`ARCHITECTURE.md` section 16.3), not on a deployed Kernel account.
+- Installing `AgentSpendPolicy` as policy and hook is verified against the Kernel v3.1 source, Foundry tests, and a fork test against the Kernel v3.1 contracts deployed on Monad testnet (`ARCHITECTURE.md` section 16.3), not yet through a bundler.
 - Sponsorship through ZeroDev's paymaster has not been exercised on Monad; both spikes paid gas from the account.
 - The Kernel v3.1 nonce rules the revocation check relies on were read from the Kernel v3.1 source (`ValidationManager.sol`, `Kernel.sol`) on 2026-10-09, not observed on chain.
