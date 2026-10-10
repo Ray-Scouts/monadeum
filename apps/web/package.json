@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "libs": "tsc -p ../../libs/fitness && tsc -p ../../libs/reproduction && tsc -p ../../libs/recovery && tsc -p ../../simulation",
+    "libs": "tsc -p ../../libs/fitness && tsc -p ../../libs/reallocation && tsc -p ../../libs/reproduction && tsc -p ../../libs/recovery && tsc -p ../../simulation",
     "predev": "bun run libs",
     "dev": "next dev",
     "prebuild": "bun run libs",

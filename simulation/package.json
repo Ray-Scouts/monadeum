@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@monadeum/fitness": "workspace:*",
+    "@monadeum/reallocation": "workspace:*",
     "@monadeum/reproduction": "workspace:*"
   },
   "devDependencies": {

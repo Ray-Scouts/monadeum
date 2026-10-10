@@ -70,6 +70,17 @@
         "typescript": "^5.8.3",
       },
     },
+    "libs/reallocation": {
+      "name": "@monadeum/reallocation",
+      "dependencies": {
+        "@monadeum/fitness": "workspace:*",
+        "@nestjs/common": "^11.1.6",
+      },
+      "devDependencies": {
+        "@types/node": "^22.15.21",
+        "typescript": "^5.8.3",
+      },
+    },
     "libs/recovery": {
       "name": "@monadeum/recovery",
       "dependencies": {
@@ -138,6 +149,7 @@
       "name": "monadeum-simulation",
       "dependencies": {
         "@monadeum/fitness": "workspace:*",
+        "@monadeum/reallocation": "workspace:*",
         "@monadeum/reproduction": "workspace:*",
       },
       "devDependencies": {
@@ -226,6 +238,8 @@
     "@monadeum/external": ["@monadeum/external@workspace:libs/external"],
 
     "@monadeum/fitness": ["@monadeum/fitness@workspace:libs/fitness"],
+
+    "@monadeum/reallocation": ["@monadeum/reallocation@workspace:libs/reallocation"],
 
     "@monadeum/recovery": ["@monadeum/recovery@workspace:libs/recovery"],
 
