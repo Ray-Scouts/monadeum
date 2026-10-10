@@ -1,0 +1,1837 @@
+{
+  "gate": {
+    "coverageInSample": 0.8450797872340425,
+    "coverageHeldOut": 0.9863387978142076,
+    "correlationInSample": 0.9820353669147615,
+    "pairedHours": 3827,
+    "coinbaseCoverageInSample": 0.9988918439716312,
+    "firstKuruHour": "2025-12-23T12:00:00.000Z"
+  },
+  "firstPricedHour": "2025-12-23T13:00:00.000Z",
+  "runs": [
+    {
+      "label": "kuru",
+      "cost": "base",
+      "costPerSwap": 0.001156,
+      "ticks": {
+        "inSample": 3826,
+        "heldOut": 2928
+      },
+      "marketSd": {
+        "inSample": 0.01246272453254315,
+        "heldOut": 0.010646427756552786
+      },
+      "stressSd": 0.01765878932285825,
+      "blocks": {
+        "inSample": [
+          {
+            "from": "2025-12-23",
+            "hours": 336,
+            "sd": 0.016294640972558217,
+            "efficiency": 0.11092840605857947,
+            "autocorrelation": -0.042775553045745596,
+            "label": "trending"
+          },
+          {
+            "from": "2026-01-06",
+            "hours": 336,
+            "sd": 0.012413811704525768,
+            "efficiency": 0.15162921643173033,
+            "autocorrelation": -0.030099606534691056,
+            "label": "trending"
+          },
+          {
+            "from": "2026-01-20",
+            "hours": 336,
+            "sd": 0.013774740405980562,
+            "efficiency": 0.0008355095584906938,
+            "autocorrelation": 0.00789248799524608,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-02-03",
+            "hours": 336,
+            "sd": 0.016976338733469716,
+            "efficiency": 0.06509990704498937,
+            "autocorrelation": 0.12177661558363487,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-02-17",
+            "hours": 336,
+            "sd": 0.0099768000438154,
+            "efficiency": 0.02044535748094891,
+            "autocorrelation": -0.03285847971261852,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-03",
+            "hours": 336,
+            "sd": 0.007929035908495946,
+            "efficiency": 0.0773743013810196,
+            "autocorrelation": 0.01418377070775414,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-17",
+            "hours": 336,
+            "sd": 0.00919662396938786,
+            "efficiency": 0.0020734091191796263,
+            "autocorrelation": 0.2184338364434778,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-31",
+            "hours": 336,
+            "sd": 0.015056876900034504,
+            "efficiency": 0.13226829390498324,
+            "autocorrelation": 0.033231789292268665,
+            "label": "trending"
+          },
+          {
+            "from": "2026-04-14",
+            "hours": 336,
+            "sd": 0.011772526215238834,
+            "efficiency": 0.07380286347139173,
+            "autocorrelation": 0.013036271339667182,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-04-28",
+            "hours": 336,
+            "sd": 0.011082116398038806,
+            "efficiency": 0.0319182431245512,
+            "autocorrelation": 0.09504636701275074,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-05-12",
+            "hours": 336,
+            "sd": 0.010139487865914273,
+            "efficiency": 0.05394588155799406,
+            "autocorrelation": 0.0006773429049499932,
+            "label": "choppy"
+          }
+        ],
+        "heldOut": [
+          {
+            "from": "2026-06-01",
+            "hours": 336,
+            "sd": 0.013342985447215645,
+            "efficiency": 0.008412399565476484,
+            "autocorrelation": -0.05548783823008056,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-06-15",
+            "hours": 336,
+            "sd": 0.008093772584039968,
+            "efficiency": 0.08965216393603984,
+            "autocorrelation": -0.17152511135340637,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-06-29",
+            "hours": 336,
+            "sd": 0.010110082889755583,
+            "efficiency": 0.09167543303135696,
+            "autocorrelation": -0.09978953335873476,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-07-13",
+            "hours": 336,
+            "sd": 0.00832464775633758,
+            "efficiency": 0.02852098124091342,
+            "autocorrelation": -0.14614854923113854,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-07-27",
+            "hours": 336,
+            "sd": 0.005924173830248365,
+            "efficiency": 0.008698110503622705,
+            "autocorrelation": 0.010672838625828624,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-08-10",
+            "hours": 336,
+            "sd": 0.012613220560747875,
+            "efficiency": 0.14970343154429608,
+            "autocorrelation": -0.10844763680094147,
+            "label": "trending"
+          },
+          {
+            "from": "2026-08-24",
+            "hours": 336,
+            "sd": 0.011775816585839097,
+            "efficiency": 0.0351961690914393,
+            "autocorrelation": -0.11731628160376886,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-09-07",
+            "hours": 336,
+            "sd": 0.009931731559833014,
+            "efficiency": 0.02654948516072932,
+            "autocorrelation": -0.04787934510045619,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-09-21",
+            "hours": 240,
+            "sd": 0.014052633318248445,
+            "efficiency": 0.107946831458078,
+            "autocorrelation": -0.039596485985403905,
+            "label": "choppy"
+          }
+        ]
+      },
+      "h1": [
+        {
+          "regime": "trending",
+          "inBlocks": 3,
+          "outBlocks": 1,
+          "qualifies": false,
+          "reference": 0.3630765389325855,
+          "referenceNoPair": 0.40652106981388975,
+          "result": {
+            "ticksIn": 1008,
+            "ticksOut": 336,
+            "spread": 0.0008499959172197207,
+            "marketSd": 0.012613220560747875,
+            "normalized": 0.06738928516519353,
+            "p": 0.014,
+            "lower95": 0.01147483598202243,
+            "upper95": 0.10359732528590206,
+            "rankCarry": 0.682462113485631
+          },
+          "holds": false,
+          "below": false
+        },
+        {
+          "regime": "mean_reverting",
+          "inBlocks": 0,
+          "outBlocks": 3,
+          "qualifies": false,
+          "reference": 0.25926738828818363,
+          "referenceNoPair": 0.29240234767499285,
+          "result": null,
+          "holds": false,
+          "below": false
+        },
+        {
+          "regime": "choppy",
+          "inBlocks": 8,
+          "outBlocks": 5,
+          "qualifies": true,
+          "reference": 0.2972267077514894,
+          "referenceNoPair": 0.3300852185925352,
+          "result": {
+            "ticksIn": 2688,
+            "ticksOut": 1584,
+            "spread": 0.0002631457342617726,
+            "marketSd": 0.01084657448031084,
+            "normalized": 0.024260722566322286,
+            "p": 0.0045,
+            "lower95": 0.008489479572927438,
+            "upper95": 0.03788063851071191,
+            "rankCarry": 0.5201678662820672
+          },
+          "holds": false,
+          "below": true
+        },
+        {
+          "regime": "stress",
+          "inBlocks": 0,
+          "outBlocks": 0,
+          "qualifies": false,
+          "reference": 0.19171798188372335,
+          "referenceNoPair": 0.2140489361943214,
+          "result": null,
+          "holds": false,
+          "below": false
+        }
+      ],
+      "h1Call": "negative",
+      "pooled": {
+        "ticksIn": 3826,
+        "ticksOut": 2928,
+        "spread": 0.00030061467311108303,
+        "marketSd": 0.010646427756552786,
+        "normalized": 0.028236200910306018,
+        "p": 0,
+        "lower95": 0.015094807642943868,
+        "upper95": 0.03944726831834366,
+        "rankCarry": 0.7033856884461579
+      },
+      "pooledReference": 0.2782470480198365,
+      "pooledRefCurve": [
+        0.03827106401723576,
+        0.07913736551020138,
+        0.1417615628252221,
+        0.20871898832648933,
+        0.2782470480198365,
+        0.42281351354243757,
+        0.5739619760605332
+      ],
+      "magnitudeStar": 0,
+      "h2": {
+        "evaluations": 141,
+        "rho": 0.06647176981449081,
+        "lower95": 0.02717143191276151,
+        "upper95": 0.10268445646601962,
+        "meanRanked": 710.8368794326241
+      },
+      "h2Reference": 0.4156730350496284,
+      "h2Call": "negative",
+      "h2ByRegime": [
+        {
+          "regime": "trending",
+          "evaluations": 17,
+          "rho": 0.11199018525780821
+        },
+        {
+          "regime": "mean_reverting",
+          "evaluations": 51,
+          "rho": 0.04441631111200526
+        },
+        {
+          "regime": "choppy",
+          "evaluations": 73,
+          "rho": 0.0712801990102492
+        },
+        {
+          "regime": "stress",
+          "evaluations": 0,
+          "rho": null
+        }
+      ],
+      "heldOutR2": 0.4948815682454232,
+      "meanInMarket": 0.49910142137992275,
+      "swapsPerGenomeHeldOut": 101.676,
+      "meanHeldOutNetPerTick": 0.000007242260880672112
+    },
+    {
+      "label": "coinbase",
+      "cost": "base",
+      "costPerSwap": 0.001156,
+      "ticks": {
+        "inSample": 3826,
+        "heldOut": 2928
+      },
+      "marketSd": {
+        "inSample": 0.012580609372680292,
+        "heldOut": 0.01091371343543147
+      },
+      "stressSd": 0.017863007349028525,
+      "blocks": {
+        "inSample": [
+          {
+            "from": "2025-12-23",
+            "hours": 336,
+            "sd": 0.016339415143506043,
+            "efficiency": 0.10792440728541924,
+            "autocorrelation": -0.0538718028475421,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-01-06",
+            "hours": 336,
+            "sd": 0.012300808522547486,
+            "efficiency": 0.148692641788084,
+            "autocorrelation": -0.04462437358845825,
+            "label": "trending"
+          },
+          {
+            "from": "2026-01-20",
+            "hours": 336,
+            "sd": 0.01370864350862861,
+            "efficiency": 0.0006260299824816733,
+            "autocorrelation": 0.017871806268958807,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-02-03",
+            "hours": 336,
+            "sd": 0.01753394904475784,
+            "efficiency": 0.06500348670211065,
+            "autocorrelation": 0.08649796754926771,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-02-17",
+            "hours": 336,
+            "sd": 0.010188084344397842,
+            "efficiency": 0.019577421847810313,
+            "autocorrelation": -0.03362569263941581,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-03",
+            "hours": 336,
+            "sd": 0.008039091344464806,
+            "efficiency": 0.07662144080148853,
+            "autocorrelation": 0.020686126420714886,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-17",
+            "hours": 336,
+            "sd": 0.009178652881937144,
+            "efficiency": 0.002894982200631798,
+            "autocorrelation": 0.20506659984487005,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-31",
+            "hours": 336,
+            "sd": 0.015307486840137864,
+            "efficiency": 0.13107105228745902,
+            "autocorrelation": 0.022859705900240168,
+            "label": "trending"
+          },
+          {
+            "from": "2026-04-14",
+            "hours": 336,
+            "sd": 0.011908671566019017,
+            "efficiency": 0.07247500533967134,
+            "autocorrelation": 0.008964812261574617,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-04-28",
+            "hours": 336,
+            "sd": 0.011071287309028044,
+            "efficiency": 0.032368423371756855,
+            "autocorrelation": 0.09490110537288172,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-05-12",
+            "hours": 336,
+            "sd": 0.010192275852136643,
+            "efficiency": 0.052400363941674875,
+            "autocorrelation": -0.01106265233949325,
+            "label": "choppy"
+          }
+        ],
+        "heldOut": [
+          {
+            "from": "2026-06-01",
+            "hours": 336,
+            "sd": 0.01346649356089484,
+            "efficiency": 0.008628899050328053,
+            "autocorrelation": -0.05873832284084239,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-06-15",
+            "hours": 336,
+            "sd": 0.008171760274193769,
+            "efficiency": 0.08885235093548541,
+            "autocorrelation": -0.1753145087395984,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-06-29",
+            "hours": 336,
+            "sd": 0.010273934010887638,
+            "efficiency": 0.09110997731823184,
+            "autocorrelation": -0.10271489461076844,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-07-13",
+            "hours": 336,
+            "sd": 0.008369630221440987,
+            "efficiency": 0.028286655446721896,
+            "autocorrelation": -0.14546619810145528,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-07-27",
+            "hours": 336,
+            "sd": 0.006073519144576632,
+            "efficiency": 0.007713236153969175,
+            "autocorrelation": 0.004838179825176198,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-08-10",
+            "hours": 336,
+            "sd": 0.012682623184964575,
+            "efficiency": 0.1486530677361662,
+            "autocorrelation": -0.11153969171526851,
+            "label": "trending"
+          },
+          {
+            "from": "2026-08-24",
+            "hours": 336,
+            "sd": 0.01315250462272665,
+            "efficiency": 0.028280539284833203,
+            "autocorrelation": -0.0949737370698749,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-09-07",
+            "hours": 336,
+            "sd": 0.010071762021839797,
+            "efficiency": 0.02572920005862197,
+            "autocorrelation": -0.04944737801527358,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-09-21",
+            "hours": 240,
+            "sd": 0.014103301026628618,
+            "efficiency": 0.10662075412016879,
+            "autocorrelation": -0.05569381038481631,
+            "label": "choppy"
+          }
+        ]
+      },
+      "h1": [
+        {
+          "regime": "trending",
+          "inBlocks": 2,
+          "outBlocks": 1,
+          "qualifies": false,
+          "reference": 0.3630765389325855,
+          "referenceNoPair": 0.40652106981388975,
+          "result": {
+            "ticksIn": 672,
+            "ticksOut": 336,
+            "spread": -0.00009568573862554415,
+            "marketSd": 0.012682623184964575,
+            "normalized": -0.007544633096012891,
+            "p": 0.614,
+            "lower95": -0.02400298022747495,
+            "upper95": 0.014665531390288334,
+            "rankCarry": 0.17987199505789359
+          },
+          "holds": false,
+          "below": false
+        },
+        {
+          "regime": "mean_reverting",
+          "inBlocks": 0,
+          "outBlocks": 2,
+          "qualifies": false,
+          "reference": 0.25926738828818363,
+          "referenceNoPair": 0.29240234767499285,
+          "result": null,
+          "holds": false,
+          "below": false
+        },
+        {
+          "regime": "choppy",
+          "inBlocks": 9,
+          "outBlocks": 6,
+          "qualifies": true,
+          "reference": 0.2972267077514894,
+          "referenceNoPair": 0.3300852185925352,
+          "result": {
+            "ticksIn": 3024,
+            "ticksOut": 1920,
+            "spread": 0.000324321854897419,
+            "marketSd": 0.011376431008406797,
+            "normalized": 0.028508225001123474,
+            "p": 0.0065,
+            "lower95": 0.010092313392200056,
+            "upper95": 0.04499250363825268,
+            "rankCarry": 0.7325428837588697
+          },
+          "holds": false,
+          "below": true
+        },
+        {
+          "regime": "stress",
+          "inBlocks": 0,
+          "outBlocks": 0,
+          "qualifies": false,
+          "reference": 0.19171798188372335,
+          "referenceNoPair": 0.2140489361943214,
+          "result": null,
+          "holds": false,
+          "below": false
+        }
+      ],
+      "h1Call": "negative",
+      "pooled": {
+        "ticksIn": 3826,
+        "ticksOut": 2928,
+        "spread": 0.00031382559740310057,
+        "marketSd": 0.01091371343543147,
+        "normalized": 0.028755161958372747,
+        "p": 0,
+        "lower95": 0.015856466480537772,
+        "upper95": 0.03979601988031205,
+        "rankCarry": 0.726130001758268
+      },
+      "pooledReference": 0.2782470480198365,
+      "pooledRefCurve": [
+        0.03827106401723576,
+        0.07913736551020138,
+        0.1417615628252221,
+        0.20871898832648933,
+        0.2782470480198365,
+        0.42281351354243757,
+        0.5739619760605332
+      ],
+      "magnitudeStar": 0,
+      "h2": {
+        "evaluations": 141,
+        "rho": 0.06446159169294632,
+        "lower95": 0.024954814870950314,
+        "upper95": 0.1013416745729846,
+        "meanRanked": 713.6879432624113
+      },
+      "h2Reference": 0.4156730350496284,
+      "h2Call": "negative",
+      "h2ByRegime": [
+        {
+          "regime": "trending",
+          "evaluations": 17,
+          "rho": 0.12598617674452625
+        },
+        {
+          "regime": "mean_reverting",
+          "evaluations": 34,
+          "rho": 0.026465150158379743
+        },
+        {
+          "regime": "choppy",
+          "evaluations": 90,
+          "rho": 0.06719449242959527
+        },
+        {
+          "regime": "stress",
+          "evaluations": 0,
+          "rho": null
+        }
+      ],
+      "heldOutR2": 0.48996817502996737,
+      "meanInMarket": 0.4995136215575958,
+      "swapsPerGenomeHeldOut": 104.217,
+      "meanHeldOutNetPerTick": 0.000004831558140111555
+    },
+    {
+      "label": "kuru",
+      "cost": "high",
+      "costPerSwap": 0.001916,
+      "ticks": {
+        "inSample": 3826,
+        "heldOut": 2928
+      },
+      "marketSd": {
+        "inSample": 0.01246272453254315,
+        "heldOut": 0.010646427756552786
+      },
+      "stressSd": 0.01765878932285825,
+      "blocks": {
+        "inSample": [
+          {
+            "from": "2025-12-23",
+            "hours": 336,
+            "sd": 0.016294640972558217,
+            "efficiency": 0.11092840605857947,
+            "autocorrelation": -0.042775553045745596,
+            "label": "trending"
+          },
+          {
+            "from": "2026-01-06",
+            "hours": 336,
+            "sd": 0.012413811704525768,
+            "efficiency": 0.15162921643173033,
+            "autocorrelation": -0.030099606534691056,
+            "label": "trending"
+          },
+          {
+            "from": "2026-01-20",
+            "hours": 336,
+            "sd": 0.013774740405980562,
+            "efficiency": 0.0008355095584906938,
+            "autocorrelation": 0.00789248799524608,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-02-03",
+            "hours": 336,
+            "sd": 0.016976338733469716,
+            "efficiency": 0.06509990704498937,
+            "autocorrelation": 0.12177661558363487,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-02-17",
+            "hours": 336,
+            "sd": 0.0099768000438154,
+            "efficiency": 0.02044535748094891,
+            "autocorrelation": -0.03285847971261852,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-03",
+            "hours": 336,
+            "sd": 0.007929035908495946,
+            "efficiency": 0.0773743013810196,
+            "autocorrelation": 0.01418377070775414,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-17",
+            "hours": 336,
+            "sd": 0.00919662396938786,
+            "efficiency": 0.0020734091191796263,
+            "autocorrelation": 0.2184338364434778,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-31",
+            "hours": 336,
+            "sd": 0.015056876900034504,
+            "efficiency": 0.13226829390498324,
+            "autocorrelation": 0.033231789292268665,
+            "label": "trending"
+          },
+          {
+            "from": "2026-04-14",
+            "hours": 336,
+            "sd": 0.011772526215238834,
+            "efficiency": 0.07380286347139173,
+            "autocorrelation": 0.013036271339667182,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-04-28",
+            "hours": 336,
+            "sd": 0.011082116398038806,
+            "efficiency": 0.0319182431245512,
+            "autocorrelation": 0.09504636701275074,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-05-12",
+            "hours": 336,
+            "sd": 0.010139487865914273,
+            "efficiency": 0.05394588155799406,
+            "autocorrelation": 0.0006773429049499932,
+            "label": "choppy"
+          }
+        ],
+        "heldOut": [
+          {
+            "from": "2026-06-01",
+            "hours": 336,
+            "sd": 0.013342985447215645,
+            "efficiency": 0.008412399565476484,
+            "autocorrelation": -0.05548783823008056,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-06-15",
+            "hours": 336,
+            "sd": 0.008093772584039968,
+            "efficiency": 0.08965216393603984,
+            "autocorrelation": -0.17152511135340637,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-06-29",
+            "hours": 336,
+            "sd": 0.010110082889755583,
+            "efficiency": 0.09167543303135696,
+            "autocorrelation": -0.09978953335873476,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-07-13",
+            "hours": 336,
+            "sd": 0.00832464775633758,
+            "efficiency": 0.02852098124091342,
+            "autocorrelation": -0.14614854923113854,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-07-27",
+            "hours": 336,
+            "sd": 0.005924173830248365,
+            "efficiency": 0.008698110503622705,
+            "autocorrelation": 0.010672838625828624,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-08-10",
+            "hours": 336,
+            "sd": 0.012613220560747875,
+            "efficiency": 0.14970343154429608,
+            "autocorrelation": -0.10844763680094147,
+            "label": "trending"
+          },
+          {
+            "from": "2026-08-24",
+            "hours": 336,
+            "sd": 0.011775816585839097,
+            "efficiency": 0.0351961690914393,
+            "autocorrelation": -0.11731628160376886,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-09-07",
+            "hours": 336,
+            "sd": 0.009931731559833014,
+            "efficiency": 0.02654948516072932,
+            "autocorrelation": -0.04787934510045619,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-09-21",
+            "hours": 240,
+            "sd": 0.014052633318248445,
+            "efficiency": 0.107946831458078,
+            "autocorrelation": -0.039596485985403905,
+            "label": "choppy"
+          }
+        ]
+      },
+      "h1": [
+        {
+          "regime": "trending",
+          "inBlocks": 3,
+          "outBlocks": 1,
+          "qualifies": false,
+          "reference": 0.36482738660361136,
+          "referenceNoPair": null,
+          "result": {
+            "ticksIn": 1008,
+            "ticksOut": 336,
+            "spread": 0.0009226692984665246,
+            "marketSd": 0.012613220560747875,
+            "normalized": 0.07315096838454213,
+            "p": 0.004,
+            "lower95": 0.02025351032244284,
+            "upper95": 0.10791309872867552,
+            "rankCarry": 0.6910006962997001
+          },
+          "holds": false,
+          "below": false
+        },
+        {
+          "regime": "mean_reverting",
+          "inBlocks": 0,
+          "outBlocks": 3,
+          "qualifies": false,
+          "reference": 0.26408837661095186,
+          "referenceNoPair": null,
+          "result": null,
+          "holds": false,
+          "below": false
+        },
+        {
+          "regime": "choppy",
+          "inBlocks": 8,
+          "outBlocks": 5,
+          "qualifies": true,
+          "reference": 0.29676241203749376,
+          "referenceNoPair": null,
+          "result": {
+            "ticksIn": 2688,
+            "ticksOut": 1584,
+            "spread": 0.00038592975045964817,
+            "marketSd": 0.01084657448031084,
+            "normalized": 0.035580795684407474,
+            "p": 0.001,
+            "lower95": 0.01913960638836912,
+            "upper95": 0.0497239473065579,
+            "rankCarry": 0.6219063698167778
+          },
+          "holds": false,
+          "below": true
+        },
+        {
+          "regime": "stress",
+          "inBlocks": 0,
+          "outBlocks": 0,
+          "qualifies": false,
+          "reference": 0.1914143317539873,
+          "referenceNoPair": null,
+          "result": null,
+          "holds": false,
+          "below": false
+        }
+      ],
+      "h1Call": "negative",
+      "pooled": {
+        "ticksIn": 3826,
+        "ticksOut": 2928,
+        "spread": 0.0004230307028685644,
+        "marketSd": 0.010646427756552786,
+        "normalized": 0.039734520586794254,
+        "p": 0,
+        "lower95": 0.026132418702191174,
+        "upper95": 0.05134833734993205,
+        "rankCarry": 0.7629757991892566
+      },
+      "pooledReference": 0.2804253943242228,
+      "pooledRefCurve": [
+        0.04989737941193654,
+        0.08773629711795788,
+        0.14520536792644678,
+        0.21091742759339738,
+        0.2804253943242228,
+        0.4242162267695858,
+        0.5753181822815372
+      ],
+      "magnitudeStar": 0,
+      "h2": {
+        "evaluations": 141,
+        "rho": 0.11658005434530286,
+        "lower95": 0.07606042370640834,
+        "upper95": 0.15571333160623335,
+        "meanRanked": 710.8510638297872
+      },
+      "h2Reference": 0.4330819808121639,
+      "h2Call": "negative",
+      "h2ByRegime": [
+        {
+          "regime": "trending",
+          "evaluations": 17,
+          "rho": 0.16164268580527394
+        },
+        {
+          "regime": "mean_reverting",
+          "evaluations": 51,
+          "rho": 0.09221434941753494
+        },
+        {
+          "regime": "choppy",
+          "evaluations": 73,
+          "rho": 0.12310863265347627
+        },
+        {
+          "regime": "stress",
+          "evaluations": 0,
+          "rho": null
+        }
+      ],
+      "heldOutR2": 0.4685534899921059,
+      "meanInMarket": 0.49910142137992275,
+      "swapsPerGenomeHeldOut": 101.676,
+      "meanHeldOutNetPerTick": -0.000019149050594737827
+    },
+    {
+      "label": "coinbase",
+      "cost": "high",
+      "costPerSwap": 0.001916,
+      "ticks": {
+        "inSample": 3826,
+        "heldOut": 2928
+      },
+      "marketSd": {
+        "inSample": 0.012580609372680292,
+        "heldOut": 0.01091371343543147
+      },
+      "stressSd": 0.017863007349028525,
+      "blocks": {
+        "inSample": [
+          {
+            "from": "2025-12-23",
+            "hours": 336,
+            "sd": 0.016339415143506043,
+            "efficiency": 0.10792440728541924,
+            "autocorrelation": -0.0538718028475421,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-01-06",
+            "hours": 336,
+            "sd": 0.012300808522547486,
+            "efficiency": 0.148692641788084,
+            "autocorrelation": -0.04462437358845825,
+            "label": "trending"
+          },
+          {
+            "from": "2026-01-20",
+            "hours": 336,
+            "sd": 0.01370864350862861,
+            "efficiency": 0.0006260299824816733,
+            "autocorrelation": 0.017871806268958807,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-02-03",
+            "hours": 336,
+            "sd": 0.01753394904475784,
+            "efficiency": 0.06500348670211065,
+            "autocorrelation": 0.08649796754926771,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-02-17",
+            "hours": 336,
+            "sd": 0.010188084344397842,
+            "efficiency": 0.019577421847810313,
+            "autocorrelation": -0.03362569263941581,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-03",
+            "hours": 336,
+            "sd": 0.008039091344464806,
+            "efficiency": 0.07662144080148853,
+            "autocorrelation": 0.020686126420714886,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-17",
+            "hours": 336,
+            "sd": 0.009178652881937144,
+            "efficiency": 0.002894982200631798,
+            "autocorrelation": 0.20506659984487005,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-31",
+            "hours": 336,
+            "sd": 0.015307486840137864,
+            "efficiency": 0.13107105228745902,
+            "autocorrelation": 0.022859705900240168,
+            "label": "trending"
+          },
+          {
+            "from": "2026-04-14",
+            "hours": 336,
+            "sd": 0.011908671566019017,
+            "efficiency": 0.07247500533967134,
+            "autocorrelation": 0.008964812261574617,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-04-28",
+            "hours": 336,
+            "sd": 0.011071287309028044,
+            "efficiency": 0.032368423371756855,
+            "autocorrelation": 0.09490110537288172,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-05-12",
+            "hours": 336,
+            "sd": 0.010192275852136643,
+            "efficiency": 0.052400363941674875,
+            "autocorrelation": -0.01106265233949325,
+            "label": "choppy"
+          }
+        ],
+        "heldOut": [
+          {
+            "from": "2026-06-01",
+            "hours": 336,
+            "sd": 0.01346649356089484,
+            "efficiency": 0.008628899050328053,
+            "autocorrelation": -0.05873832284084239,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-06-15",
+            "hours": 336,
+            "sd": 0.008171760274193769,
+            "efficiency": 0.08885235093548541,
+            "autocorrelation": -0.1753145087395984,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-06-29",
+            "hours": 336,
+            "sd": 0.010273934010887638,
+            "efficiency": 0.09110997731823184,
+            "autocorrelation": -0.10271489461076844,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-07-13",
+            "hours": 336,
+            "sd": 0.008369630221440987,
+            "efficiency": 0.028286655446721896,
+            "autocorrelation": -0.14546619810145528,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-07-27",
+            "hours": 336,
+            "sd": 0.006073519144576632,
+            "efficiency": 0.007713236153969175,
+            "autocorrelation": 0.004838179825176198,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-08-10",
+            "hours": 336,
+            "sd": 0.012682623184964575,
+            "efficiency": 0.1486530677361662,
+            "autocorrelation": -0.11153969171526851,
+            "label": "trending"
+          },
+          {
+            "from": "2026-08-24",
+            "hours": 336,
+            "sd": 0.01315250462272665,
+            "efficiency": 0.028280539284833203,
+            "autocorrelation": -0.0949737370698749,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-09-07",
+            "hours": 336,
+            "sd": 0.010071762021839797,
+            "efficiency": 0.02572920005862197,
+            "autocorrelation": -0.04944737801527358,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-09-21",
+            "hours": 240,
+            "sd": 0.014103301026628618,
+            "efficiency": 0.10662075412016879,
+            "autocorrelation": -0.05569381038481631,
+            "label": "choppy"
+          }
+        ]
+      },
+      "h1": [
+        {
+          "regime": "trending",
+          "inBlocks": 2,
+          "outBlocks": 1,
+          "qualifies": false,
+          "reference": 0.36482738660361136,
+          "referenceNoPair": null,
+          "result": {
+            "ticksIn": 672,
+            "ticksOut": 336,
+            "spread": 0.00003479328823222706,
+            "marketSd": 0.012682623184964575,
+            "normalized": 0.002743382636604309,
+            "p": 0.325,
+            "lower95": -0.015620949447767802,
+            "upper95": 0.02566476301159244,
+            "rankCarry": 0.23390310313451412
+          },
+          "holds": false,
+          "below": false
+        },
+        {
+          "regime": "mean_reverting",
+          "inBlocks": 0,
+          "outBlocks": 2,
+          "qualifies": false,
+          "reference": 0.26408837661095186,
+          "referenceNoPair": null,
+          "result": null,
+          "holds": false,
+          "below": false
+        },
+        {
+          "regime": "choppy",
+          "inBlocks": 9,
+          "outBlocks": 6,
+          "qualifies": true,
+          "reference": 0.29676241203749376,
+          "referenceNoPair": null,
+          "result": {
+            "ticksIn": 3024,
+            "ticksOut": 1920,
+            "spread": 0.000447449455292393,
+            "marketSd": 0.011376431008406797,
+            "normalized": 0.03933126786087333,
+            "p": 0.0005,
+            "lower95": 0.020916254545529558,
+            "upper95": 0.05571752030223885,
+            "rankCarry": 0.8010876220724529
+          },
+          "holds": false,
+          "below": true
+        },
+        {
+          "regime": "stress",
+          "inBlocks": 0,
+          "outBlocks": 0,
+          "qualifies": false,
+          "reference": 0.1914143317539873,
+          "referenceNoPair": null,
+          "result": null,
+          "holds": false,
+          "below": false
+        }
+      ],
+      "h1Call": "negative",
+      "pooled": {
+        "ticksIn": 3826,
+        "ticksOut": 2928,
+        "spread": 0.0004376274505880994,
+        "marketSd": 0.01091371343543147,
+        "normalized": 0.04009885848453175,
+        "p": 0,
+        "lower95": 0.026942865861306314,
+        "upper95": 0.0513507717058454,
+        "rankCarry": 0.7777144381759409
+      },
+      "pooledReference": 0.2804253943242228,
+      "pooledRefCurve": [
+        0.04989737941193654,
+        0.08773629711795788,
+        0.14520536792644678,
+        0.21091742759339738,
+        0.2804253943242228,
+        0.4242162267695858,
+        0.5753181822815372
+      ],
+      "magnitudeStar": 0,
+      "h2": {
+        "evaluations": 141,
+        "rho": 0.11466160316253596,
+        "lower95": 0.07356331959141352,
+        "upper95": 0.1540083530915566,
+        "meanRanked": 713.7092198581561
+      },
+      "h2Reference": 0.4330819808121639,
+      "h2Call": "negative",
+      "h2ByRegime": [
+        {
+          "regime": "trending",
+          "evaluations": 17,
+          "rho": 0.1722086403277526
+        },
+        {
+          "regime": "mean_reverting",
+          "evaluations": 34,
+          "rho": 0.07507306928429776
+        },
+        {
+          "regime": "choppy",
+          "evaluations": 90,
+          "rho": 0.11874727560755174
+        },
+        {
+          "regime": "stress",
+          "evaluations": 0,
+          "rho": null
+        }
+      ],
+      "heldOutR2": 0.46626798792026913,
+      "meanInMarket": 0.4995136215575958,
+      "swapsPerGenomeHeldOut": 104.217,
+      "meanHeldOutNetPerTick": -0.000022219302515626212
+    },
+    {
+      "label": "kuru",
+      "cost": "zero",
+      "costPerSwap": 0,
+      "ticks": {
+        "inSample": 3826,
+        "heldOut": 2928
+      },
+      "marketSd": {
+        "inSample": 0.01246272453254315,
+        "heldOut": 0.010646427756552786
+      },
+      "stressSd": 0.01765878932285825,
+      "blocks": {
+        "inSample": [
+          {
+            "from": "2025-12-23",
+            "hours": 336,
+            "sd": 0.016294640972558217,
+            "efficiency": 0.11092840605857947,
+            "autocorrelation": -0.042775553045745596,
+            "label": "trending"
+          },
+          {
+            "from": "2026-01-06",
+            "hours": 336,
+            "sd": 0.012413811704525768,
+            "efficiency": 0.15162921643173033,
+            "autocorrelation": -0.030099606534691056,
+            "label": "trending"
+          },
+          {
+            "from": "2026-01-20",
+            "hours": 336,
+            "sd": 0.013774740405980562,
+            "efficiency": 0.0008355095584906938,
+            "autocorrelation": 0.00789248799524608,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-02-03",
+            "hours": 336,
+            "sd": 0.016976338733469716,
+            "efficiency": 0.06509990704498937,
+            "autocorrelation": 0.12177661558363487,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-02-17",
+            "hours": 336,
+            "sd": 0.0099768000438154,
+            "efficiency": 0.02044535748094891,
+            "autocorrelation": -0.03285847971261852,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-03",
+            "hours": 336,
+            "sd": 0.007929035908495946,
+            "efficiency": 0.0773743013810196,
+            "autocorrelation": 0.01418377070775414,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-17",
+            "hours": 336,
+            "sd": 0.00919662396938786,
+            "efficiency": 0.0020734091191796263,
+            "autocorrelation": 0.2184338364434778,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-31",
+            "hours": 336,
+            "sd": 0.015056876900034504,
+            "efficiency": 0.13226829390498324,
+            "autocorrelation": 0.033231789292268665,
+            "label": "trending"
+          },
+          {
+            "from": "2026-04-14",
+            "hours": 336,
+            "sd": 0.011772526215238834,
+            "efficiency": 0.07380286347139173,
+            "autocorrelation": 0.013036271339667182,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-04-28",
+            "hours": 336,
+            "sd": 0.011082116398038806,
+            "efficiency": 0.0319182431245512,
+            "autocorrelation": 0.09504636701275074,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-05-12",
+            "hours": 336,
+            "sd": 0.010139487865914273,
+            "efficiency": 0.05394588155799406,
+            "autocorrelation": 0.0006773429049499932,
+            "label": "choppy"
+          }
+        ],
+        "heldOut": [
+          {
+            "from": "2026-06-01",
+            "hours": 336,
+            "sd": 0.013342985447215645,
+            "efficiency": 0.008412399565476484,
+            "autocorrelation": -0.05548783823008056,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-06-15",
+            "hours": 336,
+            "sd": 0.008093772584039968,
+            "efficiency": 0.08965216393603984,
+            "autocorrelation": -0.17152511135340637,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-06-29",
+            "hours": 336,
+            "sd": 0.010110082889755583,
+            "efficiency": 0.09167543303135696,
+            "autocorrelation": -0.09978953335873476,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-07-13",
+            "hours": 336,
+            "sd": 0.00832464775633758,
+            "efficiency": 0.02852098124091342,
+            "autocorrelation": -0.14614854923113854,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-07-27",
+            "hours": 336,
+            "sd": 0.005924173830248365,
+            "efficiency": 0.008698110503622705,
+            "autocorrelation": 0.010672838625828624,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-08-10",
+            "hours": 336,
+            "sd": 0.012613220560747875,
+            "efficiency": 0.14970343154429608,
+            "autocorrelation": -0.10844763680094147,
+            "label": "trending"
+          },
+          {
+            "from": "2026-08-24",
+            "hours": 336,
+            "sd": 0.011775816585839097,
+            "efficiency": 0.0351961690914393,
+            "autocorrelation": -0.11731628160376886,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-09-07",
+            "hours": 336,
+            "sd": 0.009931731559833014,
+            "efficiency": 0.02654948516072932,
+            "autocorrelation": -0.04787934510045619,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-09-21",
+            "hours": 240,
+            "sd": 0.014052633318248445,
+            "efficiency": 0.107946831458078,
+            "autocorrelation": -0.039596485985403905,
+            "label": "choppy"
+          }
+        ]
+      },
+      "h1": [
+        {
+          "regime": "trending",
+          "inBlocks": 3,
+          "outBlocks": 1,
+          "qualifies": false,
+          "reference": 0.3613929740401462,
+          "referenceNoPair": null,
+          "result": {
+            "ticksIn": 1008,
+            "ticksOut": 336,
+            "spread": 0.0009762070247738239,
+            "marketSd": 0.012613220560747875,
+            "normalized": 0.07739554066086526,
+            "p": 0.049,
+            "lower95": 0.00026782194219052255,
+            "upper95": 0.1319401196233835,
+            "rankCarry": 0.6955760876851481
+          },
+          "holds": false,
+          "below": false
+        },
+        {
+          "regime": "mean_reverting",
+          "inBlocks": 0,
+          "outBlocks": 3,
+          "qualifies": false,
+          "reference": 0.25510957476357715,
+          "referenceNoPair": null,
+          "result": null,
+          "holds": false,
+          "below": false
+        },
+        {
+          "regime": "choppy",
+          "inBlocks": 8,
+          "outBlocks": 5,
+          "qualifies": true,
+          "reference": 0.2986661690409547,
+          "referenceNoPair": null,
+          "result": {
+            "ticksIn": 2688,
+            "ticksOut": 1584,
+            "spread": 0.00005132172645400794,
+            "marketSd": 0.01084657448031084,
+            "normalized": 0.004731606881708996,
+            "p": 0.198,
+            "lower95": -0.004623933051611483,
+            "upper95": 0.01313326775405311,
+            "rankCarry": 0.2385834232903535
+          },
+          "holds": false,
+          "below": true
+        },
+        {
+          "regime": "stress",
+          "inBlocks": 0,
+          "outBlocks": 0,
+          "qualifies": false,
+          "reference": 0.19283390945494622,
+          "referenceNoPair": null,
+          "result": null,
+          "holds": false,
+          "below": false
+        }
+      ],
+      "h1Call": "negative",
+      "pooled": {
+        "ticksIn": 3826,
+        "ticksOut": 2928,
+        "spread": 0.0000695592055059199,
+        "marketSd": 0.010646427756552786,
+        "normalized": 0.006533572302043453,
+        "p": 0.2125,
+        "lower95": -0.005847793026978876,
+        "upper95": 0.01737738058855709,
+        "rankCarry": 0.3463434792978047
+      },
+      "pooledReference": 0.27688787190226594,
+      "pooledRefCurve": [
+        0.024735354409341832,
+        0.07158090877190769,
+        0.13871224969515522,
+        0.20666595540906296,
+        0.27688787190226594,
+        0.42260974805537677,
+        0.573461556438553
+      ],
+      "magnitudeStar": 0,
+      "h2": {
+        "evaluations": 140,
+        "rho": -0.01747929553895659,
+        "lower95": -0.054508924353719374,
+        "upper95": 0.015838608919572932,
+        "meanRanked": 708.9428571428572
+      },
+      "h2Reference": 0.3900719348257535,
+      "h2Call": "negative",
+      "h2ByRegime": [
+        {
+          "regime": "trending",
+          "evaluations": 17,
+          "rho": 0.02442426633718539
+        },
+        {
+          "regime": "mean_reverting",
+          "evaluations": 50,
+          "rho": -0.0393476292309863
+        },
+        {
+          "regime": "choppy",
+          "evaluations": 73,
+          "rho": -0.012259348515572078
+        },
+        {
+          "regime": "stress",
+          "evaluations": 0,
+          "rho": null
+        }
+      ],
+      "heldOutR2": 0.5734489388618137,
+      "meanInMarket": 0.49910142137992275,
+      "swapsPerGenomeHeldOut": 101.676,
+      "meanHeldOutNetPerTick": 0.00004738483465116393
+    },
+    {
+      "label": "coinbase",
+      "cost": "zero",
+      "costPerSwap": 0,
+      "ticks": {
+        "inSample": 3826,
+        "heldOut": 2928
+      },
+      "marketSd": {
+        "inSample": 0.012580609372680292,
+        "heldOut": 0.01091371343543147
+      },
+      "stressSd": 0.017863007349028525,
+      "blocks": {
+        "inSample": [
+          {
+            "from": "2025-12-23",
+            "hours": 336,
+            "sd": 0.016339415143506043,
+            "efficiency": 0.10792440728541924,
+            "autocorrelation": -0.0538718028475421,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-01-06",
+            "hours": 336,
+            "sd": 0.012300808522547486,
+            "efficiency": 0.148692641788084,
+            "autocorrelation": -0.04462437358845825,
+            "label": "trending"
+          },
+          {
+            "from": "2026-01-20",
+            "hours": 336,
+            "sd": 0.01370864350862861,
+            "efficiency": 0.0006260299824816733,
+            "autocorrelation": 0.017871806268958807,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-02-03",
+            "hours": 336,
+            "sd": 0.01753394904475784,
+            "efficiency": 0.06500348670211065,
+            "autocorrelation": 0.08649796754926771,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-02-17",
+            "hours": 336,
+            "sd": 0.010188084344397842,
+            "efficiency": 0.019577421847810313,
+            "autocorrelation": -0.03362569263941581,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-03",
+            "hours": 336,
+            "sd": 0.008039091344464806,
+            "efficiency": 0.07662144080148853,
+            "autocorrelation": 0.020686126420714886,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-17",
+            "hours": 336,
+            "sd": 0.009178652881937144,
+            "efficiency": 0.002894982200631798,
+            "autocorrelation": 0.20506659984487005,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-03-31",
+            "hours": 336,
+            "sd": 0.015307486840137864,
+            "efficiency": 0.13107105228745902,
+            "autocorrelation": 0.022859705900240168,
+            "label": "trending"
+          },
+          {
+            "from": "2026-04-14",
+            "hours": 336,
+            "sd": 0.011908671566019017,
+            "efficiency": 0.07247500533967134,
+            "autocorrelation": 0.008964812261574617,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-04-28",
+            "hours": 336,
+            "sd": 0.011071287309028044,
+            "efficiency": 0.032368423371756855,
+            "autocorrelation": 0.09490110537288172,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-05-12",
+            "hours": 336,
+            "sd": 0.010192275852136643,
+            "efficiency": 0.052400363941674875,
+            "autocorrelation": -0.01106265233949325,
+            "label": "choppy"
+          }
+        ],
+        "heldOut": [
+          {
+            "from": "2026-06-01",
+            "hours": 336,
+            "sd": 0.01346649356089484,
+            "efficiency": 0.008628899050328053,
+            "autocorrelation": -0.05873832284084239,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-06-15",
+            "hours": 336,
+            "sd": 0.008171760274193769,
+            "efficiency": 0.08885235093548541,
+            "autocorrelation": -0.1753145087395984,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-06-29",
+            "hours": 336,
+            "sd": 0.010273934010887638,
+            "efficiency": 0.09110997731823184,
+            "autocorrelation": -0.10271489461076844,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-07-13",
+            "hours": 336,
+            "sd": 0.008369630221440987,
+            "efficiency": 0.028286655446721896,
+            "autocorrelation": -0.14546619810145528,
+            "label": "mean_reverting"
+          },
+          {
+            "from": "2026-07-27",
+            "hours": 336,
+            "sd": 0.006073519144576632,
+            "efficiency": 0.007713236153969175,
+            "autocorrelation": 0.004838179825176198,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-08-10",
+            "hours": 336,
+            "sd": 0.012682623184964575,
+            "efficiency": 0.1486530677361662,
+            "autocorrelation": -0.11153969171526851,
+            "label": "trending"
+          },
+          {
+            "from": "2026-08-24",
+            "hours": 336,
+            "sd": 0.01315250462272665,
+            "efficiency": 0.028280539284833203,
+            "autocorrelation": -0.0949737370698749,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-09-07",
+            "hours": 336,
+            "sd": 0.010071762021839797,
+            "efficiency": 0.02572920005862197,
+            "autocorrelation": -0.04944737801527358,
+            "label": "choppy"
+          },
+          {
+            "from": "2026-09-21",
+            "hours": 240,
+            "sd": 0.014103301026628618,
+            "efficiency": 0.10662075412016879,
+            "autocorrelation": -0.05569381038481631,
+            "label": "choppy"
+          }
+        ]
+      },
+      "h1": [
+        {
+          "regime": "trending",
+          "inBlocks": 2,
+          "outBlocks": 1,
+          "qualifies": false,
+          "reference": 0.3613929740401462,
+          "referenceNoPair": null,
+          "result": {
+            "ticksIn": 672,
+            "ticksOut": 336,
+            "spread": -0.00020374211576555171,
+            "marketSd": 0.012682623184964575,
+            "normalized": -0.016064666811759477,
+            "p": 0.926,
+            "lower95": -0.026084646300481355,
+            "upper95": 0.001330185081557693,
+            "rankCarry": 0.08072619683396741
+          },
+          "holds": false,
+          "below": false
+        },
+        {
+          "regime": "mean_reverting",
+          "inBlocks": 0,
+          "outBlocks": 2,
+          "qualifies": false,
+          "reference": 0.25510957476357715,
+          "referenceNoPair": null,
+          "result": null,
+          "holds": false,
+          "below": false
+        },
+        {
+          "regime": "choppy",
+          "inBlocks": 9,
+          "outBlocks": 6,
+          "qualifies": true,
+          "reference": 0.2986661690409547,
+          "referenceNoPair": null,
+          "result": {
+            "ticksIn": 3024,
+            "ticksOut": 1920,
+            "spread": 0.00013557429731775065,
+            "marketSd": 0.011376431008406797,
+            "normalized": 0.011917120335680481,
+            "p": 0.195,
+            "lower95": -0.009002030724316898,
+            "upper95": 0.031073643465534602,
+            "rankCarry": 0.4610715641829192
+          },
+          "holds": false,
+          "below": true
+        },
+        {
+          "regime": "stress",
+          "inBlocks": 0,
+          "outBlocks": 0,
+          "qualifies": false,
+          "reference": 0.19283390945494622,
+          "referenceNoPair": null,
+          "result": null,
+          "holds": false,
+          "below": false
+        }
+      ],
+      "h1Call": "negative",
+      "pooled": {
+        "ticksIn": 3826,
+        "ticksOut": 2928,
+        "spread": 0.00009857320590169425,
+        "marketSd": 0.01091371343543147,
+        "normalized": 0.009032050042809025,
+        "p": 0.1585,
+        "lower95": -0.004953120255808692,
+        "upper95": 0.02130286580930791,
+        "rankCarry": 0.40705415968354225
+      },
+      "pooledReference": 0.27688787190226594,
+      "pooledRefCurve": [
+        0.024735354409341832,
+        0.07158090877190769,
+        0.13871224969515522,
+        0.20666595540906296,
+        0.27688787190226594,
+        0.42260974805537677,
+        0.573461556438553
+      ],
+      "magnitudeStar": 0,
+      "h2": {
+        "evaluations": 141,
+        "rho": -0.010910727018135839,
+        "lower95": -0.04884218028514283,
+        "upper95": 0.02204269816420834,
+        "meanRanked": 712.1985815602837
+      },
+      "h2Reference": 0.3900719348257535,
+      "h2Call": "negative",
+      "h2ByRegime": [
+        {
+          "regime": "trending",
+          "evaluations": 17,
+          "rho": 0.0288850537701675
+        },
+        {
+          "regime": "mean_reverting",
+          "evaluations": 34,
+          "rho": -0.05728587232329279
+        },
+        {
+          "regime": "choppy",
+          "evaluations": 90,
+          "rho": -0.0009082084962005151
+        },
+        {
+          "regime": "stress",
+          "evaluations": 0,
+          "rho": null
+        }
+      ],
+      "heldOutR2": 0.558423325162292,
+      "meanInMarket": 0.4995136215575958,
+      "swapsPerGenomeHeldOut": 104.217,
+      "meanHeldOutNetPerTick": 0.00004597734092699672
+    }
+  ]
+}

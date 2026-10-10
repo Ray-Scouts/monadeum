@@ -1,0 +1,10 @@
+{
+  "kuruTradesSha256": "21ae7f672618b518b02e64998f94487cd32d140bf9fcff341e5a2f2dc80b4c3f",
+  "kuruTrades": 9569442,
+  "kuruChunks": 14378,
+  "kuruFirstBlock": 37574357,
+  "kuruLastBlock": 109459390,
+  "coinbaseRawSha256": "4d22b45fbaab64afdc3423bbe8860e9e4b2ed3564e851b4ee705d8d0d80021bf",
+  "kuruHourlySha256": "64820329364ebf6c48c6ac48c64216bbffc941e89eb5532d738a43d67392a745",
+  "coinbaseHourlySha256": "1aa2448ba833b38881e1dd8f783540508bdb724a6025c9755ba8c5bd9061d47f"
+}
