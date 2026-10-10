@@ -5,6 +5,8 @@ import { concat, keccak256, stringToBytes, type Hex } from "viem";
 export type CommitmentTag =
   | "monadeum:genome:v1"
   | "monadeum:strategy:v1"
+  | "monadeum:policy:v1"
+  | "monadeum:plan:v1"
   | "monadeum:reallocation:v1";
 
 export class CanonicalizationError extends Error {

@@ -159,8 +159,8 @@ test("unicode: RFC 8785 key order by UTF-16 code units, minimal escaping, no nor
 
 test("domain tags separate kinds whose JSON is identical", () => {
   const value = { schemaVersion: 1 };
-  const hashes = new Set([taggedHash("monadeum:genome:v1", value), taggedHash("monadeum:strategy:v1", value), taggedHash("monadeum:reallocation:v1", value)]);
-  assert.equal(hashes.size, 3);
+  const hashes = new Set([taggedHash("monadeum:genome:v1", value), taggedHash("monadeum:strategy:v1", value), taggedHash("monadeum:reallocation:v1", value), taggedHash("monadeum:policy:v1", value), taggedHash("monadeum:plan:v1", value)]);
+  assert.equal(hashes.size, 5);
 });
 
 test("reallocation policy: agent IDs are a set of decimal strings, owner hex is lowercased, fewer than two agents is rejected", () => {

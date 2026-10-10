@@ -102,6 +102,7 @@
     "libs/risk": {
       "name": "@monadeum/risk",
       "dependencies": {
+        "@monadeum/commitment": "workspace:*",
         "@nestjs/common": "^11.1.6",
         "viem": "^2.56.9",
       },
@@ -136,6 +137,7 @@
       "name": "@monadeum/trading",
       "dependencies": {
         "@kuru-labs/kuru-sdk": "0.0.95",
+        "@monadeum/commitment": "workspace:*",
         "@monadeum/fitness": "workspace:*",
         "@monadeum/risk": "workspace:*",
         "@nestjs/common": "^11.1.6",

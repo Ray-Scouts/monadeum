@@ -1,5 +1,5 @@
 import { decodeFunctionData, parseAbi, recoverMessageAddress, type Hex } from "viem";
-import { hashOf } from "./canonical.js";
+import { hashExecutionPlan, hashRiskPolicy } from "@monadeum/commitment";
 
 // Types are ARCHITECTURE.md sections 16.1 and 16.2. Change them there first.
 export type BaseUnits = bigint;
@@ -131,7 +131,7 @@ export async function loadPolicy(rows: readonly SignedPolicy[], signer: Hex, now
       const from = Date.parse(document.effectiveFrom);
       if (from < previousFrom) return null;
       previousFrom = from;
-      const hash = hashOf("monadeum:policy:v1", document);
+      const hash = hashRiskPolicy(document);
       const recovered = await recoverMessageAddress({ message: { raw: hash }, signature });
       if (!same(recovered, signer)) return null;
       if (from <= now.getTime()) active = { document, hash };
@@ -188,7 +188,7 @@ function evaluateTradeUnsafe(policy: VerifiedPolicy, proposal: ActionProposal, p
 
   let planHash: Hex | null = null;
   try {
-    planHash = hashOf("monadeum:plan:v1", { tickKey: plan.tickKey, calls: plan.calls });
+    planHash = hashExecutionPlan({ tickKey: plan.tickKey, calls: plan.calls });
   } catch {}
   if (planHash !== plan.planHash || plan.tickKey !== proposal.tickKey) v.push("plan-hash-mismatch");
 
