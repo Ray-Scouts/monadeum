@@ -20,6 +20,8 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { monadTestnet } from "viem/chains";
 import { entryPoint07Abi } from "viem/account-abstraction";
 import {
+  APPROVE_SELECTOR,
+  ScopeError,
   ZeroDevChain,
   buildScope,
   loadWalletsConfig,
@@ -87,6 +89,15 @@ test("configuration calls set the limits and allow exactly the scope on the spen
   const decoded = calls.map((c) => decodeFunctionData({ abi: spendPolicyAbi, data: c.data }));
   assert.deepEqual(decoded[0], { functionName: "setLimits", args: [{ perTxCap: 7n, dailyCap: 70n }] });
   assert.deepEqual(decoded.slice(1).map((d) => d.args), scope.map((c) => [c.target, c.selector, true]));
+});
+
+test("a traded asset is marked with setTradedAsset before its approve is allowed", () => {
+  const WETH = "0xEE8c0E9f1BFFb4Eb878d8f15f368A02a35481242";
+  const withBase = buildScope({ settlementAsset: USDC, kuruRouter: ROUTER, kuruRouterSelectors: ["0x12345678"], reallocation: REALLOC, reallocationSelectors: ["0x9abcdef0"], tradedAssets: [WETH] });
+  const decoded = offline().configurationCalls(withBase, { perTxCap: 7n, dailyCap: 70n }).map((c) => decodeFunctionData({ abi: spendPolicyAbi, data: c.data }));
+  assert.deepEqual(decoded.map((d) => d.functionName), ["setLimits", "setTradedAsset", ...withBase.map(() => "setAllowed")]);
+  assert.deepEqual(decoded[1]!.args, [WETH, true]);
+  assert.deepEqual(decoded.at(-1)!.args, [WETH, APPROVE_SELECTOR, true]);
 });
 
 test("the owner's enable signature covers the scoped validator and names the spend policy as hook", async () => {
@@ -195,6 +206,11 @@ test("configuration is read from the environment and rejects anything but Monad 
   assert.throws(() => loadWalletsConfig({ ...env, WALLETS_BUNDLER_URL: "http://bundler.example" }), WalletsConfigError);
   assert.throws(() => loadWalletsConfig({ ...env, WALLETS_SPEND_POLICY_ADDRESS: undefined }), WalletsConfigError);
   assert.throws(() => loadWalletsConfig({ ...env, WALLETS_SPONSORED_GAS_WEI: "-1" }), WalletsConfigError);
+  const WETH = "0xEE8c0E9f1BFFb4Eb878d8f15f368A02a35481242";
+  const traded = loadWalletsConfig({ ...env, WALLETS_TRADED_ASSETS: ` ${WETH} ` }).chain.scope.filter((c) => c.label === "traded-asset");
+  assert.deepEqual(traded.map((c) => [c.target, c.selector]), [[WETH, APPROVE_SELECTOR]]);
+  assert.throws(() => loadWalletsConfig({ ...env, WALLETS_TRADED_ASSETS: "weth" }), WalletsConfigError);
+  assert.throws(() => loadWalletsConfig({ ...env, WALLETS_TRADED_ASSETS: USDC }), ScopeError);
 });
 
 test("bundler reads map to the full receipt, pending state, and the EntryPoint nonce for the operation's key", async () => {

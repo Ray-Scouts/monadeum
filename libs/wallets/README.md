@@ -30,6 +30,7 @@ The spend policy contract is `contracts/src/AgentSpendPolicy.sol` (issue #25). T
 | `WALLETS_KURU_ROUTER_SELECTORS` | yes | Comma-separated 4-byte selectors allowed on the router, pending issue #20. |
 | `WALLETS_REALLOCATION_CONTRACT` | yes | Owner-scoped reallocation contract address (`contracts/src/AgentReallocation.sol`, allowlist label `reallocation`, ARCHITECTURE.md sections 16.1 and 16.5). |
 | `WALLETS_REALLOCATION_SELECTORS` | yes | Comma-separated 4-byte selectors allowed on it. In production, only `reallocate(uint256,bytes32,(address,uint256)[])`, `0x4c329bba`. |
+| `WALLETS_TRADED_ASSETS` | no | Comma-separated ERC-20 bases a close sells (WETH `0xEE8c0E9f1BFFb4Eb878d8f15f368A02a35481242` for the Monad mainnet WETH/USDC market). Each gets `approve` only and is marked with the spend policy's `setTradedAsset` before it is allowed. Unset: no close can be built. |
 | `WALLETS_SPONSORED_OPERATIONS` | yes | Sponsored operations per agent, deployment included, revocations excluded. |
 | `WALLETS_SPONSORED_GAS_WEI` | yes | Sponsored gas per agent in wei, deployment included, revocations excluded. |
 
