@@ -7,12 +7,21 @@
     "start": "node dist/src/main.js"
   },
   "dependencies": {
+    "@monadeum/commitment": "workspace:*",
+    "@monadeum/external": "workspace:*",
+    "@monadeum/fitness": "workspace:*",
     "@monadeum/reallocation": "workspace:*",
+    "@monadeum/risk": "workspace:*",
+    "@monadeum/strategy": "workspace:*",
     "@monadeum/tick": "workspace:*",
+    "@monadeum/trading": "workspace:*",
+    "@monadeum/wallets": "workspace:*",
+    "@monadeum/x402": "workspace:*",
     "@nestjs/common": "^11.1.6",
     "@nestjs/core": "^11.1.6",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "viem": "2.56.9"
   },
   "devDependencies": {
     "@types/node": "^22.15.21",

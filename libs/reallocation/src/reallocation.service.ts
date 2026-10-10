@@ -1,15 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import { EVALUATION_CADENCE } from "./constants.js";
+import { groupDebits } from "./debits.js";
 import { planEvaluation, type AgentState, type EvaluationPlan } from "./plan.js";
-import { NoPolicies, UnconfiguredSettlement, type PolicySource, type ReallocationSettlement } from "./ports.js";
+import { NoPolicies, UnconfiguredSettlement, type PolicySource, type ReallocationSettlement, type SourceDebit } from "./ports.js";
 import { evaluateRetirement, type RetirementDecision, type RetirementInput } from "./retirement.js";
 
-export interface SettledMove {
-  key: string;
-  owner: string;
-  source: string;
-  sink: string;
-  amount: number;
+/** What happened to one source's debit at one evaluation. */
+export interface SettledDebit extends SourceDebit {
   ok: boolean;
   error?: string;
 }
@@ -32,18 +29,20 @@ export class ReallocationService {
   }
 
   /**
-   * Submits every planned move, one transfer each. A failed move is recorded and not retried inside the same
-   * evaluation; the next evaluation recomputes the plan from fresh state (ARCHITECTURE.md section 5).
+   * Submits every planned move, grouped into one debit per source, in base units rounded down (`groupDebits`). A failed
+   * debit is recorded and not retried inside the same evaluation; the next evaluation recomputes the plan from fresh
+   * state (ARCHITECTURE.md section 5).
    */
-  settle(sequence: number, plan: EvaluationPlan): SettledMove[] {
-    return plan.moves.map((move) => {
-      const key = `${move.owner}:${sequence}:${move.source}:${move.sink}`;
+  async settle(sequence: number, plan: EvaluationPlan, decimals: number): Promise<SettledDebit[]> {
+    const settled: SettledDebit[] = [];
+    for (const debit of groupDebits(sequence, plan, decimals)) {
       try {
-        const result = this.settlement.transfer({ ...move, key, sequence });
-        return { key, ...move, amount: result.amount, ok: true };
+        await this.settlement.debit(debit);
+        settled.push({ ...debit, ok: true });
       } catch (error) {
-        return { key, ...move, ok: false, error: error instanceof Error ? error.message : String(error) };
+        settled.push({ ...debit, ok: false, error: error instanceof Error ? error.message : String(error) });
       }
-    });
+    }
+    return settled;
   }
 }

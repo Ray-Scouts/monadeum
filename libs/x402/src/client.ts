@@ -65,13 +65,9 @@ export class X402Client {
   ) {}
 
   async buy(purchase: Purchase): Promise<BuyResult> {
-    if (!(PROVIDERS as readonly string[]).includes(purchase.provider)) return { ok: false, reason: "provider" };
-    const endpoint = this.endpoints[purchase.provider];
-    const url = new URL(purchase.resource, endpoint.baseUrl);
-    if (url.protocol !== "https:" || url.origin !== new URL(endpoint.baseUrl).origin) return { ok: false, reason: "provider" };
-
-    // Idempotency is ours, never assumed from the provider or facilitator (SECURITY.md section 5).
-    const key = `${purchase.tickKey}:${purchase.provider}:${url.pathname}${url.search}`;
+    const target = this.target(purchase);
+    if (!target) return { ok: false, reason: "provider" };
+    const { endpoint, url, key } = target;
     const base: PaymentLogEntry = {
       key, provider: purchase.provider, price: 0n, summary: null, settlementRef: null,
       anomaly: "not-paid", influencedDecision: null,
@@ -117,6 +113,29 @@ export class X402Client {
     const q = accepted.value;
     this.log.write(entry({ settlementRef, summary: `${q.provider} price=${q.price} at ${q.observedAt}` }));
     return { ok: true, quote: q, price: terms.amount, paymentRef: key };
+  }
+
+  /**
+   * What this purchase may have cost, from the payment log: the agreed price once payment was attempted, 0 when it
+   * never was or the payer refused. An unconfirmed or anomalous payment counts in full, so costs are never understated.
+   */
+  spent(purchase: Purchase): bigint {
+    const target = this.target(purchase);
+    return target ? (this.log.get(target.key)?.price ?? 0n) : 0n;
+  }
+
+  private target(purchase: Purchase): { endpoint: ProviderEndpoint; url: URL; key: string } | null {
+    if (!(PROVIDERS as readonly string[]).includes(purchase.provider)) return null;
+    const endpoint = this.endpoints[purchase.provider];
+    let url: URL;
+    try {
+      url = new URL(purchase.resource, endpoint.baseUrl);
+    } catch {
+      return null;
+    }
+    if (url.protocol !== "https:" || url.origin !== new URL(endpoint.baseUrl).origin) return null;
+    // Idempotency is ours, never assumed from the provider or facilitator (SECURITY.md section 5).
+    return { endpoint, url, key: `${purchase.tickKey}:${purchase.provider}:${url.pathname}${url.search}` };
   }
 
   /** Called after the strategy decides, so the log records whether the purchase changed the decision. */

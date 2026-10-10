@@ -116,3 +116,17 @@ test("a quote from another provider than the one paid is malformed", async () =>
   assert.deepEqual(await client.buy(purchase), { ok: false, reason: "malformed" });
   assert.equal(log.get("agent-1:7:nansen:/signal?pair=MON")?.anomaly, "provider-mismatch");
 });
+
+test("spent reports the agreed price once payment was attempted, and 0 when it never was", async () => {
+  const paid = setup();
+  assert.equal(paid.client.spent(purchase), 0n);
+  await paid.client.buy(purchase);
+  assert.equal(paid.client.spent(purchase), 10000n);
+  const lost = setup(() => new Response("boom", { status: 500 }));
+  await lost.client.buy(purchase);
+  assert.equal(lost.client.spent(purchase), 10000n, "paid without a response still counts");
+  const refused = setup(okResponse(), terms({ payTo: "0xdead" }));
+  await refused.client.buy(purchase);
+  assert.equal(refused.client.spent(purchase), 0n);
+  assert.equal(paid.client.spent({ ...purchase, resource: "https://evil.example/x" }), 0n);
+});
