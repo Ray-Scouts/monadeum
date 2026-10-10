@@ -1,0 +1,98 @@
+# API
+
+The API process of `ARCHITECTURE.md` section 10: a NestJS application on Fastify that composes AuthModule (`@monadeum/auth`), WalletsModule (`@monadeum/wallets`), RecoveryModule (`@monadeum/recovery`), the commitment library, and the indexer read-model, behind HTTP. It has no agent loop. The decisions are recorded in `ARCHITECTURE.md` section 10 (API entry), and the trust boundary it implements is `THREAT-MODEL.md` boundary 10.
+
+## Endpoints
+
+Every response is JSON. An error is `{ "error": "<reason>", "detail"?: "..." }` with a stable reason.
+
+| Method and path | Auth | What it does |
+|---|---|---|
+| `POST /auth/privy/sign-in` | none, rate limited | Verifies a Privy access token and identity token, creates or finds the user. The client then sends the access token as `Authorization: Bearer`. |
+| `POST /auth/wallet/challenge` | none, rate limited | Issues a one-time EIP-4361 message for an external wallet. |
+| `POST /auth/wallet/verify` | none, rate limited | Verifies the signed message and sets the `monadeum_session` cookie. The token is never in the body. |
+| `POST /auth/wallet/link/challenge`, `POST /auth/wallet/link` | session, rate limited | Links an external wallet to the caller. Never changes the owner wallet. |
+| `POST /auth/privy/link` | session, rate limited | Links a Privy identity and its embedded wallets to the caller. |
+| `POST /auth/sign-out` | cookie, optional | Deletes the wallet session and clears the cookie. |
+| `GET /auth/me` | session | The caller's user record. |
+| `GET /population` | session | Platform aggregates from the read-model: counts and total spend, no agent identified. |
+| `GET /owners/me` | session | The caller as an owner, in the web's `Owner` shape. |
+| `GET /agents`, `GET /agents/:id` | session, owner | The caller's agents: registry, WalletsModule record, and the read-model's view of each account. |
+| `GET /capital-flow` | session | The caller's capital flow. Reallocations are not indexed yet, so the list is empty and `reallocationsIndexed` is false. |
+| `POST /agents` | session | Creates an agent and starts its owner-signed deployment. |
+| `POST /agents/:id/deploy` | session, owner | Retries deployment. |
+| `POST /agents/:id/stop` | session, owner | "Stop this agent" (issue #44): revokes the session key, subject to the bulk recovery hold. |
+| `GET /agents/:id/revocation` | session, owner | Revocation status read from chain. |
+| `GET /recovery/holds`, `POST /recovery/holds/:id/confirm`, `POST /recovery/holds/:id/release` | session, owner | The bulk recovery hold of `SECURITY.md` section 9. |
+| `GET /policies/reallocation`, `POST /policies/reallocation` | session, owner | The owner-signed reallocation policy. |
+| `GET /operations/:id`, `POST /operations/:id/signature` | session, starter | The signature relay for owner-signed operations. |
+
+### Authentication and authorization
+
+- Two credentials: a Privy access token as `Authorization: Bearer`, verified locally per request, or the external wallet session cookie (`HttpOnly`, `Secure`, `SameSite=Strict`). A request carrying both is refused (`ambiguous-credentials`).
+- A state-changing request authenticated by the cookie must carry the web app's origin as `Origin` (`origin-not-allowed` otherwise), and so must `POST /auth/wallet/verify`, which sets the cookie. CORS allows only that origin.
+- A session identifies the caller and authorizes nothing (`THREAT-MODEL.md` boundary 10). Every per-agent handler reads the agent's owner from the API's registry, never from the request, and AuthModule compares it with the caller's one owner wallet. Another user's agent answers `404 not-found`, like a missing one, so its existence is not disclosed. WalletsModule's record and the worker's agent registry (`@monadeum/agent-registry`, `worker_agents`), where they exist, must name the same owner, or the request fails closed with `409 ownership-mismatch`. The API does not create worker agents yet: that record needs a genome, which the creation flow does not collect, so the API reads `worker_agents` and holds no `INSERT` on it.
+- Rate limiting: `@nestjs/throttler` 6.7.1, one named throttler `auth`, in-process storage, applied per client IP and per endpoint to every sign-in, challenge, and link endpoint. Proposed default: 10 requests per 60 seconds.
+
+### Owner-signed operations
+
+The API never holds an owner key. Deployment, revocation, and the reallocation policy each run as an operation whose signer relays every signature request to the owner's wallet:
+
+1. The starting request answers with `operation.status: "awaiting-signature"` and `operation.signatureRequest`: `{ id, expiresAt, kind: "message", message }` (EIP-191, which is how Kernel's ECDSA validator has the owner sign a user operation hash) or `{ id, expiresAt, kind: "typed-data", typedData }` (EIP-712; integers are decimal strings).
+2. The owner's wallet signs it, and the client posts `{ requestId, signature }` to `POST /operations/:id/signature`.
+3. The API verifies the signature against the owner wallet before the operation continues; a wrong signature is `400 bad-signature` and the request stays open. The response is the next state: another request, `running` (poll `GET /operations/:id?wait=true`), `succeeded` with `result`, or `failed` with `error`.
+
+A request not answered within `API_SIGNATURE_TIMEOUT_SECONDS` fails the operation closed. Operations live in the process's memory: a signature must reach the instance that started the operation, and a restart fails every open operation. Every operation is idempotent, so the client starts it again.
+
+The user operation hash is a 32-byte digest, so the wallet shows the owner a hash rather than the calls it authorizes. The operation names its kind and agents, but the client cannot recompute the hash from them; see Not verified yet.
+
+### Stop this agent
+
+`POST /agents/:id/stop` revokes the agent's session key through `WalletsService.revokeSessionKey`. The revocation is immediate off chain: the key is destroyed in the session key vault and the record marked before the owner is asked to sign, so the first response already shows `local[].session: "revoking"`. The on-chain step (uninstall the permission validator, invalidate the Kernel nonce) completes when the owner signs; the operation's result carries WalletsModule's `RevokeResult` (`onChain: "verified"` and the user operation hash) and `revocationStatus` read back from chain: `installed`, `validatorNonce`, `currentNonce`, `validNonceFrom`, and `enableNonce`, which anyone can check against the account. The stop that would make a fourth distinct agent stopped by the same owner wallet within 60 minutes is held (`202`, `status: "held"`), and released through the confirm and release endpoints after the 15 minute delay, as `SECURITY.md` section 9 specifies.
+
+### Reallocation policy
+
+`POST /policies/reallocation` builds the `ReallocationPolicyV1` document from the caller's owner wallet and agents, refuses any bound that loosens the protocol constants of `@monadeum/reallocation/constants`, takes the next sequence, and relays EIP-712 typed data over the section 16.4 policy hash. The verified signature is recorded append-only and handed to the policy writer. Two things are provisional: the typed data (`policyTypedData`), which the reallocation contract (issue #31) may replace with its own scheme, and the agent identifiers, which are identity registry token IDs that do not exist until the registry is deployed (section 9), so today every agent answers `409 agent-not-registered`. There is no policy writer until the contract exists, so a signed policy is recorded with `committed: null`.
+
+### Read endpoints and the web
+
+The agent view carries the field names of `Agent` in `apps/web/src/data/types.ts`. Fields no service produces yet (`status`, `principal`, `capital`, `tradeCount`, `fitnessPercentile`, `lowWindows`, `zeroDownsideFlag`, `retirement`, `genome`, `capitalHistory`) are `null`, not invented; the API's own fields (`deployment`, `session`, `limits`, `chain`) are what it can source today. Switching the web's `PopulationSource` to the API is the follow-up for issue #42; this package does not touch `apps/web`.
+
+## Storage
+
+The database rules are the worker's and the indexer's: `bootApi` reads `DATABASE_URL`, `DATABASE_MIGRATIONS`, and `MONADEUM_ENV` with `loadDatabaseSettings` and opens the database with `openDatabase` from `@monadeum/db`. With `DATABASE_URL` set, every store is on Postgres, including the API's own tables from migration `0007_api.sql`: the agent registry, the recovery log and holds, and the signed policies. The migrations are verified at start (`verify`, the default) or applied (`apply`, for an owner connection only). Every statement runs inside a transaction under `SET LOCAL ROLE`: the stores as `monadeum_api`, the read-model as `monadeum_reader`, which can only read it. The login role therefore needs membership in both group roles, and nothing else; it does not own the tables. Without `DATABASE_URL` the API runs on in-memory stores and logs that state is not durable; with `MONADEUM_ENV=production` it refuses to start instead.
+
+`main.ts` does not construct WalletsModule: it needs a session key vault backed by a secrets manager and shared with the worker, so that a revocation here destroys the key the worker holds, and none exists (`SECURITY.md` section 11). Until then deployment and stop answer `503 wallets-unavailable` in a running process.
+
+## Configuration
+
+AuthModule's variables (`libs/auth/README.md`) are required: `AUTH_PRIVY_APP_ID`, `AUTH_PRIVY_VERIFICATION_KEY`, `AUTH_CHAIN_ID`, `AUTH_SIWE_DOMAIN`, `AUTH_SIWE_URI`, and optionally the two TTLs. None of the variables below is a secret except `DATABASE_URL`, which carries a password.
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `API_MAX_PER_TX_CAP` | yes | Highest per-transaction cap an owner may request for a new agent, settlement-asset base units. |
+| `API_MAX_DAILY_CAP` | yes | Highest daily cap, base units. At least `API_MAX_PER_TX_CAP`. |
+| `DATABASE_URL` | no | Postgres connection string. Unset: in-memory stores. Keep it in the secrets store, never in a file. |
+| `DATABASE_MIGRATIONS` | no | `verify` (default) or `apply`, as in `libs/db/README.md`. |
+| `MONADEUM_ENV` | no | `development` (default) or `production`, which refuses to start without `DATABASE_URL`. |
+| `API_PORT` | no | Default 3001. |
+| `API_HOST` | no | Default 127.0.0.1. |
+| `API_TRUST_PROXY` | no | `true` only behind a proxy that sets `X-Forwarded-For`; otherwise every client shares one rate limit or can spoof its IP. Default `false`. |
+| `API_AUTH_RATE_LIMIT` | no | Requests per window per client IP per auth endpoint. Proposed default 10. |
+| `API_AUTH_RATE_WINDOW_SECONDS` | no | Proposed default 60. |
+| `API_SIGNATURE_TIMEOUT_SECONDS` | no | How long a signature request stays open. Proposed default 300. |
+| `API_OPERATION_WAIT_SECONDS` | no | How long one request waits for an operation's next state. Proposed default 20. |
+| `API_SETTLEMENT_DECIMALS` | no | Settlement-asset decimals, for the capital floor in base units. Default 6 (USDC). |
+
+The allowed origin is the origin of `AUTH_SIWE_URI`.
+
+## Tests
+
+`bun run --filter @monadeum/api test` runs offline. `test/api.test.ts` boots the application with `@nestjs/testing` and the Fastify adapter and drives it through HTTP injection, once on the in-memory stores and once on PGlite with every statement under the API's two roles, so a missing grant fails the suite. WalletsModule runs on its test chain from `@monadeum/wallets/testing`, extended so every owner operation requires an owner signature that recovers to the owner, which is what makes the relay testable. Privy tokens are verified by a stand-in; AuthModule's own tests cover the real `@privy-io/node` verification. `test/roles.test.ts` checks that the grants of migration 0007 are no wider than stated.
+
+## Not verified yet
+
+- No run against a live Privy app, a bundler, or Monad testnet. The relay has been exercised only against the test chain; whether an embedded wallet's `personal_sign` over a user operation hash produces the signature Kernel's ECDSA validator accepts is an assumption from `libs/wallets`, not observed here.
+- Blind hash signing: the owner signs a user operation hash it cannot check against the calls. Showing a verifiable preview needs the client to recompute the hash from the prepared operation, which WalletsModule does not expose.
+- Rate limiting and the relay are in process. More than one API instance needs a shared throttler storage and sticky routing for operations, or a relay that persists the prepared operation; neither is built.
+- The policy typed data and the identity registry IDs are provisional, as above.
