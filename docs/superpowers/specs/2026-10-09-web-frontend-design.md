@@ -2,6 +2,8 @@
 
 Date: 2026-10-09. Status: approved.
 
+Update (issue #43): this spec describes the first version, which showed the superseded reproduction mechanism. The `/lineage` route, the reproduction tab, `src/data/eligibility.ts`, and the use of `@monadeum/reproduction/allocate` are replaced by `/capital-flow`, a reallocation and retirement tab on the agent view, and `src/data/evaluate.ts` and `src/data/explain.ts`, which run the simulation's `planReallocation` per owner. `ARCHITECTURE.md` section 15 describes the current state; the rest of this spec is kept as the original design record.
+
 ## Goal
 
 Stand up the product frontend described in `ARCHITECTURE.md` section 15 as a real Next.js application, with every screen of the agreed UI prototype, backed by sample data behind a typed interface. When an API exists, only the data source changes. Login, wallets, on-chain reads, the API, and deployment are out of scope.
