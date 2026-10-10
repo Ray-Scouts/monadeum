@@ -6,3 +6,5 @@ export { decode, encode } from "./codec.js";
 export { PgAgentWalletStore, PgSponsorshipLedger } from "./wallets.js";
 export { PgChallengeStore, PgSessionStore, PgUserStore } from "./auth.js";
 export { PgPaymentLog, PgTickStore, PgTradeStore } from "./logs.js";
+export { PgReadModelStore } from "./indexer.js";
+export { PgPolicyVersions } from "./policy.js";

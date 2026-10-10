@@ -88,6 +88,9 @@
       "name": "@monadeum/db",
       "dependencies": {
         "@monadeum/auth": "workspace:*",
+        "@monadeum/commitment": "workspace:*",
+        "@monadeum/indexer": "workspace:*",
+        "@monadeum/risk": "workspace:*",
         "@monadeum/tick": "workspace:*",
         "@monadeum/trading": "workspace:*",
         "@monadeum/wallets": "workspace:*",

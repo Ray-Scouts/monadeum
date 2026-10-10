@@ -3,6 +3,7 @@ import { after, test } from "node:test";
 import pg from "pg";
 import { migrate, pgDatabase } from "../src/index.js";
 import { conformance } from "./conformance.js";
+import { databaseRules } from "./database-rules.js";
 import { postgresHarness } from "./harness.js";
 
 // Opt-in: runs the conformance suite against a real Postgres server when DATABASE_URL is set, for example
@@ -28,4 +29,5 @@ if (!url) {
     await admin.end();
   });
   conformance("postgres", postgresHarness(db));
+  databaseRules("postgres", db);
 }

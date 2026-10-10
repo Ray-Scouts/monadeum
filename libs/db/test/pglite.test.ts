@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, describe, it } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
-import { MIGRATIONS_DIR, MigrationError, isUniqueViolation, migrate, pgliteDatabase, type Database } from "../src/index.js";
+import { MIGRATIONS_DIR, MigrationError, migrate, pgliteDatabase, type Database } from "../src/index.js";
 import { conformance } from "./conformance.js";
+import { databaseRules } from "./database-rules.js";
 import { postgresHarness } from "./harness.js";
 
 // PGlite is Postgres compiled to WebAssembly, run in process, so this suite needs no database service. It is a
@@ -24,39 +25,7 @@ const shared = await fresh();
 after(() => shared.pg.close());
 
 conformance("pglite", postgresHarness(shared.db));
-
-describe("pglite: constraints hold without the store code", () => {
-  const raw = (sql: string, params: unknown[] = []) => shared.db.query(sql, params);
-  const wallet = (address: string, userId: string) =>
-    raw("INSERT INTO auth_user_wallets (address_key, user_id, position, address, kind, proof, linked_at) VALUES ($1, $2, 0, $3, 'external', 'wallet-signature', 1)", [address.toLowerCase(), userId, address]);
-
-  it("a wallet address belongs to at most one user", async () => {
-    await postgresHarness(shared.db).fresh();
-    await raw("INSERT INTO auth_users (id, privy_user_id, owner_wallet, created_at) VALUES ('u1', NULL, NULL, 1), ('u2', NULL, NULL, 1)");
-    await wallet("0x00000000000000000000000000000000000000aa", "u1");
-    await assert.rejects(wallet("0x00000000000000000000000000000000000000AA", "u2"), isUniqueViolation);
-  });
-
-  it("a Privy identity belongs to at most one user", async () => {
-    await postgresHarness(shared.db).fresh();
-    await raw("INSERT INTO auth_users (id, privy_user_id, owner_wallet, created_at) VALUES ('u1', 'did:privy:x', NULL, 1)");
-    await assert.rejects(raw("INSERT INTO auth_users (id, privy_user_id, owner_wallet, created_at) VALUES ('u2', 'did:privy:x', NULL, 1)"), isUniqueViolation);
-  });
-
-  it("a session row holds only a SHA-256 digest", async () => {
-    await postgresHarness(shared.db).fresh();
-    await assert.rejects(raw("INSERT INTO auth_sessions (token_hash, user_id, wallet, expires_at) VALUES ('plaintext-token', 'u1', '0x', 1)"), /check constraint/);
-  });
-
-  it("an account address belongs to at most one agent, and a tick key is claimed once", async () => {
-    await postgresHarness(shared.db).fresh();
-    await raw("INSERT INTO wallet_accounts (agent_id, account_key, body) VALUES ('a', '0x00000000000000000000000000000000000000ab', '{}')");
-    await assert.rejects(raw("INSERT INTO wallet_accounts (agent_id, account_key, body) VALUES ('b', '0x00000000000000000000000000000000000000ab', '{}')"), isUniqueViolation);
-    await assert.rejects(raw("INSERT INTO wallet_accounts (agent_id, account_key, body) VALUES ('c', '0x00000000000000000000000000000000000000AB', '{}')"), /check constraint/);
-    await raw("INSERT INTO wallet_tick_operations (agent_id, tick_key, body) VALUES ('a', 'a:1', '{}')");
-    await assert.rejects(raw("INSERT INTO wallet_tick_operations (agent_id, tick_key, body) VALUES ('a', 'a:1', '{}')"), isUniqueViolation);
-  });
-});
+databaseRules("pglite", shared.db);
 
 describe("pglite: migration runner", () => {
   it("applies each migration once and records it", async () => {
@@ -64,7 +33,7 @@ describe("pglite: migration runner", () => {
     try {
       assert.deepEqual(await migrate(db), []);
       const { rows } = await db.query<{ name: string }>("SELECT name FROM store_schema_migrations ORDER BY version");
-      assert.deepEqual(rows.map((r) => r.name), ["0001_stores.sql"]);
+      assert.deepEqual(rows.map((r) => r.name), ["0001_stores.sql", "0002_indexer_read_model.sql", "0003_risk_policy_versions.sql", "0004_roles_and_grants.sql"]);
     } finally {
       await pg.close();
     }

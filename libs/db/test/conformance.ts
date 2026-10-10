@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ChallengeStore, SessionStore, UserRecord, UserStore, WalletChallenge } from "@monadeum/auth";
 import type { TickRecord, TickStore } from "@monadeum/tick";
+import type { BlockHash, ChainEvent, ReadModelStore, SyncBatch } from "@monadeum/indexer";
 import type { TradeRecord, TradeStore } from "@monadeum/trading";
 import type { AgentWalletRecord, AgentWalletStore, SponsorshipLedger, TickOperationRecord } from "@monadeum/wallets";
 import type { PaymentLog, PaymentLogEntry } from "@monadeum/x402";
@@ -19,6 +20,7 @@ export interface Stores {
   trades: TradeStore;
   payments: PaymentLog;
   ticks: TickStore;
+  readModel: ReadModelStore;
 }
 
 /** `fresh` returns stores over empty storage. Called once per test. */
@@ -94,7 +96,95 @@ function tickRecord(agentId: string, tick: number): TickRecord {
   return { key: `${agentId}:${tick}`, agentId, tick, status: "started", purchase: null, approved: null, outcome: null };
 }
 
+const block = (n: number, salt = 0): BlockHash => ({ number: BigInt(n), hash: hash(n * 1000 + salt) });
+
+export function chainEvent(n: number, logIndex: number, kind: string, account: Address | null = ACCOUNT): ChainEvent {
+  return {
+    kind, account, address: addr(500), blockNumber: BigInt(n), blockHash: block(n).hash, transactionHash: hash(n * 10 + logIndex),
+    logIndex, data: { amount: (BIG * BigInt(n)).toString(), allowed: logIndex % 2 === 0, nonce: logIndex },
+  };
+}
+
+export function batch(to: number, events: ChainEvent[], overrides: Partial<SyncBatch> = {}): SyncBatch {
+  const numbers = new Set([to, ...events.map((e) => Number(e.blockNumber))]);
+  return { events, blocks: [...numbers].map((n) => block(n)), discovered: [], cursor: block(to), pruneBelow: 0n, ...overrides };
+}
+
+const sortedAccounts = async (store: ReadModelStore) => (await store.trackedAccounts()).slice().sort();
+
 export function conformance(name: string, harness: Harness): void {
+  describe(`${name}: ReadModelStore`, () => {
+    it("starts empty", async () => {
+      const { readModel } = await harness.fresh();
+      assert.equal(await readModel.cursor(), null);
+      assert.deepEqual(await readModel.blockHashes(), []);
+      assert.deepEqual(await readModel.trackedAccounts(), []);
+      assert.deepEqual(await readModel.events(), []);
+    });
+
+    it("applies a batch with its cursor and returns rows in chain order, filtered by kind and account", async () => {
+      const { readModel } = await harness.fresh();
+      const other = addr(600);
+      await readModel.apply(batch(10, [chainEvent(7, 2, "spend.spent"), chainEvent(7, 2, "spend.limits-set"), chainEvent(5, 9, "spend.spent", other)], {
+        discovered: [{ account: ACCOUNT, firstBlock: 5n }, { account: other, firstBlock: 5n }],
+      }));
+      await readModel.apply(batch(20, [chainEvent(15, 0, "account.deployed", null)]));
+      assert.deepEqual(await readModel.cursor(), block(20));
+      assert.deepEqual(
+        (await readModel.events()).map((e) => [Number(e.blockNumber), e.logIndex, e.kind]),
+        [[5, 9, "spend.spent"], [7, 2, "spend.limits-set"], [7, 2, "spend.spent"], [15, 0, "account.deployed"]],
+      );
+      assert.deepEqual(await readModel.events({ kind: "spend.spent", account: mixed(ACCOUNT) }), [chainEvent(7, 2, "spend.spent")]);
+      assert.deepEqual(await readModel.events({ account: other }), [chainEvent(5, 9, "spend.spent", other)]);
+      assert.deepEqual(await readModel.events({ kind: "account.deployed" }), [chainEvent(15, 0, "account.deployed", null)]);
+      assert.deepEqual(await sortedAccounts(readModel), [ACCOUNT, other].sort());
+      assert.deepEqual(await readModel.blockHashes(), [block(20), block(15), block(10), block(7), block(5)]);
+    });
+
+    it("refuses a batch that does not advance the cursor, and stores nothing from it", async () => {
+      const { readModel } = await harness.fresh();
+      await readModel.apply(batch(10, [chainEvent(10, 0, "spend.spent")]));
+      await assert.rejects(readModel.apply(batch(10, [chainEvent(10, 1, "spend.spent")], { discovered: [{ account: addr(601), firstBlock: 10n }] })));
+      await assert.rejects(readModel.apply(batch(9, [])));
+      assert.deepEqual(await readModel.cursor(), block(10));
+      assert.equal((await readModel.events()).length, 1);
+      assert.deepEqual(await readModel.trackedAccounts(), []);
+    });
+
+    it("prunes block hashes below the window but keeps the cursor block", async () => {
+      const { readModel } = await harness.fresh();
+      await readModel.apply(batch(10, [chainEvent(4, 0, "spend.spent")]));
+      await readModel.apply(batch(20, [chainEvent(18, 0, "spend.spent")], { pruneBelow: 12n }));
+      assert.deepEqual(await readModel.blockHashes(), [block(20), block(18)]);
+      await readModel.apply(batch(30, [], { pruneBelow: 40n }));
+      assert.deepEqual(await readModel.blockHashes(), [block(30)]);
+    });
+
+    it("keeps an account's first block when it is discovered again", async () => {
+      const { readModel } = await harness.fresh();
+      await readModel.apply(batch(10, [], { discovered: [{ account: ACCOUNT, firstBlock: 5n }] }));
+      await readModel.apply(batch(20, [], { discovered: [{ account: ACCOUNT, firstBlock: 15n }] }));
+      await readModel.rollback(block(12));
+      assert.deepEqual(await readModel.trackedAccounts(), [ACCOUNT]);
+    });
+
+    it("rolls back every row, block hash, and tracked account above the ancestor, and moves the cursor to it", async () => {
+      const { readModel } = await harness.fresh();
+      await readModel.apply(batch(10, [chainEvent(8, 0, "spend.spent")], { discovered: [{ account: ACCOUNT, firstBlock: 8n }] }));
+      await readModel.apply(batch(20, [chainEvent(15, 3, "spend.spent"), chainEvent(19, 1, "spend.spent", addr(600))], {
+        discovered: [{ account: addr(600), firstBlock: 19n }],
+      }));
+      const ancestor = block(12, 7);
+      await readModel.rollback(ancestor);
+      assert.deepEqual(await readModel.cursor(), ancestor);
+      assert.deepEqual(await readModel.events(), [chainEvent(8, 0, "spend.spent")]);
+      assert.deepEqual(await readModel.trackedAccounts(), [ACCOUNT]);
+      assert.deepEqual(await readModel.blockHashes(), [ancestor, block(10), block(8)]);
+      await readModel.apply(batch(13, [chainEvent(13, 0, "spend.spent")]));
+      assert.equal((await readModel.events()).length, 2);
+    });
+  });
+
   describe(`${name}: AgentWalletStore`, () => {
     it("claims an agent once and returns the record exactly, bigints included", async () => {
       const { wallets } = await harness.fresh();

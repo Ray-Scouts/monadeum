@@ -1,6 +1,6 @@
 # @monadeum/db
 
-Postgres storage for the module stores: `AgentWalletStore` and `SponsorshipLedger` (`@monadeum/wallets`), `UserStore`, `ChallengeStore` and `SessionStore` (`@monadeum/auth`), `TradeStore` (`@monadeum/trading`), `PaymentLog` (`@monadeum/x402`), and `TickStore` (`@monadeum/tick`). The decisions behind it are in `ARCHITECTURE.md` section 10, database layer entry.
+Postgres storage for the module stores: `AgentWalletStore` and `SponsorshipLedger` (`@monadeum/wallets`), `UserStore`, `ChallengeStore` and `SessionStore` (`@monadeum/auth`), `TradeStore` (`@monadeum/trading`), `PaymentLog` (`@monadeum/x402`), `TickStore` (`@monadeum/tick`), and `ReadModelStore` (`@monadeum/indexer`), plus the append-only policy-document table (`PgPolicyVersions`) and the database roles and grants. The decisions behind it are in `ARCHITECTURE.md` section 10, database layer entry.
 
 ## Use
 

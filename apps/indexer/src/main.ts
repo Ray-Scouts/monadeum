@@ -6,8 +6,9 @@ import { InMemoryReadModelStore, type ReadModelStore } from "./store.js";
 import type { IndexerChain } from "./types.js";
 
 /**
- * Builds the indexer process. The store defaults to the in-memory read-model: the Postgres store described by
- * `sql/001_read_model.sql` is not implemented yet, so a restart re-indexes from INDEXER_START_BLOCK.
+ * Builds the indexer process. The store defaults to the in-memory read-model, so a restart re-indexes from
+ * INDEXER_START_BLOCK. The Postgres store, `PgReadModelStore` in `@monadeum/db`, can be passed in by a caller; this
+ * package does not import it, because `@monadeum/db` depends on this package for the interface.
  */
 export function createIndexer(config: IndexerConfig, chain: IndexerChain = new ViemIndexerChain(config.rpcUrl), store: ReadModelStore = new InMemoryReadModelStore()) {
   const registry = defaultRegistry({ spendPolicy: config.spendPolicy, entryPoint: config.entryPoint, kernelFactory: config.kernelFactory });

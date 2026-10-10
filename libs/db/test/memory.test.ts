@@ -1,4 +1,5 @@
 import { MemoryChallengeStore, MemorySessionStore, MemoryUserStore } from "@monadeum/auth";
+import { InMemoryReadModelStore } from "@monadeum/indexer";
 import { MemoryTickStore } from "@monadeum/tick";
 import { MemoryTradeStore } from "@monadeum/trading";
 import { MemoryAgentWalletStore, MemorySponsorshipLedger } from "@monadeum/wallets";
@@ -16,6 +17,7 @@ conformance("memory", {
       trades: new MemoryTradeStore(),
       payments: new MemoryPaymentLog(),
       ticks: new MemoryTickStore(),
+      readModel: new InMemoryReadModelStore(),
     };
   },
 });
