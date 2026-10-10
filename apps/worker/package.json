@@ -7,6 +7,7 @@
     "start": "node dist/src/main.js"
   },
   "dependencies": {
+    "@monadeum/agent-registry": "workspace:*",
     "@monadeum/commitment": "workspace:*",
     "@monadeum/db": "workspace:*",
     "@monadeum/external": "workspace:*",
@@ -20,6 +21,8 @@
     "@monadeum/x402": "workspace:*",
     "@nestjs/common": "^11.1.6",
     "@nestjs/core": "^11.1.6",
+    "bullmq": "5.81.5",
+    "ioredis": "5.11.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "viem": "2.56.9"

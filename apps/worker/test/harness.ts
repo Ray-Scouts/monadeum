@@ -42,7 +42,7 @@ import {
   type Hex,
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { MemoryAgentStore, type AgentRecord } from "../src/agents.js";
+import { MemoryAgentStore, type AgentRecord, type AgentRegistry } from "../src/agents.js";
 import type { ChainReader, MarketReading, MarketSource } from "../src/ports.js";
 import { MemoryDebitStore, OwnerPolicies, RiskGatedSettlement, UnconfiguredReallocationExecutor, type ReallocationExecutor } from "../src/reallocation.js";
 import type { WorkerStores } from "../src/stores.js";
@@ -268,7 +268,7 @@ export async function world(options: WorldOptions = {}) {
   const payer: Payer = { authorize: async (terms) => { authorizations.push(terms); return "signed-authorization"; } };
   const stores = {
     wallets: new MemoryAgentWalletStore() as AgentWalletStore, vault: new MemorySessionKeyVault(), sponsorship: new MemorySponsorshipLedger() as SponsorshipLedger,
-    trades: new MemoryTradeStore() as TradeStore, payments: new MemoryPaymentLog() as PaymentLog, ticks: new MemoryTickStore() as TickStore, agents: new MemoryAgentStore(),
+    trades: new MemoryTradeStore() as TradeStore, payments: new MemoryPaymentLog() as PaymentLog, ticks: new MemoryTickStore() as TickStore, agents: new MemoryAgentStore() as AgentRegistry,
     debits: new MemoryDebitStore(),
   };
   if (options.stores) Object.assign(stores, options.stores);
@@ -295,7 +295,7 @@ export async function world(options: WorldOptions = {}) {
     const capital = spec.capital ?? 100n * UNIT;
     token.mint(deployed.account, capital);
     signals.set(spec.agentId, spec.signal ?? 0.01);
-    stores.agents.add({
+    await stores.agents.add({
       agentId: spec.agentId,
       owner: owner.address.toLowerCase() as Hex,
       account: deployed.account,

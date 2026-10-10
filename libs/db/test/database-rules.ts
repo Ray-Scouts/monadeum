@@ -8,7 +8,9 @@ import { loadPolicy, type PolicyDocument } from "@monadeum/risk";
 import type { Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
+  PgAgentStore,
   PgAgentWalletStore,
+  PgDebitStore,
   PgPaymentLog,
   PgPolicyVersions,
   PgReadModelStore,
@@ -20,7 +22,7 @@ import {
   type Database,
   type Transaction,
 } from "../src/index.js";
-import { batch, chainEvent, operation, payment, tickRecord, trade, wallet } from "./conformance.js";
+import { agentRecord, batch, chainEvent, debitRecord, operation, payment, tickRecord, trade, wallet } from "./conformance.js";
 import { postgresHarness } from "./harness.js";
 
 const DENIED = (error: unknown) => (error as { code?: string }).code === "42501";
@@ -199,6 +201,32 @@ export function databaseRules(name: string, db: Database): void {
       await assert.rejects(new PgTickStore(reader).write(tickRecord("a", 2)), DENIED);
       await assert.rejects(new PgAgentWalletStore(asRole(db, "monadeum_indexer")).claim(wallet("b", `0x${"ef".repeat(20)}` as Hex)), DENIED);
       await assert.rejects(new PgPaymentLog(asRole(db, "monadeum_policy_operator")).get("a:1"), DENIED);
+    });
+
+    it("the worker role reads and retires agents, saves state, and records debits, but never creates an agent", async () => {
+      await reset();
+      await new PgAgentStore(db).add(agentRecord("a"));
+      const worker = asRole(db, "monadeum_worker");
+      const agents = new PgAgentStore(worker);
+      assert.equal((await agents.list()).length, 1);
+      await agents.saveState("a", { ...(await agents.state("a")), lowFitnessWindows: 1 });
+      await agents.saveState("a", { ...(await agents.state("a")), lowFitnessWindows: 2 });
+      await agents.update({ ...agentRecord("a"), status: "retired" });
+      assert.equal((await agents.get("a"))?.status, "retired");
+      await assert.rejects(agents.add(agentRecord("b")), DENIED);
+      const debits = new PgDebitStore(worker);
+      assert.equal(await debits.claim(debitRecord("o:1:a")), true);
+      await debits.write({ ...debitRecord("o:1:a"), status: "settled" });
+
+      const reader = asRole(db, "monadeum_reader");
+      assert.equal((await new PgAgentStore(reader).state("a")).lowFitnessWindows, 2);
+      assert.equal((await new PgDebitStore(reader).get("o:1:a"))?.status, "settled");
+      await assert.rejects(new PgDebitStore(reader).claim(debitRecord("o:1:b")), DENIED);
+      await assert.rejects(new PgAgentStore(reader).saveState("a", await agents.state("a")), DENIED);
+      await assert.rejects(new PgAgentStore(asRole(db, "monadeum_indexer")).list(), DENIED);
+      for (const table of ["worker_agents", "worker_agent_states", "reallocation_debits"]) {
+        await assert.rejects(as(db, "monadeum_worker", `DELETE FROM ${table}`), DENIED, table);
+      }
     });
 
     it("no role deletes worker records, and no process role touches the auth tables", async () => {

@@ -9,9 +9,13 @@ import {
   type ReallocationParty,
   type ReallocationProposal,
 } from "@monadeum/risk";
+import type { AgentRecord, AgentStore, DebitRecord, DebitStore } from "@monadeum/agent-registry";
 import { encodeFunctionData, erc20Abi, type Hex } from "viem";
-import type { AgentRecord, AgentStore } from "./agents.js";
 import type { ChainReader } from "./ports.js";
+
+// The debit store is defined in `@monadeum/agent-registry`, so `@monadeum/db` can implement it on Postgres.
+export { MemoryDebitStore } from "@monadeum/agent-registry";
+export type { DebitRecord, DebitStore } from "@monadeum/agent-registry";
 
 /**
  * Owners' reallocation policies, as committed on-chain. In-memory stand-in for the verified policy source of
@@ -92,41 +96,6 @@ export interface ReallocationExecutor {
 export class UnconfiguredReallocationExecutor implements ReallocationExecutor {
   async execute(): Promise<{ ok: false; submitted: false; reason: string }> {
     return { ok: false, submitted: false, reason: "reallocation contract is not configured" };
-  }
-}
-
-export interface DebitRecord {
-  key: string;
-  /** approved: written before submission. settled / failed / rejected: final. */
-  status: "approved" | "settled" | "failed" | "rejected";
-  planHash: Hex | null;
-  decision: Decision;
-  reason: string | null;
-}
-
-/** Durable per-debit record keyed by (owner, evaluation sequence, source). `claim` is insert-if-absent. */
-export interface DebitStore {
-  get(key: string): Promise<DebitRecord | undefined>;
-  claim(record: DebitRecord): Promise<boolean>;
-  write(record: DebitRecord): Promise<void>;
-}
-
-export class MemoryDebitStore implements DebitStore {
-  private readonly rows = new Map<string, DebitRecord>();
-  async get(key: string) {
-    const r = this.rows.get(key);
-    return r ? structuredClone(r) : undefined;
-  }
-  async claim(record: DebitRecord) {
-    if (this.rows.has(record.key)) return false;
-    this.rows.set(record.key, structuredClone(record));
-    return true;
-  }
-  async write(record: DebitRecord) {
-    this.rows.set(record.key, structuredClone(record));
-  }
-  all(): DebitRecord[] {
-    return [...this.rows.values()].map((r) => structuredClone(r));
   }
 }
 

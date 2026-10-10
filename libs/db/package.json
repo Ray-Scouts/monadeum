@@ -9,6 +9,7 @@
     "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js"
   },
   "dependencies": {
+    "@monadeum/agent-registry": "workspace:*",
     "@monadeum/auth": "workspace:*",
     "@monadeum/commitment": "workspace:*",
     "@monadeum/read-model": "workspace:*",

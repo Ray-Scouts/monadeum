@@ -1,3 +1,4 @@
+import { MemoryAgentStore, MemoryDebitStore } from "@monadeum/agent-registry";
 import { MemoryChallengeStore, MemorySessionStore, MemoryUserStore } from "@monadeum/auth";
 import { InMemoryReadModelStore } from "@monadeum/read-model";
 import { MemoryTickStore } from "@monadeum/tick";
@@ -18,6 +19,8 @@ conformance("memory", {
       payments: new MemoryPaymentLog(),
       ticks: new MemoryTickStore(),
       readModel: new InMemoryReadModelStore(),
+      agents: new MemoryAgentStore(),
+      debits: new MemoryDebitStore(),
     };
   },
 });

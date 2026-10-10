@@ -1,5 +1,8 @@
+import { MemoryAgentStore, MemoryDebitStore, type AgentRegistry, type DebitStore } from "@monadeum/agent-registry";
 import {
+  PgAgentStore,
   PgAgentWalletStore,
+  PgDebitStore,
   PgPaymentLog,
   PgSponsorshipLedger,
   PgTickStore,
@@ -15,15 +18,18 @@ import { MemoryPaymentLog, type PaymentLog } from "@monadeum/x402";
 export const WORKER_STORES = Symbol("WORKER_STORES");
 
 /**
- * The module stores the worker's services write, as one bundle so the process picks Postgres or memory for all of
- * them at once, never a mix. Each Postgres table here is granted to `monadeum_worker` (libs/db migration 0005).
+ * The stores the worker reads and writes, as one bundle so the process picks Postgres or memory for all of them at
+ * once, never a mix. Their Postgres tables are granted to `monadeum_worker` in libs/db migrations 0005 and 0006; on
+ * `worker_agents` the worker may read and update (retire) but not insert, because agent creation is not the worker's.
  *
- * Not here yet: `AgentStore` and `DebitStore`, which have no Postgres implementation, and the session key vault,
- * which belongs in a secrets manager, never in Postgres (SECURITY.md section 11).
+ * Not here: the owner reallocation policy source, which is still the in-memory `OwnerPolicies`, and the session key
+ * vault, which belongs in a secrets manager, never in Postgres (SECURITY.md section 11).
  */
 export interface WorkerStores {
   /** False for the in-memory stores: a restart loses every record. */
   durable: boolean;
+  agents: AgentRegistry;
+  debits: DebitStore;
   ticks: TickStore;
   trades: TradeStore;
   payments: PaymentLog;
@@ -35,6 +41,8 @@ export interface WorkerStores {
 export function memoryWorkerStores(): WorkerStores {
   return {
     durable: false,
+    agents: new MemoryAgentStore(),
+    debits: new MemoryDebitStore(),
     ticks: new MemoryTickStore(),
     trades: new MemoryTradeStore(),
     payments: new MemoryPaymentLog(),
@@ -46,6 +54,8 @@ export function memoryWorkerStores(): WorkerStores {
 export function postgresWorkerStores(db: Database): WorkerStores {
   return {
     durable: true,
+    agents: new PgAgentStore(db),
+    debits: new PgDebitStore(db),
     ticks: new PgTickStore(db),
     trades: new PgTradeStore(db),
     payments: new PgPaymentLog(db),
