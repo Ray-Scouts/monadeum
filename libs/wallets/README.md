@@ -1,0 +1,48 @@
+# WalletsModule
+
+Per-agent ERC-4337 account deployment, session key issuance and revocation, and paymaster sponsorship tracking, as specified in `ARCHITECTURE.md` sections 6, 7, 10 and 16.3 and `SECURITY.md` sections 1, 2, 8 and 11. Built on ZeroDev Kernel v3.1, EntryPoint 0.7, and call policy v0.0.4, with `@zerodev/sdk` 5.5.10, `@zerodev/permissions` 5.6.3, `@zerodev/ecdsa-validator` 5.4.9 and `viem` 2.56.9 pinned exactly: the versions the issue #18 and #19 spikes used.
+
+## What it does
+
+- **Deployment** (`deploy`): one owner-signed operation deploys the account and calls `setLimits` and `setAllowed` on the spend policy for every allowlist entry. Idempotent per agent: a repeat returns the existing account and sends nothing, a call made while an earlier operation is pending waits for it, and an account that exists but whose spend policy does not match is reported as `misconfigured`, never reconfigured silently. Each agent gets its own Kernel `index` under the owner, and one account cannot be recorded for two agents.
+- **Issuance** (`issueSessionKey`): generates a key, stores it only in the `SessionKeyVault`, and has the owner sign the Kernel enable data for a permission validator with two policies: call policy v0.0.4 listing exactly the allowlist (value 0, call type `CALL`), and the spend policy contract, also installed as the validator's hook. The validator is enabled on the key's first operation. `execute` refuses, before signing, any call outside the allowlist or with native value.
+- **Revocation** (`revokeSessionKey`): the key is destroyed in the vault and the record marked first, so this process cannot sign again whatever happens next. Then one owner-signed operation uninstalls the validator, if installed, and calls Kernel `invalidateNonce(currentNonce + 1)`. Success is read back from chain: the validator is not installed or is below `validNonceFrom`, and `currentNonce` is past the nonce the enable signature was bound to, so the owner's approval cannot reinstall it. `revocationStatus` repeats that check independently at any time.
+- **Sponsorship** (`send`, internal to every operation): sponsored only if a paymaster is configured, the agent has budget left, the paymaster answers, and the operation's worst-case gas fits the remaining budget, reserved before submission. Otherwise the account pays, if its native balance covers the worst case; if it does not, the operation is not sent. A paymaster that fails is never assumed to have sponsored. A submission the bundler rejected releases its reservation; one whose outcome is unknown keeps it.
+
+The spend policy contract is issue #25. This package depends only on its interface, `contracts/src/IAgentSpendPolicy.sol`, and its address.
+
+## Configuration
+
+`loadWalletsConfig()` reads these variables and rejects anything it cannot validate. None of them is a private key.
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `WALLETS_CHAIN_ID` | yes | Must be `10143`, Monad testnet. Mainnet waits on the audit gate in `SECURITY.md` section 3. |
+| `WALLETS_RPC_URL` | no | Monad RPC. Defaults to viem's Monad testnet RPC. |
+| `WALLETS_BUNDLER_URL` | yes | ZeroDev v3 bundler URL, https. It carries the ZeroDev project ID: keep it out of logs. |
+| `WALLETS_PAYMASTER_URL` | no | ZeroDev paymaster URL, https. Unset: nothing is sponsored. |
+| `WALLETS_SPEND_POLICY_ADDRESS` | yes | Deployed `IAgentSpendPolicy` implementation. Deployment fails closed if it has no code. |
+| `WALLETS_SPEND_POLICY_DATA` | no | Install data for the policy role. Defaults to `0x` until issue #25 defines one. |
+| `WALLETS_SPEND_POLICY_HOOK_DATA` | no | Install data for the hook role. Defaults to `0x` until issue #25 defines one. |
+| `WALLETS_SETTLEMENT_ASSET` | yes | Settlement asset (USDC). Its `transfer` and `approve` are allowlisted, nothing else on it. |
+| `WALLETS_KURU_ROUTER` | yes | Kuru router address. |
+| `WALLETS_KURU_ROUTER_SELECTORS` | yes | Comma-separated 4-byte selectors allowed on the router, pending issue #20. |
+| `WALLETS_REPRODUCTION_CONTRACT` | yes | Reproduction contract address. |
+| `WALLETS_REPRODUCTION_SELECTORS` | yes | Comma-separated 4-byte selectors allowed on it. |
+| `WALLETS_SPONSORED_OPERATIONS` | yes | Sponsored operations per agent, deployment included. |
+| `WALLETS_SPONSORED_GAS_WEI` | yes | Sponsored gas per agent in wei, deployment included. |
+
+The consuming app also supplies an `AgentWalletStore` and a `SponsorshipLedger` backed by Postgres, and a `SessionKeyVault` backed by a secrets manager. The in-memory implementations here are for tests and local development only.
+
+## Tests
+
+`bun run --filter @monadeum/wallets test` runs offline: `test/wallets.test.ts` drives the service against an in-memory chain that models the Kernel v3.1 nonce rules, and `test/zerodev.test.ts` exercises the ZeroDev adapter against the installed SDK with a mock transport, including recovering the owner from the enable signature.
+
+`test/testnet.test.ts` runs the full flow on Monad testnet and is skipped unless `WALLETS_TESTNET=1`. It needs every variable above, a deployed spend policy, and `WALLETS_TESTNET_OWNER_PRIVATE_KEY`, a testnet-only key standing in for the user's embedded wallet. `WALLETS_TESTNET_INDEX` optionally fixes the account index. Never use a key that holds mainnet assets, and never commit one.
+
+## Not verified yet
+
+- No run on Monad testnet: the spend policy contract it depends on does not exist yet (issue #25). The opt-in test is the check.
+- Installing a custom policy and hook on Kernel v3.1, and their install data, is the assumption stated in `ARCHITECTURE.md` section 16.3.
+- Sponsorship through ZeroDev's paymaster has not been exercised on Monad; both spikes paid gas from the account.
+- The Kernel v3.1 nonce rules the revocation check relies on were read from the Kernel v3.1 source (`ValidationManager.sol`, `Kernel.sol`) on 2026-10-09, not observed on chain.
