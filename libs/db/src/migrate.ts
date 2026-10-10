@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import type { Database } from "./database.js";
+import type { Database, Queryable } from "./database.js";
 
 /** The migrations shipped with this package, `libs/db/migrations`. */
 export const MIGRATIONS_DIR = fileURLToPath(new URL("../../migrations/", import.meta.url));
@@ -54,15 +54,10 @@ export async function migrate(db: Database, dir: string = MIGRATIONS_DIR): Promi
       checksum    text NOT NULL,
       applied_at  timestamptz NOT NULL DEFAULT now()
     )`);
-    const { rows } = await tx.query<{ version: string; name: string; checksum: string }>(
+    const { rows } = await tx.query<AppliedRow>(
       "SELECT version, name, checksum FROM store_schema_migrations ORDER BY version",
     );
-    const known = new Map(migrations.map((m) => [m.version, m]));
-    for (const row of rows) {
-      const file = known.get(row.version);
-      if (!file) throw new MigrationError(`applied migration ${row.name} is missing from ${dir}`);
-      if (file.checksum !== row.checksum) throw new MigrationError(`applied migration ${row.name} was changed after it was applied`);
-    }
+    checkApplied(migrations, rows, dir);
     const applied = new Set(rows.map((r) => r.version));
     const done: string[] = [];
     for (const m of migrations) {
@@ -73,4 +68,37 @@ export async function migrate(db: Database, dir: string = MIGRATIONS_DIR): Promi
     }
     return done;
   });
+}
+
+interface AppliedRow {
+  version: string;
+  name: string;
+  checksum: string;
+}
+
+function checkApplied(migrations: Migration[], rows: AppliedRow[], dir: string): void {
+  const known = new Map(migrations.map((m) => [m.version, m]));
+  for (const row of rows) {
+    const file = known.get(row.version);
+    if (!file) throw new MigrationError(`applied migration ${row.name} is missing from ${dir}`);
+    if (file.checksum !== row.checksum) throw new MigrationError(`applied migration ${row.name} was changed after it was applied`);
+  }
+}
+
+/**
+ * Checks, without changing anything, that every migration in `dir` is applied and that no applied file was changed or
+ * removed. For a process that connects through a role without DDL privileges (migration 0004: no process connects as
+ * the table owner), so the schema is applied by a separate, privileged step and the process only confirms it. Throws
+ * `MigrationError` naming what is pending or changed.
+ */
+export async function verifyMigrations(db: Queryable, dir: string = MIGRATIONS_DIR): Promise<void> {
+  const migrations = await loadMigrations(dir);
+  const { rows: table } = await db.query<{ present: boolean }>("SELECT to_regclass('store_schema_migrations') IS NOT NULL AS present");
+  const rows = table[0]?.present
+    ? (await db.query<AppliedRow>("SELECT version, name, checksum FROM store_schema_migrations ORDER BY version")).rows
+    : [];
+  checkApplied(migrations, rows, dir);
+  const applied = new Set(rows.map((r) => r.version));
+  const pending = migrations.filter((m) => !applied.has(m.version)).map((m) => m.name);
+  if (pending.length > 0) throw new MigrationError(`migrations not applied: ${pending.join(", ")}`);
 }

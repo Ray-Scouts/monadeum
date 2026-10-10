@@ -13,7 +13,7 @@ The read path described in `ARCHITECTURE.md` sections 1, 9 and 10: a separately 
   - `kernel-session-keys`: Kernel v3.1 `PermissionInstalled`, `PermissionUninstalled`, `NonceInvalidated`, emitted by followed accounts: the session key lifecycle WalletsModule produces (enable on first use, uninstall and `invalidateNonce` on revocation).
   Adding the reallocation contract (issue #31) means writing one more handler and registering it; the sync loop, reorg handling, and store do not change. A test registers a stand-in handler to show this.
 - **Event signatures** come from installed package ABIs, not from memory: Kernel v3.1 from `@zerodev/sdk` 5.5.10 (`KernelV3_1AccountAbi`) and EntryPoint v0.7 from viem (`entryPoint07Abi`). `AgentSpendPolicy` ships no ABI artifact, so its events are parsed from `contracts/src/IAgentSpendPolicy.sol`'s declarations, and a test fails if the two drift.
-- **Read-model.** `ReadModelStore` is the write and read interface; `InMemoryReadModelStore` implements it. `projectAccount` folds an account's rows into a view: deployment, limits, allowlist, last spend, and session permissions.
+- **Read-model.** `ReadModelStore` is the write and read interface, defined in `libs/read-model` and re-exported here; `InMemoryReadModelStore` and, in `libs/db`, `PgReadModelStore` implement it. With `DATABASE_URL` set the service writes Postgres, so a restart resumes after the stored cursor. `projectAccount` folds an account's rows into a view: deployment, limits, allowlist, last spend, and session permissions.
 
 ## Boundaries
 
@@ -37,6 +37,9 @@ The read path described in `ARCHITECTURE.md` sections 1, 9 and 10: a separately 
 | `INDEXER_CONFIRMATIONS` | no | With `INDEXER_SYNC_TO=confirmations`: blocks below the head before indexing, default 10. |
 | `INDEXER_REORG_WINDOW` | no | Blocks of stored hashes kept below the cursor, default 1000. Must exceed the confirmations. |
 | `INDEXER_POLL_INTERVAL_MS` | no | Wait between polls once caught up, default 1000, at least 100. |
+| `DATABASE_URL` | in production | Postgres for the read-model. Unset runs the in-memory store, which is logged as not durable and re-indexes from `INDEXER_START_BLOCK` on every start. Connect through a role that is a member of `monadeum_indexer`. |
+| `DATABASE_MIGRATIONS` | no | `verify` (default) refuses to start unless every `libs/db` migration is applied; `apply` applies pending ones first. |
+| `MONADEUM_ENV` | no | `development` (default) or `production`; production refuses to start without `DATABASE_URL`. |
 
 ## Finality
 
@@ -53,13 +56,12 @@ Checked against Monad's documentation on 2026-10-10 (`docs.monad.xyz`: Block Sta
 
 ## Running
 
-`bun run --filter @monadeum/indexer test` builds and runs the offline tests against an in-memory chain (`test/mock-chain.ts`), including a reorg that removes an indexed `Spent` event and a tracked account. `test/testnet.test.ts` syncs one batch of Monad testnet and is skipped unless `INDEXER_TESTNET=1`; it needs `INDEXER_SPEND_POLICY_ADDRESS` (any address works for a sync check) and optionally `INDEXER_RPC_URL`.
+`bun run --filter @monadeum/indexer test` builds and runs the offline tests against an in-memory chain (`test/mock-chain.ts`), including a reorg that removes an indexed `Spent` event and a tracked account, and boot tests that run the service from its environment on PGlite, including a restart that resumes from the stored cursor. `test/testnet.test.ts` syncs one batch of Monad testnet and is skipped unless `INDEXER_TESTNET=1`; it needs `INDEXER_SPEND_POLICY_ADDRESS` (any address works for a sync check) and optionally `INDEXER_RPC_URL`.
 
 `node dist/src/main.js` runs the service after a build.
 
 ## Not done yet
 
-- **Postgres is not wired into this service.** The schema, projections, and grants are migrations 0002 and 0004 in `libs/db`, and `PgReadModelStore` there implements `ReadModelStore` on them, tested against the same conformance suite as `InMemoryReadModelStore`. `@monadeum/db` depends on this package for the interface, so this package cannot import it back without a dependency cycle; until the interface moves to a shared library or a separate entry point wires it, the service runs on the in-memory store and a restart re-indexes from `INDEXER_START_BLOCK`.
 - The testnet run above synced real blocks but indexed no rows: the spend policy is not deployed there yet, so no handler has seen a real event.
 - No identity registry or genome hash commitment contract exists yet (`ARCHITECTURE.md` section 9), so the indexer has nothing to read for them; each becomes a handler when its contract lands.
 - The read API the dashboard will call, and the replacement of `apps/web`'s sample `PopulationSource`, are separate work (issue #42).

@@ -4,18 +4,28 @@ import { FitnessService } from "@monadeum/fitness";
 import { ReallocationService } from "@monadeum/reallocation";
 import { RiskService, type Decision, type ExecutionPlan, type PolicyDocument } from "@monadeum/risk";
 import { StrategyService } from "@monadeum/strategy";
-import { MemoryTickStore } from "@monadeum/tick";
+import { MemoryTickStore, type TickStore } from "@monadeum/tick";
 import {
   KURU_TESTNET_MON_USDC as M,
   MemoryTradeStore,
   TradingService,
   WalletsTradeSigner,
   type TradeSigner,
+  type TradeStore,
   type Venue,
 } from "@monadeum/trading";
-import { MemoryAgentWalletStore, MemorySessionKeyVault, MemorySponsorshipLedger, WalletsService, buildScope, type SponsorshipBudget } from "@monadeum/wallets";
+import {
+  MemoryAgentWalletStore,
+  MemorySessionKeyVault,
+  MemorySponsorshipLedger,
+  WalletsService,
+  buildScope,
+  type AgentWalletStore,
+  type SponsorshipBudget,
+  type SponsorshipLedger,
+} from "@monadeum/wallets";
 import { FakeChain } from "@monadeum/wallets/testing";
-import { MemoryPaymentLog, X402Client, type Payer } from "@monadeum/x402";
+import { MemoryPaymentLog, X402Client, type Payer, type PaymentLog } from "@monadeum/x402";
 import {
   decodeAbiParameters,
   decodeFunctionData,
@@ -35,6 +45,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { MemoryAgentStore, type AgentRecord } from "../src/agents.js";
 import type { ChainReader, MarketReading, MarketSource } from "../src/ports.js";
 import { MemoryDebitStore, OwnerPolicies, RiskGatedSettlement, UnconfiguredReallocationExecutor, type ReallocationExecutor } from "../src/reallocation.js";
+import type { WorkerStores } from "../src/stores.js";
 import { AgentWorker, type WorkerSettings } from "../src/worker.js";
 
 // In-process integration harness for the worker loop, and the base for the end-to-end suite of issue #47. Every
@@ -243,6 +254,8 @@ export interface WorldOptions {
   reallocationOwners?: ("a" | "b")[];
   executor?: "fake" | "unconfigured";
   information?: boolean;
+  /** Replaces the module stores, for example with the Postgres ones a booted worker provides. */
+  stores?: Omit<WorkerStores, "durable">;
 }
 
 export async function world(options: WorldOptions = {}) {
@@ -254,10 +267,11 @@ export async function world(options: WorldOptions = {}) {
   const authorizations: unknown[] = [];
   const payer: Payer = { authorize: async (terms) => { authorizations.push(terms); return "signed-authorization"; } };
   const stores = {
-    wallets: new MemoryAgentWalletStore(), vault: new MemorySessionKeyVault(), sponsorship: new MemorySponsorshipLedger(),
-    trades: new MemoryTradeStore(), payments: new MemoryPaymentLog(), ticks: new MemoryTickStore(), agents: new MemoryAgentStore(),
+    wallets: new MemoryAgentWalletStore() as AgentWalletStore, vault: new MemorySessionKeyVault(), sponsorship: new MemorySponsorshipLedger() as SponsorshipLedger,
+    trades: new MemoryTradeStore() as TradeStore, payments: new MemoryPaymentLog() as PaymentLog, ticks: new MemoryTickStore() as TickStore, agents: new MemoryAgentStore(),
     debits: new MemoryDebitStore(),
   };
+  if (options.stores) Object.assign(stores, options.stores);
   const policies = new OwnerPolicies(DECIMALS);
   const scope = buildScope({
     settlementAsset: M.quote, kuruRouter: M.router, kuruRouterSelectors: [SWAP_SELECTOR], reallocation: REALLOC, reallocationSelectors: [REALLOCATE_SELECTOR],

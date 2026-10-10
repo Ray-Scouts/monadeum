@@ -7,8 +7,20 @@ import { hashRiskPolicy } from "@monadeum/commitment";
 import { loadPolicy, type PolicyDocument } from "@monadeum/risk";
 import type { Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { PgPolicyVersions, PgReadModelStore, isUniqueViolation, type Database } from "../src/index.js";
-import { batch, chainEvent } from "./conformance.js";
+import {
+  PgAgentWalletStore,
+  PgPaymentLog,
+  PgPolicyVersions,
+  PgReadModelStore,
+  PgSponsorshipLedger,
+  PgTickStore,
+  PgTradeStore,
+  isUniqueViolation,
+  verifyMigrations,
+  type Database,
+  type Transaction,
+} from "../src/index.js";
+import { batch, chainEvent, operation, payment, tickRecord, trade, wallet } from "./conformance.js";
 import { postgresHarness } from "./harness.js";
 
 const DENIED = (error: unknown) => (error as { code?: string }).code === "42501";
@@ -26,6 +38,30 @@ async function as(db: Database, role: string, sql: string): Promise<void> {
   } catch (error) {
     if (!(error instanceof Rollback)) throw error;
   }
+}
+
+/**
+ * The same database, with every statement and transaction run as `role` through SET LOCAL ROLE, so the stores can be
+ * exercised under a process role's grants. Unlike `as`, writes commit.
+ */
+function asRole(db: Database, role: string): Database {
+  const enter = async (tx: Transaction) => {
+    await tx.query(`SET LOCAL ROLE ${role}`);
+  };
+  return {
+    query<R>(text: string, params?: readonly unknown[]) {
+      return db.transaction(async (tx) => {
+        await enter(tx);
+        return tx.query<R>(text, params);
+      });
+    },
+    transaction(fn) {
+      return db.transaction(async (tx) => {
+        await enter(tx);
+        return fn(tx);
+      });
+    },
+  };
 }
 
 function policy(version: number, previousHash: Hex | null): PolicyDocument {
@@ -123,6 +159,67 @@ export function databaseRules(name: string, db: Database): void {
       await assert.rejects(as(db, "monadeum_reader", "DELETE FROM chain_events"), DENIED);
       await assert.rejects(as(db, "monadeum_worker", eventRow), DENIED);
       await assert.rejects(as(db, "monadeum_policy_operator", "UPDATE indexer_cursor SET block_hash = block_hash"), DENIED);
+    });
+
+    it("the worker role runs every worker store, and nothing else writes them", async () => {
+      await reset();
+      const worker = asRole(db, "monadeum_worker");
+      const wallets = new PgAgentWalletStore(worker);
+      assert.equal(await wallets.claim(wallet("a")), true);
+      await wallets.update(wallet("a"));
+      assert.equal((await wallets.findByAccount(wallet("a").account))?.agentId, "a");
+      assert.equal(await wallets.claimOperation(operation("a", "a:1")), true);
+      await wallets.updateOperation(operation("a", "a:1"));
+      assert.equal((await wallets.listOperations("a")).length, 1);
+      const ledger = new PgSponsorshipLedger(worker);
+      const budget = { operations: 5, gasWei: 1_000n };
+      assert.equal(await ledger.reserve("a", 100n, budget), true);
+      await ledger.settle("a", 100n, 40n);
+      assert.equal(await ledger.reserve("a", 100n, budget), true);
+      await ledger.release("a", 100n);
+      const trades = new PgTradeStore(worker);
+      const filled = `0x${"cd".repeat(32)}` as Hex;
+      assert.equal(await trades.claim(trade("a:1")), true);
+      await trades.write(trade("a:1", filled));
+      assert.equal((await trades.findByTransaction(filled))?.key, "a:1");
+      const payments = new PgPaymentLog(worker);
+      assert.equal(await payments.claim(payment("a:1")), true);
+      await payments.write(payment("a:1", "ref-1"));
+      assert.equal((await payments.findBySettlement("ref-1"))?.key, "a:1");
+      const ticks = new PgTickStore(worker);
+      assert.equal(await ticks.claim(tickRecord("a", 1)), true);
+      await ticks.write({ ...tickRecord("a", 1), status: "recorded" });
+      assert.equal((await ticks.get("a:1"))?.status, "recorded");
+      await new PgPolicyVersions(worker).list();
+
+      const reader = asRole(db, "monadeum_reader");
+      assert.equal((await new PgTradeStore(reader).get("a:1"))?.key, "a:1");
+      assert.equal((await new PgTickStore(reader).get("a:1"))?.status, "recorded");
+      await assert.rejects(new PgTradeStore(reader).claim(trade("a:2")), DENIED);
+      await assert.rejects(new PgTickStore(reader).write(tickRecord("a", 2)), DENIED);
+      await assert.rejects(new PgAgentWalletStore(asRole(db, "monadeum_indexer")).claim(wallet("b", `0x${"ef".repeat(20)}` as Hex)), DENIED);
+      await assert.rejects(new PgPaymentLog(asRole(db, "monadeum_policy_operator")).get("a:1"), DENIED);
+    });
+
+    it("no role deletes worker records, and no process role touches the auth tables", async () => {
+      for (const table of ["wallet_accounts", "wallet_tick_operations", "wallet_sponsorship", "trade_records", "x402_payments", "tick_records"]) {
+        await assert.rejects(as(db, "monadeum_worker", `DELETE FROM ${table}`), DENIED, table);
+        await assert.rejects(as(db, "monadeum_worker", `TRUNCATE ${table}`), DENIED, table);
+        const column = table === "wallet_sponsorship" ? "operations" : "body";
+        await assert.rejects(as(db, "monadeum_reader", `UPDATE ${table} SET ${column} = ${column}`), DENIED, table);
+      }
+      for (const role of ["monadeum_worker", "monadeum_reader", "monadeum_indexer", "monadeum_policy_operator"]) {
+        for (const table of ["auth_users", "auth_user_wallets", "auth_challenges", "auth_sessions"]) {
+          await assert.rejects(as(db, role, `SELECT * FROM ${table}`), DENIED, `${role} on ${table}`);
+        }
+      }
+    });
+
+    it("every process role can verify the migrations, and none can change the ledger", async () => {
+      for (const role of ["monadeum_worker", "monadeum_reader", "monadeum_indexer"]) {
+        await verifyMigrations(asRole(db, role));
+        await assert.rejects(as(db, role, "DELETE FROM store_schema_migrations"), DENIED, role);
+      }
     });
 
     it("only the operator role appends policy versions, the worker only reads them, and nobody changes them", async () => {

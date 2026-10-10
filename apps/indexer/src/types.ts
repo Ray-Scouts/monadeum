@@ -1,4 +1,8 @@
+import type { FieldValue } from "@monadeum/read-model";
 import type { AbiEvent, Address, Hex } from "viem";
+
+// The read-model's row types are shared with `PgReadModelStore` in `@monadeum/db` through `@monadeum/read-model`.
+export type { BlockHash, ChainEvent, FieldValue } from "@monadeum/read-model";
 
 /** A log as returned by `eth_getLogs`, before decoding. Addresses are lowercase. */
 export interface RawLog {
@@ -34,29 +38,6 @@ export interface IndexerChain {
   /** The canonical block at `number`, or null if the node does not have it. */
   block(number: bigint): Promise<BlockRef | null>;
   logs(query: LogQuery): Promise<RawLog[]>;
-}
-
-/** A JSON-safe field. Integers are decimal strings, so a uint256 never loses precision. */
-export type FieldValue = string | number | boolean;
-
-/** One decoded chain fact, as stored in the read-model. */
-export interface ChainEvent {
-  /** Stable name, for example `spend.limits-set`. Declared by exactly one handler. */
-  kind: string;
-  /** The agent account the fact is about, lowercase, or null if it is about no single account. */
-  account: Address | null;
-  /** The contract that emitted the log, lowercase. */
-  address: Address;
-  blockNumber: bigint;
-  blockHash: Hex;
-  transactionHash: Hex;
-  logIndex: number;
-  data: Record<string, FieldValue>;
-}
-
-export interface BlockHash {
-  number: bigint;
-  hash: Hex;
 }
 
 /** What a handler makes of one decoded log. */

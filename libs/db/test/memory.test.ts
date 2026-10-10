@@ -1,5 +1,5 @@
 import { MemoryChallengeStore, MemorySessionStore, MemoryUserStore } from "@monadeum/auth";
-import { InMemoryReadModelStore } from "@monadeum/indexer";
+import { InMemoryReadModelStore } from "@monadeum/read-model";
 import { MemoryTickStore } from "@monadeum/tick";
 import { MemoryTradeStore } from "@monadeum/trading";
 import { MemoryAgentWalletStore, MemorySponsorshipLedger } from "@monadeum/wallets";

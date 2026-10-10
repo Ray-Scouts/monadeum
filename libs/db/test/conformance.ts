@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ChallengeStore, SessionStore, UserRecord, UserStore, WalletChallenge } from "@monadeum/auth";
 import type { TickRecord, TickStore } from "@monadeum/tick";
-import type { BlockHash, ChainEvent, ReadModelStore, SyncBatch } from "@monadeum/indexer";
+import type { BlockHash, ChainEvent, ReadModelStore, SyncBatch } from "@monadeum/read-model";
 import type { TradeRecord, TradeStore } from "@monadeum/trading";
 import type { AgentWalletRecord, AgentWalletStore, SponsorshipLedger, TickOperationRecord } from "@monadeum/wallets";
 import type { PaymentLog, PaymentLogEntry } from "@monadeum/x402";
@@ -34,7 +34,7 @@ const hash = (n: number): Hex => `0x${n.toString(16).padStart(64, "0")}` as Hex;
 const ACCOUNT = "0x00000000000000000000000000000000000000ab" as Address;
 const BIG = 2n ** 200n + 12345n;
 
-function wallet(agentId: string, account: Address = ACCOUNT): AgentWalletRecord {
+export function wallet(agentId: string, account: Address = ACCOUNT): AgentWalletRecord {
   return {
     agentId,
     owner: addr(1),
@@ -48,7 +48,7 @@ function wallet(agentId: string, account: Address = ACCOUNT): AgentWalletRecord 
   };
 }
 
-function operation(agentId: string, tickKey: string): TickOperationRecord {
+export function operation(agentId: string, tickKey: string): TickOperationRecord {
   return {
     agentId, tickKey, account: ACCOUNT, callsHash: hash(7),
     attempts: [{ userOpHash: hash(1), nonce: 2n ** 64n + 1n, sponsored: true, reserved: BIG, rejected: false }],
@@ -68,7 +68,7 @@ function challenge(nonce: string): WalletChallenge {
   return { nonce, message: `sign in ${nonce}`, address: addr(20), purpose: "link", userId: "u1", expiresAt: 1_700_000_300 };
 }
 
-function trade(key: string, txHash: Hex | null = null): TradeRecord {
+export function trade(key: string, txHash: Hex | null = null): TradeRecord {
   return {
     key,
     order: {
@@ -88,11 +88,11 @@ function trade(key: string, txHash: Hex | null = null): TradeRecord {
   };
 }
 
-function payment(key: string, settlementRef: string | null = null): PaymentLogEntry {
+export function payment(key: string, settlementRef: string | null = null): PaymentLogEntry {
   return { key, provider: "nansen", price: BIG, summary: null, settlementRef, anomaly: "not-paid", influencedDecision: null };
 }
 
-function tickRecord(agentId: string, tick: number): TickRecord {
+export function tickRecord(agentId: string, tick: number): TickRecord {
   return { key: `${agentId}:${tick}`, agentId, tick, status: "started", purchase: null, approved: null, outcome: null };
 }
 

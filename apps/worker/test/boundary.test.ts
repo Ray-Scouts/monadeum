@@ -29,3 +29,15 @@ test("apps/worker does not depend on apps/indexer", () => {
     assert.doesNotMatch(text, /@monadeum\/indexer|apps\/indexer|\.\.\/indexer\b|\.\.\/\.\.\/indexer\b/, file);
   }
 });
+
+test("the database packages the worker depends on do not depend on apps/indexer either", () => {
+  for (const lib of ["db", "read-model"]) {
+    const dir = join(root, "..", "..", "libs", lib);
+    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as Record<string, Record<string, string> | undefined>;
+    for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
+      assert.ok(!Object.keys(pkg[field] ?? {}).includes("@monadeum/indexer"), `libs/${lib} ${field} names @monadeum/indexer`);
+    }
+    // Imports only: these packages' comments name the indexer as the read-model's writer.
+    for (const file of sources(join(dir, "src"))) assert.doesNotMatch(readFileSync(file, "utf8"), /from\s+["'][^"']*indexer["']|import\(\s*["'][^"']*indexer["']/, file);
+  }
+});
