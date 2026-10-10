@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {PolicyTestBase} from "./utils/PolicyTestBase.sol";
 import {AgentSpendPolicy} from "../src/AgentSpendPolicy.sol";
 import {IAgentSpendPolicy} from "../src/IAgentSpendPolicy.sol";
+import {PackedUserOperation} from "../src/kernel/IKernelModules.sol";
 
 contract AgentSpendPolicyTest is PolicyTestBase {
     // --- deployment and views ---------------------------------------------------------------------------------------
@@ -191,6 +192,74 @@ contract AgentSpendPolicyTest is PolicyTestBase {
         c.data = abi.encodePacked(TRANSFER, bytes32((uint256(1) << 160) | uint256(uint160(router))), uint256(1));
         vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.CallNotAllowed.selector, asset, TRANSFER));
         policy.check(account, _one(c));
+    }
+
+    /// `setAllowed` refuses these entries, so they cannot be reached through the contract's own functions. This
+    /// writes one into storage directly to show that `check` refuses it as well, independently of `setAllowed`, so
+    /// the self-protection rule does not rest on a single check.
+    function test_check_rejectsUncountedSettlementSelectorEvenIfStored() public {
+        bytes4[2] memory sels = [TRANSFER_FROM, INCREASE_ALLOWANCE];
+        for (uint256 i = 0; i < sels.length; ++i) {
+            vm.store(address(policy), _allowedSlot(asset, sels[i], account), bytes32(uint256(1)));
+            assertTrue(policy.isAllowed(account, asset, sels[i]), "entry written");
+            IAgentSpendPolicy.Call memory c = IAgentSpendPolicy.Call({
+                target: asset, value: 0, data: abi.encodeWithSelector(sels[i], account, router, uint256(1))
+            });
+            vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.CallNotAllowed.selector, asset, sels[i]));
+            policy.check(account, _one(c));
+        }
+    }
+
+    // --- check: ERC-7562 associated storage ------------------------------------------------------------------------
+
+    /// Every storage slot the validation path reads must be associated with the account (ERC-7562): the account is
+    /// the innermost mapping key. This records the slots `checkUserOpPolicy` actually reads for an operation that
+    /// exercises every read in `_check` (limits, allowlist entries, the recipient rule) and requires each to be one
+    /// of the slots derived with the account as innermost key, with no writes and no other contract touched.
+    function test_validation_readsOnlyAccountAssociatedStorage() public {
+        IAgentSpendPolicy.Call[] memory calls = _two(_transfer(router, 10e6), _swap());
+        bytes memory callData = abi.encodeWithSelector(
+            bytes4(keccak256("execute(bytes32,bytes)")), bytes32(bytes1(0x01)), abi.encode(calls)
+        );
+        PackedUserOperation memory op;
+        op.sender = account;
+        op.callData = callData;
+
+        bytes32[4] memory expected = [
+            keccak256(abi.encode(account, uint256(0))), // _limits[account]
+            _allowedSlot(asset, TRANSFER, account),
+            _allowedSlot(router, SWAP, account),
+            keccak256(abi.encode(account, keccak256(abi.encode(router, uint256(2))))) // _allowedSelectorCount[router][account]
+        ];
+
+        vm.record();
+        vm.prank(account);
+        policy.checkUserOpPolicy(bytes32(0), op);
+        (bytes32[] memory reads, bytes32[] memory writes) = vm.accesses(address(policy));
+        (, bytes32[] memory assetWrites) = vm.accesses(asset);
+
+        assertEq(writes.length, 0, "validation writes nothing");
+        assertEq(assetWrites.length, 0, "validation touches no other contract");
+        for (uint256 i = 0; i < reads.length; ++i) {
+            bool found;
+            for (uint256 j = 0; j < expected.length; ++j) {
+                if (reads[i] == expected[j]) found = true;
+            }
+            assertTrue(found, "read outside the account's associated storage");
+        }
+        for (uint256 j = 0; j < expected.length; ++j) {
+            bool found;
+            for (uint256 i = 0; i < reads.length; ++i) {
+                if (reads[i] == expected[j]) found = true;
+            }
+            assertTrue(found, "expected read did not happen, so the slot derivation above is stale");
+        }
+    }
+
+    function _allowedSlot(address target, bytes4 selector, address who) internal pure returns (bytes32) {
+        bytes32 outer = keccak256(abi.encode(target, uint256(1)));
+        bytes32 middle = keccak256(abi.encode(selector, outer));
+        return keccak256(abi.encode(who, middle));
     }
 
     function test_check_ignoresTrailingBytesLikeAbiDecoding() public view {
@@ -397,7 +466,7 @@ contract AgentSpendPolicyTest is PolicyTestBase {
         vm.warp(block.timestamp + 25 hours);
         _record(account, _one(_transfer(router, 30e6)));
         assertEq(policy.windowTotal(account), 30e6);
-        vm.warp(block.timestamp + 1 hours);
+        vm.warp(vm.getBlockTimestamp() + 1 hours);
         assertEq(policy.windowTotal(account), 30e6);
     }
 

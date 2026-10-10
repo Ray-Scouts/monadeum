@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity 0.8.24;
 
 import {IAgentSpendPolicy} from "./IAgentSpendPolicy.sol";
 import {IHook, IPolicy, PackedUserOperation} from "./kernel/IKernelModules.sol";
@@ -16,8 +16,9 @@ import {IHook, IPolicy, PackedUserOperation} from "./kernel/IKernelModules.sol";
 /// - `record` (execution): recomputes the total by running the same rules as `check`, then adds it to the current
 ///   hour's bucket and reverts with `DailyCapExceeded` if the 25-bucket window total would exceed `dailyCap`.
 ///
-/// Kernel v3.1 integration, per the interface NatSpec. Whether a deployed Kernel v3.1 account drives these entry
-/// points as expected has not been run against a real account; see ARCHITECTURE.md section 16.3.
+/// Kernel v3.1 integration, per the interface NatSpec. test/fork/KernelV31Fork.t.sol runs these entry points on a
+/// fork of Monad testnet against the deployed Kernel v3.1 contracts and EntryPoint v0.7; no bundler has carried an
+/// operation through them yet. See ARCHITECTURE.md section 16.3 and contracts/audit/README.md.
 /// - `checkUserOpPolicy` decodes `userOp.callData` (optionally prefixed by the `executeUserOp` selector) as
 ///   `execute(bytes32 mode, bytes executionCalldata)` with call type single or batch, and runs `check` for the
 ///   calling account. Any other account selector, call type (delegatecall, static) or exec type reverts.

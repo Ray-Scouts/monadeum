@@ -6,8 +6,8 @@ pragma solidity ^0.8.24;
 /// 03f7f5cf5871cda0070e4223f196f5b577f6cde2): `src/interfaces/IERC7579Modules.sol` and the ERC-4337 v0.7
 /// `PackedUserOperation`. They are declared rather than imported so the Foundry project depends on forge-std only.
 /// The function signatures, and so the selectors, are what Kernel calls; a mismatch would make Kernel's calls revert,
-/// which fails closed. Whether a real Kernel v3.1 account drives these entry points as expected is not verified by
-/// this repository's tests, which exercise them with calldata built to Kernel's encoding (see ARCHITECTURE.md 16.3).
+/// which fails closed. test/fork/KernelV31Fork.t.sol checks that the deployed Kernel v3.1 contracts on Monad testnet
+/// drive these entry points as expected, on a fork and without a bundler (see ARCHITECTURE.md 16.3).
 
 /// ERC-4337 v0.7 packed user operation, field order and types as in the EntryPoint v0.7 ABI.
 struct PackedUserOperation {
