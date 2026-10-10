@@ -51,3 +51,22 @@ export function reallocationQuota(ranked: number, smallPool: boolean): number {
   if (!smallPool) return decile;
   return ranked >= 2 ? Math.max(1, decile) : 0;
 }
+
+/**
+ * Issue #92 exploratory matched-aggressiveness rule: in a population-wide pool of `ranked` slots, the bottom and top
+ * `max(1, floor(ranked * share))` slots, from 2 ranked slots up. A share of 1/3 gives a population-wide pool the same
+ * source and sink share as the small-pool rule gives an owner of 3. The share must be in (0, 0.5], so sources and sinks
+ * never overlap.
+ */
+export function sharedQuota(ranked: number, share: number): number {
+  if (!(share > 0 && share <= 0.5)) throw new RangeError(`quota share must be in (0, 0.5], got ${share}`);
+  return ranked >= 2 ? Math.max(1, Math.floor(ranked * share)) : 0;
+}
+
+/**
+ * Issue #92 exploratory recycling: how much of a retired slot's `capital` its owner's best active slot can take, up to
+ * `ceiling * principal`. A sink already at or above its ceiling takes nothing.
+ */
+export function recycleAmount(capital: number, sink: ReallocationSink, ceiling: number): number {
+  return Math.max(0, Math.min(capital, ceiling * sink.principal - sink.capital));
+}

@@ -195,7 +195,7 @@ The experiment, tracked in issue #85, compares four arms under the unchanged `EC
 
 ### 8.5 Result (issue #85)
 
-**Status: candidate mechanism for issue #28, not yet a decision, narrowed by issue #89 (below).** `simulation/results/fixed-slot.md` ran the four arms on the issue #84 genome model. Under the unchanged `ECONOMICS.md` section 8 rule, arm B (replacement with mutated donors plus bounded reallocation) beats both the static control and the random-replacement control at genome edge magnitude 0.009 with a reallocation cap of 0.2, and not at magnitude 0.006 or cap 0.05. Arm A (replacement alone) is inconclusive against both. A diagnostic arm shows reallocation does most of the work. The section 3 mechanism remains inconclusive on the same model. No arm collapsed into a monoculture.
+**Status: candidate mechanism for issue #28, narrowed by issue #89 and confirmed in simulation by the pre-registered issue #92 run (below); not yet a product decision.** `simulation/results/fixed-slot.md` ran the four arms on the issue #84 genome model. Under the unchanged `ECONOMICS.md` section 8 rule, arm B (replacement with mutated donors plus bounded reallocation) beats both the static control and the random-replacement control at genome edge magnitude 0.009 with a reallocation cap of 0.2, and not at magnitude 0.006 or cap 0.05. Arm A (replacement alone) is inconclusive against both. A diagnostic arm shows reallocation does most of the work. The section 3 mechanism remains inconclusive on the same model. No arm collapsed into a monoculture.
 
 Before sections 3 and 4 are revised and issue #28 proceeds, these follow-ups were open; the first two are answered below (issue #89):
 
@@ -214,4 +214,23 @@ The recommended candidate for issue #28 is therefore narrower than section 8.2: 
 
 5. Confirm reallocation with retirement as a pre-registered arm, and test letting the owner's policy reallocate a retired slot's idle capital.
 6. Separate reallocation intensity from pool size: a population-wide arm whose source and sink share matches the small-pool rule.
+
+**Update (issue #92): confirmed candidate in simulation.** `simulation/results/owner-reallocation-confirmation.md` ran a pre-registered confirmation on seeds 51 to 100, none used before, with the hypotheses, arms, settings, and rule fixed in issue #92 before any run. The arm is fixed slots, section 6 retirement of starved slots, owner-scoped reallocation at cap 0.2 and ceiling 4 with the small-pool rule, at the assumed mixed owner distribution. Under the unchanged `ECONOMICS.md` section 8 rule:
+
+- **H1 holds (primary):** it beats the static control at magnitude 0.009 in 11 of 12 cells, all higher, median gap +2.78 pp.
+- **H2 holds:** it beats random replacement at 0.009 in 11 of 12 cells, all higher, median gap +2.93 pp.
+- **H3 holds:** at 0.006 it beats the static control in 8 of 12 cells (median +1.59 pp, one cell above the threshold) and random replacement in 10 (median +2.33 pp).
+
+No cell is significantly below either control. The stress regime passes on its own at 0.009 against both controls and at 0.006 against random replacement; at 0.006 against the static control it is positive but not significant. The issue #89 post hoc effect sizes replicate to within 0.05 pp. Follow-up 5's first half is therefore answered.
+
+The confirmed candidate, in simulation only, is: **a fixed number of slots per owner; at each evaluation, bounded reallocation of capital from an owner's lowest-fitness agents to that owner's highest (the bottom one and top one among 2 to 19 ranked agents, the bottom and top decile from 20; cap 0.2 of the source's capital, never below the capital floor, never above 4 times the receiving slot's principal), under a policy the owner approves; and section 6 retirement of starved agents. No genome replacement, no cross-owner genome copying, and no capital crossing an owner boundary.** Owners with one agent get no benefit.
+
+Exploratory arms in the same run, not used for the calls, answer follow-up 6 and the second half of follow-up 5 provisionally. Population-wide ranking with the same source and sink share as an owner of 3 or 5 does at least as well as the owner-scoped arm, so owner scope itself costs nothing measurable and the gains issue #89 saw at owner sizes 3 and 5 come from moving more capital. Higher intensity raised return in this model and lowered niche diversity, with no monoculture. Recycling a retired slot's idle capital to the same owner's best active slot added a median 1.23 pp at 0.009 and 0.55 pp at 0.006, consistent in direction but not significant under the rule.
+
+Before issue #28 can start, these remain:
+
+- **Follow-up 3, the gating unknown:** establish whether real strategies' genomes carry an edge of the modeled size (section 7). The mechanism converts an edge into return; it does not create one.
+- **Follow-up 4:** revise sections 3 and 4 to this mechanism, re-scope the reproduction contract in issue #31 to owner-scoped reallocation and retirement, and update the reproduction invariants in `THREAT-MODEL.md`.
+- **Parameters to state as decisions, with the exploratory results as hypotheses behind them:** the source and sink share (intensity), whether an owner's policy may recycle retired capital, and how the owner-approved policy bounds both.
+- **Inputs the simulation assumed:** the owner-size distribution and whether one owner's agents are correlated, and computing fitness, niches, and the starvation trigger from population-wide public performance (section 8.3 does not restrict reading it, but the product must provide it).
 
