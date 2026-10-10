@@ -29,6 +29,7 @@
     "apps/worker": {
       "name": "@monadeum/worker",
       "dependencies": {
+        "@monadeum/reallocation": "workspace:*",
         "@monadeum/tick": "workspace:*",
         "@nestjs/common": "^11.1.6",
         "@nestjs/core": "^11.1.6",
@@ -93,9 +94,6 @@
     },
     "libs/reproduction": {
       "name": "@monadeum/reproduction",
-      "dependencies": {
-        "@nestjs/common": "^11.1.6",
-      },
       "devDependencies": {
         "@types/node": "^22.15.21",
         "typescript": "^5.8.3",
