@@ -9,7 +9,7 @@ See `SECURITY.md` for the concrete controls that implement the mitigations refer
 ## 1. Assets
 
 1. **User capital**, held in each agent's own smart account. The primary asset, and the one every other item in this list exists to protect.
-2. **The platform's gas-sponsorship (paymaster) budget.** A cost center that can be drained independently of any agent's own trading capital if left unbounded.
+2. **The platform's gas-sponsorship (paymaster) budget**, including the relayer budget for users' allocation transfers (`ARCHITECTURE.md` section 7). A cost center that can be drained independently of any agent's own trading capital if left unbounded.
 3. **Agent identity and reputation**, recorded on-chain in an ERC-8004-compatible registry: ownership, genome hash, strategy-version hash, status.
 4. **Off-chain accounting and history** (PostgreSQL): fitness scores, trade logs, x402 payment logs, LLM reasoning traces. Its integrity matters because reallocation rankings and retirement decisions are computed from it (`EVOLUTION.md` section 3).
 5. **Session keys**, held server-side by agent worker processes, scoped to one agent's smart account each.
@@ -25,6 +25,7 @@ See `SECURITY.md` for the concrete controls that implement the mitigations refer
 - **Other agents**: peers in the population. In the MVP scope they do not transact with each other directly, but they are visible to each other via on-chain state, which is itself a surface (see Scenario D).
 - **An external attacker**: no privileged access to the platform; interacts only through public surfaces, crafted x402 responses, on-chain data, or unsolicited transfers to a public agent address.
 - **Third-party infrastructure**: the x402 facilitator, RPC providers, and ERC-4337 bundler/paymaster vendors. Their compromise or outage is a real dependency risk this project inherits rather than controls directly.
+- **The fiat on-ramp vendor** (Ramp Network, per `ARCHITECTURE.md` section 6.1): holds the user's payment and identity data and, between card payment and on-chain delivery, the user's money. The platform never holds either. A vendor outage, a delayed or failed delivery, or a vendor that sends to the wrong address is a dependency risk of the same kind as the infrastructure above.
 
 ## 3. Trust boundaries
 
@@ -62,6 +63,7 @@ What an external attacker, with no privileged access, can actually do against th
 6. The RPC and indexer data path, what the dashboard and the workers believe is true about on-chain state.
 7. The paymaster's gas-sponsorship budget.
 8. Off-chain Postgres records that feed reallocation rankings and retirement decisions.
+9. The funding step: the on-ramp session, the destination address it carries, the vendor's status webhook, and the allocation signature the user gives afterwards.
 
 ## 6. Attack scenarios
 
@@ -123,6 +125,16 @@ The user's root wallet is the owner of every agent smart account that user contr
 
 **Mitigation**: a single-agent revoke or sweep still executes immediately, which is what `ARCHITECTURE.md` section 6 requires for recovery from one compromised agent. An action that names more than one agent, or that would touch more than three distinct agents from the same root wallet inside 60 minutes, is held. Release takes a second confirmation that restates the agent count, then a 15 minute delay. The rule is specified in `SECURITY.md` section 9 (bulk recovery hold). The on-chain enforcement is later work (issue #26). The hold does not apply to a lone revoke or sweep while the rolling count is still within the threshold.
 
+### Scenario H: phishing and address substitution at the funding step
+
+Funding is the first moment a new user moves real money, and the user is by design not expected to recognize a token contract or a network. Three variants follow from the flow in `ARCHITECTURE.md` section 6.1. First, a look-alike "fund your agent" page, reached from an email or a message, opens a real on-ramp widget with the attacker's address as the destination: the user pays a legitimate vendor, and the vendor delivers to the attacker. Second, a compromised or careless client substitutes the destination address before the session is created. Third, an attacker sends the user's wallet a worthless token named "USDC", or forges a vendor webhook, to make the dashboard show funds that do not exist, so the user allocates or waits on a phantom balance. A related variant targets the allocation step: a phishing page asks the user to sign an EIP-3009 authorization whose recipient is the attacker rather than their agent.
+
+This scenario is first-principles, drawn from the general pattern of address-substitution and fake-token deposits against crypto wallets, not from a documented incident against this flow.
+
+**Consequence if unmitigated**: the user's first deposit is lost to an attacker, or the user acts on a balance that does not exist. Neither involves an agent; both happen before the agent's spend limits apply.
+
+**Mitigation**: the destination address of an on-ramp session is set by the API from the authenticated user's own embedded wallet, never accepted from the client (consistent with trust boundary 10), and the asset is locked to USDC on Monad. The on-ramp opens only from inside the app; the product never sends a funding link by email or message, and says so on the Fund screen. A balance is credited only from an observed on-chain transfer of the canonical USDC contract; a vendor webhook drives the progress display only, and a token at any other address is never counted, whatever its symbol. The allocation authorization is built by the API with the agent's smart account address, which the API derives and checks belongs to this user, and the signing prompt states the agent's name and the amount in dollars. `SECURITY.md` section 7 lists these controls.
+
 ## 7. Security invariants
 
 1. An agent's smart account rejects any transaction exceeding its own on-chain-encoded spend limit, regardless of what the application layer approved.
@@ -140,6 +152,7 @@ The user's root wallet is the owner of every agent smart account that user contr
 13. No capital crosses an owner boundary through the mechanism. Source and sink of every reallocation have the same owner, checked on-chain when the transfer executes, and a reallocation executes only while that owner's signed reallocation policy is in force and names both agents. **Superseded:** the previous invariant 13 bounded a child's capital by the reproduction fraction and `max_child_capital` (`EVOLUTION.md` section 3.6.2).
 14. No user-supplied text, whether a prompt, an agent description, or a strategy instruction, changes a protocol-level parameter. Those parameters change only through an explicit operator change made outside any agent's or user's reasoning path. An owner's reallocation policy is a signed, structured setting that can only tighten the protocol's reallocation bounds, never a text input.
 15. Retirement moves no capital. A retired agent's balance stays in its own account, recoverable by its owner, and a retired agent is never a reallocation source or sink.
+16. A user's funded balance is credited only from an observed on-chain transfer of the canonical settlement-asset contract to that user's own embedded wallet. A vendor webhook, a client claim, or a token at any other address never credits a balance, and the destination of an on-ramp session is always set by the API, never by the client.
 
 ## 8. Residual risk
 
