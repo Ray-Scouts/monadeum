@@ -150,7 +150,7 @@ To regenerate, from the repository root, with Foundry 1.8.5 installed:
 bash contracts/audit/coverage.sh
 ```
 
-It writes `contracts/audit/coverage/summary.txt` and `contracts/audit/coverage/lcov.info`. The fork suite is skipped in this run, since it needs `--fork-url`. Coverage disables the optimizer, so gas figures in that output do not match a normal build.
+It writes `contracts/audit/coverage-report/summary.txt` and `contracts/audit/coverage-report/lcov.info`. The fork suite is skipped in this run, since it needs `--fork-url`. Coverage disables the optimizer, so gas figures in that output do not match a normal build.
 
 ## 6. Static analysis and triage
 

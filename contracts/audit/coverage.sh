@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Regenerates the coverage report in contracts/audit/coverage/ for the contracts in scope.
+# Regenerates the coverage report in contracts/audit/coverage-report/ for the contracts in scope.
 # Run from anywhere: bash contracts/audit/coverage.sh
 # Requires Foundry (forge 1.8.5, the version CI pins). Test and mock files are excluded from the report.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-out="audit/coverage"
+out="audit/coverage-report"
 mkdir -p "$out"
 
 forge coverage \
