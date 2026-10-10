@@ -1,0 +1,65 @@
+# IndexerModule
+
+The read path described in `ARCHITECTURE.md` sections 1, 9 and 10: a separately deployable process that syncs on-chain events from Monad into the read-model the dashboard and API read. It is not a NestJS module of the API and not part of the worker. It reads the chain through viem 2.56.9, pinned to the version `libs/wallets` uses, and never signs or sends anything.
+
+## What it does
+
+- **Chain sync.** By default indexes only blocks at or below the one the node reports for the `finalized` tag (`INDEXER_SYNC_TO=finalized`); with `INDEXER_SYNC_TO=confirmations` it instead indexes blocks at least `INDEXER_CONFIRMATIONS` below the head, for an RPC that does not serve the tag. It never switches mode by itself: if the node reports no finalized block, the batch is retried. It works in batches of at most `INDEXER_BATCH_SIZE` blocks, starting at `INDEXER_START_BLOCK` when the store has no cursor. Each batch is written with its cursor atomically, so a restart over a durable store resumes after the last stored block.
+- **Reorg handling.** Kept in both modes. Monad documents finalized blocks as irreversible without a hard fork (see "Finality" below), so in `finalized` mode this is a defence against a node serving inconsistent data rather than an expected path. Before each batch the stored cursor hash is compared with the chain. On a mismatch, the stored block hashes (each batch's first and last block, and every block that produced a row) are walked back to the newest one still canonical, every row above it is deleted, tracked accounts first seen above it are dropped, and sync resumes from there, so the replaced blocks are re-indexed. A batch whose logs carry a hash that differs from the canonical block, or whose first block does not extend the cursor, is retried rather than stored. A divergence deeper than `INDEXER_REORG_WINDOW` stops the process with `DeepReorgError`; it needs an operator, and is never skipped.
+- **Handlers.** A registry of `EventHandler`s, each declaring its source, its event ABI items, and the row kinds it writes. Two handlers may not declare the same kind. The ones registered today:
+  - `agent-spend-policy`: `LimitsSet`, `CallAllowed`, `Spent` from `AgentSpendPolicy`. It discovers candidate accounts: WalletsModule deploys an agent account and sets its limits in the same operation.
+  - Admission: a candidate is followed only if the same transaction in which it first appears on the spend policy also emitted EntryPoint `AccountDeployed` for it with `factory` equal to `INDEXER_KERNEL_FACTORY_ADDRESS`. Rows of candidates that are not admitted are not stored.
+  - `entry-point-account-deployed`: EntryPoint v0.7 `AccountDeployed`, only for followed accounts (`sender` is topic 2).
+  - `kernel-session-keys`: Kernel v3.1 `PermissionInstalled`, `PermissionUninstalled`, `NonceInvalidated`, emitted by followed accounts: the session key lifecycle WalletsModule produces (enable on first use, uninstall and `invalidateNonce` on revocation).
+  Adding the reallocation contract (issue #31) means writing one more handler and registering it; the sync loop, reorg handling, and store do not change. A test registers a stand-in handler to show this.
+- **Event signatures** come from installed package ABIs, not from memory: Kernel v3.1 from `@zerodev/sdk` 5.5.10 (`KernelV3_1AccountAbi`) and EntryPoint v0.7 from viem (`entryPoint07Abi`). `AgentSpendPolicy` ships no ABI artifact, so its events are parsed from `contracts/src/IAgentSpendPolicy.sol`'s declarations, and a test fails if the two drift.
+- **Read-model.** `ReadModelStore` is the write and read interface; `InMemoryReadModelStore` implements it. `projectAccount` folds an account's rows into a view: deployment, limits, allowlist, last spend, and session permissions.
+
+## Boundaries
+
+- **The indexer is the only writer of chain-sourced rows.** Nothing else inserts, updates, or deletes them. `sql/001_read_model.sql` grants writes to a `monadeum_indexer` role only.
+- **The worker never depends on the indexer.** Agent decisions read the chain or their own records, never this read-model, so an indexer outage or lag cannot change what an agent does. `apps/worker/test/boundary.test.ts` fails if `apps/worker` declares or imports this package.
+- **Being followed is not ownership.** The factory rule keeps arbitrary addresses that call `setLimits` out of the followed set, but the Kernel factory is public: anyone can deploy a Kernel account through it and configure the policy in the same operation. The API must join the followed set against its own agent records (`THREAT-MODEL.md` boundary 10), never treat a row here as proof the platform created an account.
+- **Session key status here is derived.** `live` in the projection comes from indexed events. The authoritative revocation check reads the account directly (`WalletsService.revocationStatus`).
+
+## Configuration
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `INDEXER_CHAIN_ID` | yes | Must be `10143`, Monad testnet. Checked against the RPC at start. |
+| `INDEXER_RPC_URL` | no | Monad RPC, http(s). Defaults to viem's Monad testnet RPC. |
+| `INDEXER_START_BLOCK` | yes | First block indexed when the store has no cursor: the spend policy's deployment block. |
+| `INDEXER_SPEND_POLICY_ADDRESS` | yes | Deployed `AgentSpendPolicy`. |
+| `INDEXER_ENTRY_POINT_ADDRESS` | no | Defaults to the EntryPoint v0.7 address from viem. |
+| `INDEXER_KERNEL_FACTORY_ADDRESS` | no | Factory an account must be deployed through to be followed. Defaults to Kernel v3.1's meta factory from `@zerodev/sdk` 5.5.10's address map (`0xd703...42d5`), the factory `createKernelAccount` names by default, as WalletsModule uses it. |
+| `INDEXER_SYNC_TO` | no | `finalized` (default) or `confirmations`. |
+| `INDEXER_BATCH_SIZE` | no | Blocks per batch, default 100. |
+| `INDEXER_CONFIRMATIONS` | no | With `INDEXER_SYNC_TO=confirmations`: blocks below the head before indexing, default 10. |
+| `INDEXER_REORG_WINDOW` | no | Blocks of stored hashes kept below the cursor, default 1000. Must exceed the confirmations. |
+| `INDEXER_POLL_INTERVAL_MS` | no | Wait between polls once caught up, default 1000, at least 100. |
+
+## Finality
+
+Checked against Monad's documentation on 2026-10-10 (`docs.monad.xyz`: Block States, JSON-RPC Overview, Deployment Summary for Developers):
+
+- FACT (documented): the RPC maps `latest` to Proposed (speculative, no consensus vote), `safe` to Voted (supermajority vote; reverting it is described as theoretically possible but very unlikely), and `finalized` to Finalized (irreversible without a hard fork). `pending` behaves like `latest`.
+- FACT (documented): blocks are finalized after two blocks, about 600 ms at the documented 300 ms block time. Verified (agreement on execution outputs) follows three blocks after Finalized; the docs advise exchanges, bridges, and issuers with significant off-chain financial logic to wait for Verified.
+- FACT (documented): responses that include non-finalized data, `eth_getLogs` among them, can change on an identical later request.
+- FACT (observed): on 2026-10-10 `https://testnet-rpc.monad.xyz` answered `eth_getBlockByNumber("finalized")` with a block, and the opt-in testnet test synced one batch against it in `finalized` mode.
+- FACT (documented): `eth_getLogs` block-range limits depend on the provider: 100 blocks for QuickNode and the Monad Foundation endpoint, 1,000 for Alchemy (with 10,000 logs) and Ankr. The default batch of 100 fits all of them.
+- ASSUMPTION: every RPC provider the indexer is pointed at serves `finalized` with the documented meaning. The startup check does not test this; a provider that reports no finalized block makes every batch retry, and `INDEXER_SYNC_TO=confirmations` is the explicit alternative.
+- ASSUMPTION: Finalized, not Verified, is enough for this read-model, because nothing the indexer writes authorizes moving capital (`ARCHITECTURE.md` section 10). A consumer that settles value from this data would need Verified, which is not implemented.
+- ASSUMPTION: the `confirmations` default of 10 is a margin over the documented two-block finality, not a measured reorg depth.
+
+## Running
+
+`bun run --filter @monadeum/indexer test` builds and runs the offline tests against an in-memory chain (`test/mock-chain.ts`), including a reorg that removes an indexed `Spent` event and a tracked account. `test/testnet.test.ts` syncs one batch of Monad testnet and is skipped unless `INDEXER_TESTNET=1`; it needs `INDEXER_SPEND_POLICY_ADDRESS` (any address works for a sync check) and optionally `INDEXER_RPC_URL`.
+
+`node dist/src/main.js` runs the service after a build.
+
+## Not done yet
+
+- **Postgres is not wired.** `sql/001_read_model.sql` defines the schema, projections, and grants, and was applied to a local Postgres to check that it parses; no store implements `ReadModelStore` on it, and no migration runner applies it. The Postgres store is planned as follow-up work on the shared database package (`libs/db`, in progress), not a separate driver in this app. Until then the service runs on the in-memory store and a restart re-indexes from `INDEXER_START_BLOCK`.
+- The testnet run above synced real blocks but indexed no rows: the spend policy is not deployed there yet, so no handler has seen a real event.
+- No identity registry or genome hash commitment contract exists yet (`ARCHITECTURE.md` section 9), so the indexer has nothing to read for them; each becomes a handler when its contract lands.
+- The read API the dashboard will call, and the replacement of `apps/web`'s sample `PopulationSource`, are separate work (issue #42).
