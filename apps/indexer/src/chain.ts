@@ -29,6 +29,11 @@ export class ViemIndexerChain implements IndexerChain {
     return this.client.getBlockNumber({ cacheTime: 0 });
   }
 
+  async finalizedBlockNumber(): Promise<bigint | null> {
+    const block = await this.client.request({ method: "eth_getBlockByNumber", params: ["finalized", false] });
+    return block?.number ? hexToBigInt(block.number) : null;
+  }
+
   async block(number: bigint): Promise<BlockRef | null> {
     const block = await this.client.request({ method: "eth_getBlockByNumber", params: [numberToHex(number), false] });
     if (!block || !block.hash) return null;

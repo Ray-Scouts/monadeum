@@ -8,7 +8,13 @@ export interface SyncOptions {
   startBlock: bigint;
   /** Maximum number of blocks per batch, and so per `eth_getLogs` range. */
   batchSize: bigint;
-  /** A block is indexed only once it is this many blocks below the head. */
+  /**
+   * Which blocks count as settled. `finalized`: up to the block the node reports for the `finalized` tag. `confirmations`:
+   * up to `confirmations` blocks below the head, for an RPC that does not serve the tag. The indexer never switches
+   * between them on its own: a failed `finalized` read is retried, not replaced by a weaker rule.
+   */
+  syncTo: "finalized" | "confirmations";
+  /** With `syncTo: "confirmations"`, a block is indexed only once it is this many blocks below the head. */
   confirmations: bigint;
   /** How many blocks below the cursor stored hashes are kept. A reorg deeper than this stops the indexer. */
   reorgWindow: bigint;
@@ -53,8 +59,14 @@ export class Indexer {
   }
 
   async syncOnce(): Promise<SyncResult> {
-    const head = await this.chain.headBlockNumber();
-    const target = head - this.options.confirmations;
+    let target: bigint;
+    if (this.options.syncTo === "finalized") {
+      const finalized = await this.chain.finalizedBlockNumber();
+      if (finalized === null) return { status: "retry", reason: "the node reports no finalized block" };
+      target = finalized;
+    } else {
+      target = (await this.chain.headBlockNumber()) - this.options.confirmations;
+    }
     const cursor = await this.store.cursor();
 
     if (cursor) {
@@ -67,20 +79,21 @@ export class Indexer {
     const to = min(target, from + this.options.batchSize - 1n);
 
     const tracked = new Set(await this.store.trackedAccounts());
-    const discovered: TrackedAccount[] = [];
     const logs: { handler: EventHandler; log: RawLog }[] = [];
 
+    // Accounts named by discovery handlers that are not followed yet, with the log that first named each.
+    const candidates = new Map<Address, RawLog>();
     for (const handler of this.registry.discovery()) {
       const found = await this.fetch(handler, from, to, []);
       logs.push(...found);
       for (const { handler: h, log } of found) {
         const row = this.decode(h, log);
-        if (row?.account && !tracked.has(row.account)) {
-          tracked.add(row.account);
-          discovered.push({ account: row.account, firstBlock: log.blockNumber });
-        }
+        if (row?.account && !tracked.has(row.account) && !candidates.has(row.account)) candidates.set(row.account, log);
       }
     }
+    const admitted = await this.admit(candidates, from, to);
+    const discovered: TrackedAccount[] = admitted.map((account) => ({ account, firstBlock: candidates.get(account)!.blockNumber }));
+    for (const account of admitted) tracked.add(account);
     const accounts = [...tracked];
     for (const handler of this.registry.followers()) logs.push(...(await this.fetch(handler, from, to, accounts)));
 
@@ -103,7 +116,8 @@ export class Indexer {
     const events: ChainEvent[] = [];
     for (const { handler, log } of logs) {
       const row = this.decode(handler, log);
-      if (!row) continue;
+      // A discovery handler sees every account using its contract; only followed accounts' rows are stored.
+      if (!row || (row.account !== null && !tracked.has(row.account))) continue;
       events.push({ ...row, address: log.address, blockNumber: log.blockNumber, blockHash: log.blockHash, transactionHash: log.transactionHash, logIndex: log.logIndex });
     }
     events.sort(chainOrder);
@@ -111,6 +125,19 @@ export class Indexer {
     const cursorBlock = blocks.get(to)!;
     await this.store.apply({ events, blocks: [...blocks.values()], discovered, cursor: cursorBlock, pruneBelow: to - this.options.reorgWindow });
     return { status: "indexed", from, to, events: events.length, caughtUp: to === target };
+  }
+
+  private async admit(candidates: Map<Address, RawLog>, from: bigint, to: bigint): Promise<Address[]> {
+    const admission = this.registry.admission();
+    if (!admission) return [...candidates.keys()];
+    if (candidates.size === 0) return [];
+    const admitted = new Set<Address>();
+    for (const { handler, log } of await this.fetch(admission.handler, from, to, [...candidates.keys()])) {
+      const row = this.decode(handler, log);
+      const seen = row?.account ? candidates.get(row.account) : undefined;
+      if (row?.account && seen && admission.admits(row, log, seen)) admitted.add(row.account);
+    }
+    return [...admitted];
   }
 
   private async rollback(cursor: BlockHash): Promise<SyncResult> {

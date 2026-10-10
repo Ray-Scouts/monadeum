@@ -29,6 +29,8 @@ export interface LogQuery {
 export interface IndexerChain {
   chainId(): Promise<number>;
   headBlockNumber(): Promise<bigint>;
+  /** Number of the block the node reports for the `finalized` tag, or null if it reports none. */
+  finalizedBlockNumber(): Promise<bigint | null>;
   /** The canonical block at `number`, or null if the node does not have it. */
   block(number: bigint): Promise<BlockRef | null>;
   logs(query: LogQuery): Promise<RawLog[]>;
@@ -79,6 +81,16 @@ export type HandlerSource =
 export interface DecodedLog {
   eventName: string;
   args: Record<string, unknown>;
+}
+
+/**
+ * Decides which accounts discovered in a batch are followed. Without one, every discovered account is followed.
+ * `handler` is fetched for the batch's new candidates only; `admits` sees each of its rows with the log that first
+ * named the candidate. Rows of a candidate that is not admitted are not stored.
+ */
+export interface AccountAdmission {
+  handler: EventHandler;
+  admits(row: HandledEvent, log: RawLog, seen: RawLog): boolean;
 }
 
 /**

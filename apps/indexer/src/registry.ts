@@ -1,11 +1,12 @@
 import { toEventSelector, type Hex } from "viem";
-import type { EventHandler } from "./types.js";
+import type { AccountAdmission, EventHandler } from "./types.js";
 
 export class HandlerRegistryError extends Error {}
 
 /** The set of handlers one indexer runs. Registration is checked so two handlers cannot write the same kind. */
 export class HandlerRegistry {
   private readonly handlers: EventHandler[] = [];
+  private gate: AccountAdmission | null = null;
 
   register(handler: EventHandler): this {
     if (this.handlers.some((h) => h.name === handler.name)) throw new HandlerRegistryError(`handler ${handler.name} is already registered`);
@@ -17,6 +18,17 @@ export class HandlerRegistry {
     }
     this.handlers.push(handler);
     return this;
+  }
+
+  /** Sets the rule that admits discovered accounts. Its handler must be a `contract-by-account` source. */
+  admitWith(admission: AccountAdmission): this {
+    if (admission.handler.source.kind !== "contract-by-account") throw new HandlerRegistryError("an admission handler must be a contract-by-account source");
+    this.gate = admission;
+    return this;
+  }
+
+  admission(): AccountAdmission | null {
+    return this.gate;
   }
 
   list(): readonly EventHandler[] {

@@ -10,7 +10,7 @@ import type { IndexerChain } from "./types.js";
  * `sql/001_read_model.sql` is not implemented yet, so a restart re-indexes from INDEXER_START_BLOCK.
  */
 export function createIndexer(config: IndexerConfig, chain: IndexerChain = new ViemIndexerChain(config.rpcUrl), store: ReadModelStore = new InMemoryReadModelStore()) {
-  const registry = defaultRegistry({ spendPolicy: config.spendPolicy, entryPoint: config.entryPoint });
+  const registry = defaultRegistry({ spendPolicy: config.spendPolicy, entryPoint: config.entryPoint, kernelFactory: config.kernelFactory });
   return { indexer: new Indexer(chain, store, registry, config.sync), store, registry };
 }
 

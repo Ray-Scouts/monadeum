@@ -18,7 +18,8 @@ const STRANGER = "0x3333333333333333333333333333333333333333" as Address;
 const FACTORY = "0xd703aae79538628d27099b8c4f621be4ccd142d5" as Address;
 const USDC = "0x4444444444444444444444444444444444444444" as Address;
 
-const options: SyncOptions = { startBlock: 1n, batchSize: 100n, confirmations: 0n, reorgWindow: 50n };
+const options: SyncOptions = { startBlock: 1n, batchSize: 100n, syncTo: "confirmations", confirmations: 0n, reorgWindow: 50n };
+const registryInput = { spendPolicy: POLICY, entryPoint: ENTRY_POINT, kernelFactory: FACTORY };
 
 function event(events: readonly AbiEvent[], name: string): AbiEvent {
   return events.find((e) => e.name === name)!;
@@ -26,15 +27,15 @@ function event(events: readonly AbiEvent[], name: string): AbiEvent {
 
 const policy = (name: string, args: Record<string, unknown>): LogSpec => ({ address: POLICY, event: event(spendPolicyEvents, name), args });
 const kernel = (account: Address, name: string, args: Record<string, unknown>): LogSpec => ({ address: account, event: event(kernelEvents, name), args });
-const deployed = (sender: Address): LogSpec => ({
+const deployed = (sender: Address, factory: Address = FACTORY): LogSpec => ({
   address: ENTRY_POINT,
   event: entryPointEvents[0]!,
-  args: { userOpHash: `0x${"ab".repeat(32)}`, sender, factory: FACTORY, paymaster: "0x0000000000000000000000000000000000000000" },
+  args: { userOpHash: `0x${"ab".repeat(32)}`, sender, factory, paymaster: "0x0000000000000000000000000000000000000000" },
 });
 
 function setup(chain: MockChain, opts: Partial<SyncOptions> = {}) {
   const store = new InMemoryReadModelStore();
-  const indexer = new Indexer(chain, store, defaultRegistry({ spendPolicy: POLICY, entryPoint: ENTRY_POINT }), { ...options, ...opts });
+  const indexer = new Indexer(chain, store, defaultRegistry(registryInput), { ...options, ...opts });
   return { store, indexer };
 }
 
@@ -91,7 +92,7 @@ test("a session key is live between installation and revocation", async () => {
 test("honours confirmation depth and batch size, and resumes from the stored cursor", async () => {
   const chain = new MockChain().mine(30, [deploymentBlock(ACCOUNT)]);
   const store = new InMemoryReadModelStore();
-  const registry = defaultRegistry({ spendPolicy: POLICY, entryPoint: ENTRY_POINT });
+  const registry = defaultRegistry(registryInput);
   const first = new Indexer(chain, store, registry, { ...options, batchSize: 10n, confirmations: 5n });
 
   assert.deepEqual(await first.syncOnce(), { status: "indexed", from: 1n, to: 10n, events: 3, caughtUp: false });
@@ -190,7 +191,7 @@ test("a further contract is added by registering a handler, without changing the
     [{ address: REALLOCATION, event: events[0]!, args: { owner: STRANGER, source: ACCOUNT, sink: STRANGER, amount: 3n } }],
   ]);
   const store = new InMemoryReadModelStore();
-  const registry = defaultRegistry({ spendPolicy: POLICY, entryPoint: ENTRY_POINT }).register(handler);
+  const registry = defaultRegistry(registryInput).register(handler);
   const indexer = new Indexer(chain, store, registry, options);
   await drain(indexer);
   const moved = await store.events({ kind: "reallocation.moved" });
@@ -200,7 +201,7 @@ test("a further contract is added by registering a handler, without changing the
 });
 
 test("the registry rejects a duplicate handler name or kind", () => {
-  const registry = defaultRegistry({ spendPolicy: POLICY, entryPoint: ENTRY_POINT });
+  const registry = defaultRegistry(registryInput);
   const base: EventHandler = { name: "x", source: { kind: "account" }, events: kernelEvents, kinds: ["spend.spent"], handle: () => null };
   assert.throws(() => registry.register(base), HandlerRegistryError);
   assert.throws(() => registry.register({ ...base, name: "agent-spend-policy", kinds: ["other"] }), HandlerRegistryError);
@@ -214,4 +215,37 @@ test("rejects options where the reorg window does not cover the confirmation dep
 test("verifyChain refuses an RPC on another chain", async () => {
   const { indexer } = setup(new MockChain(1));
   await assert.rejects(indexer.verifyChain(10143));
+});
+
+test("follows an account only if the same transaction deployed it through the configured Kernel factory", async () => {
+  const OTHER_FACTORY = "0x6666666666666666666666666666666666666666" as Address;
+  const NO_DEPLOY = "0x7777777777777777777777777777777777777777" as Address;
+  const LATER = "0x8888888888888888888888888888888888888888" as Address;
+  const limits = (account: Address, tx?: string): LogSpec => ({ ...policy("LimitsSet", { account, perTxCap: 1n, dailyCap: 1n }), tx });
+  const chain = new MockChain().mine(4, [
+    deploymentBlock(ACCOUNT),
+    // Deployed through another factory, then configured: not followed.
+    [deployed(STRANGER, OTHER_FACTORY), limits(STRANGER)],
+    // Configures the policy without any deployment: not followed.
+    [limits(NO_DEPLOY), kernel(NO_DEPLOY, "PermissionInstalled", { permission: "0x01020304", nonce: 1 })],
+    // Deployed through the right factory, but configured in a separate transaction: not followed.
+    [deployed(LATER), limits(LATER, "second")],
+  ]);
+  const { store, indexer } = setup(chain);
+  await drain(indexer);
+  assert.deepEqual(await store.trackedAccounts(), [ACCOUNT]);
+  for (const account of [STRANGER, NO_DEPLOY, LATER]) assert.equal((await store.events({ account })).length, 0, account);
+  assert.equal((await store.events({ account: ACCOUNT })).length, 3);
+});
+
+test("in finalized mode, syncs up to the finalized block and retries when the node reports none", async () => {
+  const chain = new MockChain().mine(10, [deploymentBlock(ACCOUNT)]);
+  chain.finalityLag = 3;
+  const { store, indexer } = setup(chain, { syncTo: "finalized" });
+  assert.deepEqual(await indexer.syncOnce(), { status: "indexed", from: 1n, to: 7n, events: 3, caughtUp: true });
+  assert.deepEqual(await indexer.syncOnce(), { status: "idle", cursor: 7n });
+  chain.finalityLag = null;
+  chain.mine(5);
+  assert.equal((await indexer.syncOnce()).status, "retry");
+  assert.equal((await store.cursor())?.number, 7n);
 });

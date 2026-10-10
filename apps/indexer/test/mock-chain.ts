@@ -5,6 +5,8 @@ export interface LogSpec {
   address: Address;
   event: AbiEvent;
   args: Record<string, unknown>;
+  /** Transaction label. Logs of one block with the same label (default: none) share a transaction hash. */
+  tx?: string;
 }
 
 interface MockBlock extends BlockRef {
@@ -15,6 +17,8 @@ interface MockBlock extends BlockRef {
 export class MockChain implements IndexerChain {
   blocks: MockBlock[] = [];
   calls = { logs: 0 };
+  /** Blocks between the head and the `finalized` tag; null makes the node report no finalized block. */
+  finalityLag: number | null = 2;
   /** Overrides what `block()` returns, to simulate a reorg racing a batch. */
   blockOverride: ((n: bigint) => BlockRef | null | undefined) | null = null;
 
@@ -52,6 +56,12 @@ export class MockChain implements IndexerChain {
     return BigInt(this.blocks.length - 1);
   }
 
+  async finalizedBlockNumber(): Promise<bigint | null> {
+    if (this.finalityLag === null) return null;
+    const n = BigInt(this.blocks.length - 1 - this.finalityLag);
+    return n < 0n ? 0n : n;
+  }
+
   async block(number: bigint): Promise<BlockRef | null> {
     const override = this.blockOverride?.(number);
     if (override !== undefined && override !== null) return override;
@@ -79,8 +89,6 @@ function toBytes(text: string): Hex {
   return `0x${Buffer.from(text, "utf8").toString("hex")}`;
 }
 
-let txCounter = 0;
-
 export function encodeLog(spec: LogSpec, block: BlockRef, logIndex: number): RawLog {
   const indexed = spec.event.inputs.filter((i) => i.indexed);
   const plain = spec.event.inputs.filter((i) => !i.indexed);
@@ -96,7 +104,7 @@ export function encodeLog(spec: LogSpec, block: BlockRef, logIndex: number): Raw
     data,
     blockNumber: block.number,
     blockHash: block.hash,
-    transactionHash: keccak256(toBytes(`tx:${txCounter++}`)),
+    transactionHash: keccak256(toBytes(`tx:${block.hash}:${spec.tx ?? ""}`)),
     logIndex,
   };
 }

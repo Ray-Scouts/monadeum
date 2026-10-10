@@ -7,11 +7,9 @@ const lower = (value: unknown): Address => String(value).toLowerCase() as Addres
 const int = (value: unknown): string => BigInt(value as bigint).toString();
 
 /**
- * `AgentSpendPolicy` (contracts/src/AgentSpendPolicy.sol). It discovers accounts: WalletsModule deploys every agent
- * account and calls `setLimits` in the same owner-signed operation, so an account that has set limits here is an
- * account to follow. Anyone can call `setLimits` from any address, so presence in this set is a chain fact, not
- * proof that the platform created the account; the API joins against its own agent records (THREAT-MODEL.md
- * boundary 10).
+ * `AgentSpendPolicy` (contracts/src/AgentSpendPolicy.sol). It discovers candidate accounts: WalletsModule deploys every
+ * agent account and calls `setLimits` in the same owner-signed operation. A candidate is followed only if the
+ * admission rule in `defaultRegistry` accepts it.
  */
 export function spendPolicyHandler(address: Address): EventHandler {
   return {
@@ -84,10 +82,21 @@ export function kernelSessionHandler(): EventHandler {
   };
 }
 
-/** The handlers for every contract that exists today. Further handlers are added with `registry.register`. */
-export function defaultRegistry(input: { spendPolicy: Address; entryPoint: Address }): HandlerRegistry {
+/**
+ * The handlers for every contract that exists today. Further handlers are added with `registry.register`.
+ *
+ * Admission: an account is followed only if the transaction in which it first touches the spend policy also deployed
+ * it through `kernelFactory`, which is how WalletsModule creates every agent account. This keeps arbitrary addresses
+ * that call `setLimits` out of the followed set. It does not prove the platform created the account: anyone can
+ * deploy a Kernel account through the same public factory and configure the policy in one operation, so the API still
+ * joins the followed set against its own agent records (THREAT-MODEL.md boundary 10).
+ */
+export function defaultRegistry(input: { spendPolicy: Address; entryPoint: Address; kernelFactory: Address }): HandlerRegistry {
+  const deployed = accountDeployedHandler(input.entryPoint);
+  const factory = lower(input.kernelFactory);
   return new HandlerRegistry()
     .register(spendPolicyHandler(input.spendPolicy))
-    .register(accountDeployedHandler(input.entryPoint))
-    .register(kernelSessionHandler());
+    .register(deployed)
+    .register(kernelSessionHandler())
+    .admitWith({ handler: deployed, admits: (row, log, seen) => row.data.factory === factory && log.transactionHash === seen.transactionHash });
 }

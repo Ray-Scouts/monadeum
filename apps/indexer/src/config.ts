@@ -1,3 +1,4 @@
+import { KERNEL_V3_1, KernelVersionToAddressesMap } from "@zerodev/sdk/constants";
 import { isAddress, type Address } from "viem";
 import { entryPoint07Address } from "viem/account-abstraction";
 import { monadTestnet } from "viem/chains";
@@ -10,9 +11,17 @@ export interface IndexerConfig {
   rpcUrl: string | undefined;
   spendPolicy: Address;
   entryPoint: Address;
+  kernelFactory: Address;
   pollIntervalMs: number;
   sync: SyncOptions;
 }
+
+/**
+ * The factory EntryPoint reports in `AccountDeployed` for accounts WalletsModule deploys: `createKernelAccount` in
+ * `@zerodev/sdk` 5.5.10 defaults to `useMetaFactory: true`, so the init code names Kernel v3.1's meta factory, taken
+ * here from the SDK's own address map.
+ */
+export const DEFAULT_KERNEL_FACTORY = KernelVersionToAddressesMap[KERNEL_V3_1].metaFactoryAddress!.toLowerCase() as Address;
 
 type Env = Record<string, string | undefined>;
 
@@ -48,6 +57,8 @@ export function loadIndexerConfig(env: Env = process.env): IndexerConfig {
   if (chainId !== monadTestnet.id) throw new IndexerConfigError(`INDEXER_CHAIN_ID ${chainId} is not supported; only Monad testnet (${monadTestnet.id})`);
   const rpcUrl = env.INDEXER_RPC_URL?.trim() || undefined;
   if (rpcUrl && !/^https?:\/\//.test(rpcUrl)) throw new IndexerConfigError("INDEXER_RPC_URL must be an http(s) URL");
+  const syncTo = env.INDEXER_SYNC_TO?.trim() || "finalized";
+  if (syncTo !== "finalized" && syncTo !== "confirmations") throw new IndexerConfigError("INDEXER_SYNC_TO must be finalized or confirmations");
   const confirmations = integer(env, "INDEXER_CONFIRMATIONS", 10n, 0n);
   const reorgWindow = integer(env, "INDEXER_REORG_WINDOW", 1000n, 1n);
   if (reorgWindow <= confirmations) throw new IndexerConfigError("INDEXER_REORG_WINDOW must be larger than INDEXER_CONFIRMATIONS");
@@ -56,10 +67,12 @@ export function loadIndexerConfig(env: Env = process.env): IndexerConfig {
     rpcUrl,
     spendPolicy: address(required(env, "INDEXER_SPEND_POLICY_ADDRESS"), "INDEXER_SPEND_POLICY_ADDRESS"),
     entryPoint: address(env.INDEXER_ENTRY_POINT_ADDRESS?.trim() || entryPoint07Address, "INDEXER_ENTRY_POINT_ADDRESS"),
+    kernelFactory: address(env.INDEXER_KERNEL_FACTORY_ADDRESS?.trim() || DEFAULT_KERNEL_FACTORY, "INDEXER_KERNEL_FACTORY_ADDRESS"),
     pollIntervalMs: Number(integer(env, "INDEXER_POLL_INTERVAL_MS", 1000n, 100n)),
     sync: {
       startBlock: integer(env, "INDEXER_START_BLOCK", null, 0n),
       batchSize: integer(env, "INDEXER_BATCH_SIZE", 100n, 1n),
+      syncTo,
       confirmations,
       reorgWindow,
     },
