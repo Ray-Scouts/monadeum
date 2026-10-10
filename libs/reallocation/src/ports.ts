@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { Move, ReallocationPolicy } from "./plan.js";
+import type { ReallocationPolicy } from "./plan.js";
 
 /**
  * Where the owners' policies in force come from. An implementation returns only policies whose owner signature has
@@ -35,20 +35,32 @@ export class MemoryPolicyStore implements PolicySource {
   }
 }
 
-export interface TransferRequest extends Move {
-  /** Idempotent against (owner, evaluation sequence number, source, sink), ARCHITECTURE.md section 5. */
+/**
+ * One source's debit at one evaluation: every credit the plan gives that source's sinks, in settlement-asset base
+ * units rounded down. The reallocation contract (issue #31) accepts exactly one `reallocate` call per source per
+ * evaluation, so a source's moves are submitted together as one atomic operation, never one per (source, sink) pair.
+ */
+export interface SourceDebit {
+  /** `${owner}:${sequence}:${source}`, the idempotency key of the debit (ARCHITECTURE.md section 5). */
   key: string;
+  owner: string;
+  /** Evaluation sequence number. */
   sequence: number;
+  source: string;
+  credits: { sink: string; amount: bigint }[];
+  /** Sum of the credits. */
+  total: bigint;
 }
 
-/** Submits one move as one atomic transfer through the owner-scoped reallocation contract. */
+/** Submits one source's debit as one atomic operation through the owner-scoped reallocation contract. */
 export interface ReallocationSettlement {
-  transfer(request: TransferRequest): { amount: number };
+  debit(request: SourceDebit): Promise<void>;
 }
 
+/** Fail-closed default until the reallocation contract (issue #31) is deployed and wired in: nothing is submitted. */
 @Injectable()
 export class UnconfiguredSettlement implements ReallocationSettlement {
-  transfer(): { amount: number } {
+  async debit(): Promise<void> {
     throw new Error("reallocation contract is not configured");
   }
 }
