@@ -1,0 +1,470 @@
+{
+  "gate": {
+    "coverageInSample": 0.8450797872340425,
+    "coverageHeldOut": null,
+    "correlationInSample": 0.9820353669147615,
+    "pairedHours": 3827,
+    "coinbaseCoverageInSample": 0.9988918439716312,
+    "firstKuruHour": "2025-12-23T12:00:00.000Z"
+  },
+  "kuru": {
+    "label": "kuru dry run",
+    "cost": "base",
+    "costPerSwap": 0.001156,
+    "ticks": {
+      "inSample": 2550,
+      "heldOut": 1276
+    },
+    "marketSd": {
+      "inSample": 0.012858955102912132,
+      "heldOut": 0.011630779411957344
+    },
+    "stressSd": 0.019501595621394082,
+    "blocks": {
+      "inSample": [
+        {
+          "from": "2025-12-23",
+          "hours": 336,
+          "sd": 0.016294640972558217,
+          "efficiency": 0.11092840605857947,
+          "autocorrelation": -0.042775553045745596,
+          "label": "trending"
+        },
+        {
+          "from": "2026-01-06",
+          "hours": 336,
+          "sd": 0.012413811704525768,
+          "efficiency": 0.15162921643173033,
+          "autocorrelation": -0.030099606534691056,
+          "label": "trending"
+        },
+        {
+          "from": "2026-01-20",
+          "hours": 336,
+          "sd": 0.013774740405980562,
+          "efficiency": 0.0008355095584906938,
+          "autocorrelation": 0.00789248799524608,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-02-03",
+          "hours": 336,
+          "sd": 0.016976338733469716,
+          "efficiency": 0.06509990704498937,
+          "autocorrelation": 0.12177661558363487,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-02-17",
+          "hours": 336,
+          "sd": 0.0099768000438154,
+          "efficiency": 0.02044535748094891,
+          "autocorrelation": -0.03285847971261852,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-03-03",
+          "hours": 336,
+          "sd": 0.007929035908495946,
+          "efficiency": 0.0773743013810196,
+          "autocorrelation": 0.01418377070775414,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-03-17",
+          "hours": 336,
+          "sd": 0.00919662396938786,
+          "efficiency": 0.0020734091191796263,
+          "autocorrelation": 0.2184338364434778,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-03-31",
+          "hours": 198,
+          "sd": 0.013588315790666342,
+          "efficiency": 0.1568017142451259,
+          "autocorrelation": 0.11157846425610689,
+          "label": "trending"
+        }
+      ],
+      "heldOut": [
+        {
+          "from": "2026-04-08",
+          "hours": 336,
+          "sd": 0.014881465774856118,
+          "efficiency": 0.03390076468627933,
+          "autocorrelation": -0.01861522698319572,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-04-22",
+          "hours": 336,
+          "sd": 0.010646883432876593,
+          "efficiency": 0.011195485742846182,
+          "autocorrelation": 0.15136698297519993,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-05-06",
+          "hours": 336,
+          "sd": 0.010278744899243039,
+          "efficiency": 0.06836531125208344,
+          "autocorrelation": -0.03921205072440389,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-05-20",
+          "hours": 268,
+          "sd": 0.009629890677100964,
+          "efficiency": 0.05739960503007992,
+          "autocorrelation": 0.040658527259403915,
+          "label": "choppy"
+        }
+      ]
+    },
+    "h1": [
+      {
+        "regime": "trending",
+        "inBlocks": 3,
+        "outBlocks": 0,
+        "qualifies": false,
+        "reference": 0.3630765389325855,
+        "referenceNoPair": 0.40652106981388975,
+        "result": null,
+        "holds": false,
+        "below": false
+      },
+      {
+        "regime": "mean_reverting",
+        "inBlocks": 0,
+        "outBlocks": 0,
+        "qualifies": false,
+        "reference": 0.25926738828818363,
+        "referenceNoPair": 0.29240234767499285,
+        "result": null,
+        "holds": false,
+        "below": false
+      },
+      {
+        "regime": "choppy",
+        "inBlocks": 5,
+        "outBlocks": 4,
+        "qualifies": true,
+        "reference": 0.2972267077514894,
+        "referenceNoPair": 0.3300852185925352,
+        "result": {
+          "ticksIn": 1680,
+          "ticksOut": 1276,
+          "spread": 0.000058340626527354906,
+          "marketSd": 0.011630779411957344,
+          "normalized": 0.005016054768210651,
+          "p": 0.368,
+          "lower95": -0.022954748177863856,
+          "upper95": 0.03143065452188226,
+          "rankCarry": -0.06384035016209409
+        },
+        "holds": false,
+        "below": true
+      },
+      {
+        "regime": "stress",
+        "inBlocks": 0,
+        "outBlocks": 0,
+        "qualifies": false,
+        "reference": 0.19171798188372335,
+        "referenceNoPair": 0.2140489361943214,
+        "result": null,
+        "holds": false,
+        "below": false
+      }
+    ],
+    "h1Call": "negative",
+    "pooled": {
+      "ticksIn": 2550,
+      "ticksOut": 1276,
+      "spread": 0.00007150843213842478,
+      "marketSd": 0.011630779411957344,
+      "normalized": 0.006148206375998204,
+      "p": 0.357,
+      "lower95": -0.022797879929380937,
+      "upper95": 0.03372647820595934,
+      "rankCarry": -0.0741213512166014
+    },
+    "pooledReference": 0.2782470480198365,
+    "pooledRefCurve": [
+      0.03827106401723576,
+      0.07913736551020138,
+      0.1417615628252221,
+      0.20871898832648933,
+      0.2782470480198365,
+      0.42281351354243757,
+      0.5739619760605332
+    ],
+    "magnitudeStar": 0,
+    "h2": {
+      "evaluations": 58,
+      "rho": 0.0292165857478066,
+      "lower95": -0.02954655146989318,
+      "upper95": 0.08054466884721803,
+      "meanRanked": 731.2758620689655
+    },
+    "h2Reference": 0.4156730350496284,
+    "h2Call": "negative",
+    "h2ByRegime": [
+      {
+        "regime": "trending",
+        "evaluations": 0,
+        "rho": null
+      },
+      {
+        "regime": "mean_reverting",
+        "evaluations": 0,
+        "rho": null
+      },
+      {
+        "regime": "choppy",
+        "evaluations": 58,
+        "rho": 0.0292165857478066
+      },
+      {
+        "regime": "stress",
+        "evaluations": 0,
+        "rho": null
+      }
+    ],
+    "heldOutR2": 0.45365911302714557,
+    "meanInMarket": 0.4985533193936226,
+    "swapsPerGenomeHeldOut": 50.588,
+    "meanHeldOutNetPerTick": -0.00014566540883923147
+  },
+  "coinbase": {
+    "label": "coinbase dry run",
+    "cost": "base",
+    "costPerSwap": 0.001156,
+    "ticks": {
+      "inSample": 2550,
+      "heldOut": 1276
+    },
+    "marketSd": {
+      "inSample": 0.012981662416966277,
+      "heldOut": 0.011738536668263024
+    },
+    "stressSd": 0.019507089023382072,
+    "blocks": {
+      "inSample": [
+        {
+          "from": "2025-12-23",
+          "hours": 336,
+          "sd": 0.016339415143506043,
+          "efficiency": 0.10792440728541924,
+          "autocorrelation": -0.0538718028475421,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-01-06",
+          "hours": 336,
+          "sd": 0.012300808522547486,
+          "efficiency": 0.148692641788084,
+          "autocorrelation": -0.04462437358845825,
+          "label": "trending"
+        },
+        {
+          "from": "2026-01-20",
+          "hours": 336,
+          "sd": 0.01370864350862861,
+          "efficiency": 0.0006260299824816733,
+          "autocorrelation": 0.017871806268958807,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-02-03",
+          "hours": 336,
+          "sd": 0.01753394904475784,
+          "efficiency": 0.06500348670211065,
+          "autocorrelation": 0.08649796754926771,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-02-17",
+          "hours": 336,
+          "sd": 0.010188084344397842,
+          "efficiency": 0.019577421847810313,
+          "autocorrelation": -0.03362569263941581,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-03-03",
+          "hours": 336,
+          "sd": 0.008039091344464806,
+          "efficiency": 0.07662144080148853,
+          "autocorrelation": 0.020686126420714886,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-03-17",
+          "hours": 336,
+          "sd": 0.009178652881937144,
+          "efficiency": 0.002894982200631798,
+          "autocorrelation": 0.20506659984487005,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-03-31",
+          "hours": 198,
+          "sd": 0.013736018718453572,
+          "efficiency": 0.15648660206019196,
+          "autocorrelation": 0.0957134857198004,
+          "label": "trending"
+        }
+      ],
+      "heldOut": [
+        {
+          "from": "2026-04-08",
+          "hours": 336,
+          "sd": 0.015150217676967831,
+          "efficiency": 0.033224523508311496,
+          "autocorrelation": -0.02433666827169773,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-04-22",
+          "hours": 336,
+          "sd": 0.01070493459342718,
+          "efficiency": 0.010245248637135005,
+          "autocorrelation": 0.1537865274499389,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-05-06",
+          "hours": 336,
+          "sd": 0.010261071580128813,
+          "efficiency": 0.06914352734266671,
+          "autocorrelation": -0.048906249881459946,
+          "label": "choppy"
+        },
+        {
+          "from": "2026-05-20",
+          "hours": 268,
+          "sd": 0.009671169945945477,
+          "efficiency": 0.0562360620006081,
+          "autocorrelation": 0.03424173758843515,
+          "label": "choppy"
+        }
+      ]
+    },
+    "h1": [
+      {
+        "regime": "trending",
+        "inBlocks": 2,
+        "outBlocks": 0,
+        "qualifies": false,
+        "reference": 0.3630765389325855,
+        "referenceNoPair": 0.40652106981388975,
+        "result": null,
+        "holds": false,
+        "below": false
+      },
+      {
+        "regime": "mean_reverting",
+        "inBlocks": 0,
+        "outBlocks": 0,
+        "qualifies": false,
+        "reference": 0.25926738828818363,
+        "referenceNoPair": 0.29240234767499285,
+        "result": null,
+        "holds": false,
+        "below": false
+      },
+      {
+        "regime": "choppy",
+        "inBlocks": 6,
+        "outBlocks": 4,
+        "qualifies": true,
+        "reference": 0.2972267077514894,
+        "referenceNoPair": 0.3300852185925352,
+        "result": {
+          "ticksIn": 2016,
+          "ticksOut": 1276,
+          "spread": 0.000042006520820511404,
+          "marketSd": 0.011738536668263024,
+          "normalized": 0.0035785142567286623,
+          "p": 0.413,
+          "lower95": -0.029424618246996232,
+          "upper95": 0.035425631678356925,
+          "rankCarry": -0.1316650703094715
+        },
+        "holds": false,
+        "below": true
+      },
+      {
+        "regime": "stress",
+        "inBlocks": 0,
+        "outBlocks": 0,
+        "qualifies": false,
+        "reference": 0.19171798188372335,
+        "referenceNoPair": 0.2140489361943214,
+        "result": null,
+        "holds": false,
+        "below": false
+      }
+    ],
+    "h1Call": "negative",
+    "pooled": {
+      "ticksIn": 2550,
+      "ticksOut": 1276,
+      "spread": 0.00010721243456854043,
+      "marketSd": 0.011738536668263024,
+      "normalized": 0.009133373059898179,
+      "p": 0.2985,
+      "lower95": -0.01894896946066766,
+      "upper95": 0.03540425000131285,
+      "rankCarry": -0.01869553796547788
+    },
+    "pooledReference": 0.2782470480198365,
+    "pooledRefCurve": [
+      0.03827106401723576,
+      0.07913736551020138,
+      0.1417615628252221,
+      0.20871898832648933,
+      0.2782470480198365,
+      0.42281351354243757,
+      0.5739619760605332
+    ],
+    "magnitudeStar": 0,
+    "h2": {
+      "evaluations": 58,
+      "rho": 0.03642317811932689,
+      "lower95": -0.024931583445298684,
+      "upper95": 0.09166752794828209,
+      "meanRanked": 731.8103448275862
+    },
+    "h2Reference": 0.4156730350496284,
+    "h2Call": "negative",
+    "h2ByRegime": [
+      {
+        "regime": "trending",
+        "evaluations": 0,
+        "rho": null
+      },
+      {
+        "regime": "mean_reverting",
+        "evaluations": 0,
+        "rho": null
+      },
+      {
+        "regime": "choppy",
+        "evaluations": 58,
+        "rho": 0.03642317811932689
+      },
+      {
+        "regime": "stress",
+        "evaluations": 0,
+        "rho": null
+      }
+    ],
+    "heldOutR2": 0.4633655452380454,
+    "meanInMarket": 0.4993734971249344,
+    "swapsPerGenomeHeldOut": 50.831,
+    "meanHeldOutNetPerTick": -0.00015111378296496576
+  }
+}
