@@ -3,12 +3,16 @@ export type { CommitmentTag } from "./canonical.js";
 export {
   TAGS,
   hashCommitment,
+  hashExecutionPlan,
   hashGenome,
   hashReallocationPolicy,
+  hashRiskPolicy,
   hashStrategyVersion,
   normalize,
+  normalizeExecutionPlan,
   normalizeGenome,
   normalizeReallocationPolicy,
+  normalizeRiskPolicy,
   normalizeStrategyVersion,
 } from "./documents.js";
 export type { Address, BaseUnits, CommitmentKind, GenomeV1, ReallocationPolicyV1, StrategyVersionV1 } from "./documents.js";

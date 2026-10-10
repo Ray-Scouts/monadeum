@@ -1,4 +1,5 @@
-import { hashOf, type ActionProposal, type Decision, type ExecutionPlan } from "@monadeum/risk";
+import { hashExecutionPlan } from "@monadeum/commitment";
+import { type ActionProposal, type Decision, type ExecutionPlan } from "@monadeum/risk";
 import { encodeFunctionData, zeroAddress, type Hex } from "viem";
 import { costsOf, decodeFill } from "./fills.js";
 import { ERC20_ABI, referencePrice, type KuruMarket } from "./market.js";
@@ -215,7 +216,7 @@ export class TradingService {
 }
 
 export function planHashOf(tickKey: string, calls: ExecutionPlan["calls"]): Hex {
-  return hashOf("monadeum:plan:v1", { tickKey, calls });
+  return hashExecutionPlan({ tickKey, calls });
 }
 
 function policyFailure(trade: PreparedTrade, decision: Decision): TradeFailure | null {

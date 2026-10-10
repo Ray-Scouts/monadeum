@@ -50,12 +50,14 @@ export interface ReallocationPolicyV1 {
   capitalFloor?: BaseUnits;
 }
 
-export type CommitmentKind = "genome" | "strategyVersion" | "reallocationPolicy";
+export type CommitmentKind = "genome" | "strategyVersion" | "reallocationPolicy" | "riskPolicy" | "executionPlan";
 
 export const TAGS: Record<CommitmentKind, CommitmentTag> = {
   genome: "monadeum:genome:v1",
   strategyVersion: "monadeum:strategy:v1",
   reallocationPolicy: "monadeum:reallocation:v1",
+  riskPolicy: "monadeum:policy:v1",
+  executionPlan: "monadeum:plan:v1",
 };
 
 type Doc = Record<string, unknown>;
@@ -174,10 +176,72 @@ export function normalizeReallocationPolicy(input: unknown): Doc {
   return out;
 }
 
+function hexData(value: unknown, path: string): string {
+  const s = str(value, path);
+  if (!/^0x([0-9a-fA-F]{2})*$/.test(s)) throw new CanonicalizationError(path, "expected 0x-prefixed hex bytes");
+  return s.toLowerCase();
+}
+
+/**
+ * The Policy/Risk Engine rule set of ARCHITECTURE.md section 16.1. Field types and their semantic checks belong to
+ * libs/risk; this fixes only what is hashed. `previousHash` is null in memory for version 1 and, per section 16.4
+ * rule 3, an absent value is omitted from the hashed object rather than written as null.
+ */
+export function normalizeRiskPolicy(input: unknown): Doc {
+  const d = asObject(input, "$");
+  onlyKeys(
+    d,
+    ["schemaVersion", "version", "effectiveFrom", "settlementAsset", "allowedCalls", "allowedPairs", "perActionCap", "sessionDailyCap", "perTickInformationCap", "dailyInformationCap", "maxPositionFraction"],
+    ["previousHash"],
+    "$",
+  );
+  if (!Array.isArray(d.allowedCalls)) throw new CanonicalizationError("$.allowedCalls", "expected an array");
+  if (!Array.isArray(d.allowedPairs)) throw new CanonicalizationError("$.allowedPairs", "expected an array");
+  const out: Doc = {
+    schemaVersion: literal(d.schemaVersion, 1, "$.schemaVersion"),
+    version: integer(d.version, "$.version"),
+    effectiveFrom: str(d.effectiveFrom, "$.effectiveFrom"),
+    settlementAsset: hex(d.settlementAsset, 20, "$.settlementAsset"),
+    // Order is kept: section 16.4 rule 1 names only the genome's set fields, and the signed document is hashed as signed
+    allowedCalls: d.allowedCalls.map((c, i) => {
+      const path = `$.allowedCalls[${i}]`;
+      const call = asObject(c, path);
+      onlyKeys(call, ["target", "selector", "label"], [], path);
+      return { target: hex(call.target, 20, `${path}.target`), selector: hex(call.selector, 4, `${path}.selector`), label: str(call.label, `${path}.label`) };
+    }),
+    allowedPairs: d.allowedPairs.map((p, i) => str(p, `$.allowedPairs[${i}]`)),
+    perActionCap: baseUnits(d.perActionCap, "$.perActionCap"),
+    sessionDailyCap: baseUnits(d.sessionDailyCap, "$.sessionDailyCap"),
+    perTickInformationCap: baseUnits(d.perTickInformationCap, "$.perTickInformationCap"),
+    dailyInformationCap: baseUnits(d.dailyInformationCap, "$.dailyInformationCap"),
+    maxPositionFraction: finite(d.maxPositionFraction, "$.maxPositionFraction"),
+  };
+  if (d.previousHash !== null && d.previousHash !== undefined) out.previousHash = hex(d.previousHash, 32, "$.previousHash");
+  return out;
+}
+
+/** The `{ tickKey, calls }` object an execution plan's hash commits to (ARCHITECTURE.md section 16.2). Call order is execution order and is kept. */
+export function normalizeExecutionPlan(input: unknown): Doc {
+  const p = asObject(input, "$");
+  onlyKeys(p, ["tickKey", "calls"], [], "$");
+  if (!Array.isArray(p.calls)) throw new CanonicalizationError("$.calls", "expected an array");
+  return {
+    tickKey: str(p.tickKey, "$.tickKey"),
+    calls: p.calls.map((c, i) => {
+      const path = `$.calls[${i}]`;
+      const call = asObject(c, path);
+      onlyKeys(call, ["target", "data"], [], path);
+      return { target: hex(call.target, 20, `${path}.target`), data: hexData(call.data, `${path}.data`) };
+    }),
+  };
+}
+
 const NORMALIZERS: Record<CommitmentKind, (input: unknown) => Doc> = {
   genome: normalizeGenome,
   strategyVersion: normalizeStrategyVersion,
   reallocationPolicy: normalizeReallocationPolicy,
+  riskPolicy: normalizeRiskPolicy,
+  executionPlan: normalizeExecutionPlan,
 };
 
 export function normalize(kind: CommitmentKind, input: unknown): Doc {
@@ -191,3 +255,6 @@ export function hashCommitment(kind: CommitmentKind, input: unknown): Hex {
 export const hashGenome = (genome: GenomeV1): Hex => hashCommitment("genome", genome);
 export const hashStrategyVersion = (version: StrategyVersionV1): Hex => hashCommitment("strategyVersion", version);
 export const hashReallocationPolicy = (policy: ReallocationPolicyV1): Hex => hashCommitment("reallocationPolicy", policy);
+export const hashRiskPolicy = (document: unknown): Hex => hashCommitment("riskPolicy", document);
+export const hashExecutionPlan = (plan: { tickKey: string; calls: readonly { target: string; data: string }[] }): Hex =>
+  hashCommitment("executionPlan", plan);

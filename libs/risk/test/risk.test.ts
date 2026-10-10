@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { CanonicalizationError, hashExecutionPlan, hashRiskPolicy } from "@monadeum/commitment";
 import { encodeFunctionData, parseAbi, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
-  canonicalJson,
   evaluateInformation,
   evaluateTrade,
-  hashOf,
   loadPolicy,
   RiskService,
   type ActionProposal,
@@ -53,7 +52,13 @@ function doc(version: number, previousHash: Hex | null, overrides: Partial<Polic
 }
 
 async function sign(document: PolicyDocument, account = operator): Promise<SignedPolicy> {
-  return { document, signature: await account.signMessage({ message: { raw: hashOf("monadeum:policy:v1", document) } }) };
+  return { document, signature: await account.signMessage({ message: { raw: hashRiskPolicy(document) } }) };
+}
+
+/** A malformed document has no 16.4 hash, so it cannot be signed; it is paired with a signature over something else. */
+async function unhashable(document: PolicyDocument): Promise<SignedPolicy> {
+  assert.throws(() => hashRiskPolicy(document), CanonicalizationError);
+  return { document, signature: await operator.signMessage({ message: { raw: `0x${"00".repeat(32)}` } }) };
 }
 
 async function chain(overrides: Partial<PolicyDocument>[] = [{}]): Promise<SignedPolicy[]> {
@@ -62,7 +67,7 @@ async function chain(overrides: Partial<PolicyDocument>[] = [{}]): Promise<Signe
   for (const [i, o] of overrides.entries()) {
     const row = await sign(doc(i + 1, previous, o));
     rows.push(row);
-    previous = hashOf("monadeum:policy:v1", row.document);
+    previous = hashRiskPolicy(row.document);
   }
   return rows;
 }
@@ -83,7 +88,7 @@ function proposal(notional: bigint, pair = "MON/USDC"): ActionProposal {
     tickKey: "agent-1:7",
     agentId: "agent-1",
     account: OTHER,
-    genomeHash: hashOf("monadeum:genome:v1", { strategyType: "trading" }),
+    genomeHash: `0x${"11".repeat(32)}`,
     strategyType: "trading",
     state: { capital: 40_000_000n, principal: 10_000_000n, ticksSinceTrade: 3, observedAt: "2026-09-27T00:00:00Z" },
     information: [],
@@ -92,7 +97,7 @@ function proposal(notional: bigint, pair = "MON/USDC"): ActionProposal {
 }
 
 function plan(calls: { target: Hex; data: Hex }[], tickKey = "agent-1:7"): ExecutionPlan {
-  return { tickKey, calls, planHash: hashOf("monadeum:plan:v1", { tickKey, calls }) };
+  return { tickKey, calls, planHash: hashExecutionPlan({ tickKey, calls }) };
 }
 
 async function active(): Promise<VerifiedPolicy> {
@@ -197,13 +202,13 @@ test("a policy that fails verification rejects every request", async () => {
   const broken = [rows[0], await sign(doc(2, null))];
   assert.equal(await loadPolicy(broken, operator.address, NOW), null);
 
-  const backdated = await sign(doc(2, hashOf("monadeum:policy:v1", rows[0].document), { effectiveFrom: "2026-08-01T00:00:00Z" }));
+  const backdated = await sign(doc(2, hashRiskPolicy(rows[0].document), { effectiveFrom: "2026-08-01T00:00:00Z" }));
   assert.equal(await loadPolicy([rows[0], backdated], operator.address, NOW), null);
 
-  const badCalls = await sign(doc(1, null, { allowedCalls: [{ target: 1 as unknown as Hex, selector: "0x", label: "kuru-router" }] }));
+  const badCalls = await unhashable(doc(1, null, { allowedCalls: [{ target: 1 as unknown as Hex, selector: "0x", label: "kuru-router" }] }));
   assert.equal(await loadPolicy([badCalls], operator.address, NOW), null);
 
-  const future = await sign({ ...doc(1, null), schemaVersion: 2 as 1 });
+  const future = await unhashable({ ...doc(1, null), schemaVersion: 2 as 1 });
   assert.equal(await loadPolicy([future], operator.address, NOW), null);
 
   const service = new RiskService();
@@ -217,9 +222,67 @@ test("a version not yet in effect is not the active policy", async () => {
   assert.equal((await loadPolicy(rows, operator.address, NOW))?.document.version, 1);
 });
 
-test("canonical hashing: key order is irrelevant, bigints hash as decimal strings, tags separate kinds", () => {
-  assert.equal(canonicalJson({ b: 1, a: [2, { d: -0, c: "x" }] }), '{"a":[2,{"c":"x","d":0}],"b":1}');
-  assert.equal(hashOf("monadeum:policy:v1", { x: 5n, y: 1 }), hashOf("monadeum:policy:v1", { y: 1, x: "5" }));
-  assert.notEqual(hashOf("monadeum:policy:v1", { x: 1 }), hashOf("monadeum:plan:v1", { x: 1 }));
-  assert.throws(() => canonicalJson({ x: Number.NaN }));
+// Hashes computed with the pre-refactor libs/risk canonicalization (its own sorted-key JSON.stringify), pinned so the
+// move to @monadeum/commitment states exactly which hashes it changes.
+const LEGACY = {
+  v1: "0xedf1c2448664c27548327bb55f649217bad7596aada704ea610d48369b37740e",
+  v2: "0x44de506f2420f20fd435a9237ce3cb3f4be12ad4b3c422aa1596088e547f1263",
+  v2MixedCase: "0x43e6df751a336180e6c8a13ba120579d3b7f674554d0572458c908e6d7b9072c",
+  plan: "0x132e9c62e09c6f9dcdeed3bc51838c15c64772b80a5ffa60b65dfab81fd6117b",
+};
+const FIXED_V1: PolicyDocument = {
+  schemaVersion: 1,
+  version: 1,
+  previousHash: null,
+  effectiveFrom: "2026-09-01T00:00:00Z",
+  settlementAsset: USDC,
+  allowedCalls: [{ target: ROUTER, selector: "0x12345678", label: "kuru-router" }],
+  allowedPairs: ["MON/USDC"],
+  perActionCap: 5_000_000n,
+  sessionDailyCap: 20_000_000n,
+  perTickInformationCap: 100_000n,
+  dailyInformationCap: 1_000_000n,
+  maxPositionFraction: 0.25,
+};
+const FIXED_V2: PolicyDocument = { ...FIXED_V1, version: 2, previousHash: `0x${"ab".repeat(32)}` };
+
+test("unchanged by the move to @monadeum/commitment: a policy with a previous hash, and an execution plan", () => {
+  assert.equal(hashRiskPolicy(FIXED_V2), LEGACY.v2);
+  assert.equal(hashExecutionPlan({ tickKey: "agent-1:7", calls: [{ target: ROUTER, data: "0xdeadbeef" }] }), LEGACY.plan);
 });
+
+test("changed by the move: version 1 omits a null previousHash, and hex case no longer changes the hash", () => {
+  // Section 16.4 rule 3: an absent value is omitted, never written as null, so every version 1 hash changes
+  assert.notEqual(hashRiskPolicy(FIXED_V1), LEGACY.v1);
+  const { previousHash: _, ...withoutPrevious } = FIXED_V1;
+  assert.equal(hashRiskPolicy(FIXED_V1), hashRiskPolicy(withoutPrevious));
+  // Section 16.4 strict reading 6: addresses and digests are lowercased, so checksum case is one commitment
+  const mixed = { ...FIXED_V2, settlementAsset: "0x00000000000000000000000000000000000000A1" as Hex };
+  assert.equal(hashRiskPolicy(mixed), LEGACY.v2);
+  assert.notEqual(hashRiskPolicy(mixed), LEGACY.v2MixedCase);
+});
+
+test("a document the stricter canonicalization rejects fails closed as an unverified policy", async () => {
+  const cases: Record<string, unknown>[] = [
+    { extra: 1 },
+    { maxPositionFraction: null },
+    { perActionCap: "05000000" },
+    { perActionCap: 5_000_000 },
+    { allowedCalls: [{ target: ROUTER, selector: "0x12345678", label: "kuru-router", note: "x" }] },
+    { allowedCalls: [{ target: ROUTER, selector: "0x123456", label: "kuru-router" }] },
+  ];
+  const signature = await operator.signMessage({ message: { raw: `0x${"00".repeat(32)}` } });
+  for (const [i, override] of cases.entries()) {
+    const document = { ...doc(1, null), ...override } as unknown as PolicyDocument;
+    assert.throws(() => hashRiskPolicy(document), CanonicalizationError, `case ${i}`);
+    assert.equal(await loadPolicy([{ document, signature }], operator.address, NOW), null, `case ${i}`);
+  }
+});
+
+test("an execution plan the stricter canonicalization rejects is a plan-hash mismatch, not an exception", async () => {
+  const policy = await active();
+  const bad: ExecutionPlan = { tickKey: "agent-1:7", calls: [{ target: ROUTER, data: "0xabc" }], planHash: `0x${"00".repeat(32)}` };
+  const d = evaluateTrade(policy, proposal(1n), bad, ledger);
+  assert.ok(!d.approved && d.violations.includes("plan-hash-mismatch"));
+});
+
