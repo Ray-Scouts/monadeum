@@ -8,6 +8,7 @@ Every response is JSON. An error is `{ "error": "<reason>", "detail"?: "..." }` 
 
 | Method and path | Auth | What it does |
 |---|---|---|
+| `GET /health` | none | Liveness, and whether wallet operations are configured. Reads no store. |
 | `POST /auth/privy/sign-in` | none, rate limited | Verifies a Privy access token and identity token, creates or finds the user. The client then sends the access token as `Authorization: Bearer`. |
 | `POST /auth/wallet/challenge` | none, rate limited | Issues a one-time EIP-4361 message for an external wallet. |
 | `POST /auth/wallet/verify` | none, rate limited | Verifies the signed message and sets the `monadeum_session` cookie. The token is never in the body. |
@@ -74,7 +75,7 @@ The agent view carries the field names of `Agent` in `apps/web/src/data/types.ts
 
 The database rules are the worker's and the indexer's: `bootApi` reads `DATABASE_URL`, `DATABASE_MIGRATIONS`, and `MONADEUM_ENV` with `loadDatabaseSettings` and opens the database with `openDatabase` from `@monadeum/db`. With `DATABASE_URL` set, every store is on Postgres, including the API's own tables from migration `0007_api.sql`: the agent registry, the recovery log and holds, and the signed policies, and the worker's `worker_agents`, where migration `0008_api_agent_creation.sql` lets the API insert and nothing more. The migrations are verified at start (`verify`, the default) or applied (`apply`, for an owner connection only). Every statement runs inside a transaction under `SET LOCAL ROLE`: the stores as `monadeum_api`, the read-model as `monadeum_reader`, which can only read it. The login role therefore needs membership in both group roles, and nothing else; it does not own the tables. Without `DATABASE_URL` the API runs on in-memory stores and logs that state is not durable; with `MONADEUM_ENV=production` it refuses to start instead.
 
-`main.ts` does not construct WalletsModule: it needs a session key vault backed by a secrets manager and shared with the worker, so that a revocation here destroys the key the worker holds, and none exists (`SECURITY.md` section 11). Until then deployment and stop answer `503 wallets-unavailable` in a running process.
+`bootApi` constructs WalletsModule when `WALLETS_CHAIN_ID` is set (`loadWalletsRuntime` in `@monadeum/wallets`): the `WALLETS_*` settings of `libs/wallets/README.md`, over the API's own wallet store and ledger, with the session key vault shared with the worker, so that a revocation here destroys the key the worker holds. The only vault implemented is the local encrypted file vault, for testnet and local development; it refuses `MONADEUM_ENV=production` (`SECURITY.md` section 11). Without `WALLETS_CHAIN_ID`, deployment and stop answer `503 wallets-unavailable`. `GET /health` (unauthenticated) answers `{ status: "ok", wallets: "configured" | "unavailable" }` and reads nothing else; it is the container healthcheck.
 
 ## Configuration
 

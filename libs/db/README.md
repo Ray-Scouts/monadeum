@@ -39,7 +39,19 @@ Migrations 0004 to 0011 create the group roles and their grants. Each process's 
 
 Only `monadeum_api` has any privilege on the auth tables and the API tables. Migration `0007_api.sql` adds them; their stores live in `apps/api`, which owns the interfaces.
 
-There is no `SessionKeyVault` here. Session private keys belong in a secrets manager, never in Postgres (`SECURITY.md` section 11).
+There is no `SessionKeyVault` here. Session private keys never go to Postgres: on testnet they are in the local encrypted file vault of `libs/wallets`, and production needs a secrets manager (`SECURITY.md` section 11).
+
+## Migration step
+
+`runMigrationStep` (`src/migrate-main.ts`, run as `node libs/db/dist/src/migrate-main.js`) is the dedicated, privileged step a deployment runs once before the services start. With `DATABASE_URL` naming the owning role (which needs `CREATEROLE`), it applies every pending migration, then creates or updates one login role per process whose password is set, as members of the group roles above (`PROCESS_LOGIN_ROLES`):
+
+| Variable | Login role | Member of |
+|---|---|---|
+| `DB_API_PASSWORD` or `DB_API_PASSWORD_FILE` | `monadeum_api_login` | `monadeum_api`, `monadeum_reader` |
+| `DB_WORKER_PASSWORD` or `DB_WORKER_PASSWORD_FILE` | `monadeum_worker_login` | `monadeum_worker` |
+| `DB_INDEXER_PASSWORD` or `DB_INDEXER_PASSWORD_FILE` | `monadeum_indexer_login` | `monadeum_indexer` |
+
+Each is `LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION INHERIT`; an existing role with any of those privileges is refused, a rerun sets the password again (rotation), and memberships in other monadeum group roles are revoked. Passwords of at least 16 characters, sent only as bind parameters and quoted inside the server; nothing logs them. `test/provision.test.ts` runs it on PGlite. `deploy/docker-compose.yml` runs it as the `migrate` service.
 
 ## Tests
 

@@ -39,7 +39,22 @@ The spend policy contract is `contracts/src/AgentSpendPolicy.sol` (issue #25). T
 | `WALLETS_X402_PAYMENTS_PER_EPOCH` | no | Payments per hour. Defaults to the decided value 4. 24-hour worst case: 26 x this x `WALLETS_X402_MAX_VALUE`. |
 | `WALLETS_X402_MAX_VALIDITY` | no | Seconds an authorization stays valid, at most 3600. Defaults to the decided value 300. |
 
-The consuming app also supplies an `AgentWalletStore` and a `SponsorshipLedger` backed by Postgres (`PgAgentWalletStore` and `PgSponsorshipLedger` in `@monadeum/db`), and a `SessionKeyVault` backed by a secrets manager, which is not built yet; session keys never go to Postgres. With x402 configured, the settings carry a second `SessionKeyVault` for the x402 keys, which must be a different instance (`ARCHITECTURE.md` section 16.3, x402 signature path). `test/x402-lifecycle.test.ts` covers the x402 key's install, revocation, and reinstall. The in-memory implementations here are for tests and local development only.
+The consuming app also supplies an `AgentWalletStore` and a `SponsorshipLedger` backed by Postgres (`PgAgentWalletStore` and `PgSponsorshipLedger` in `@monadeum/db`), and a `SessionKeyVault`; session keys never go to Postgres. With x402 configured, the settings carry a second `SessionKeyVault` for the x402 keys, which must be a different instance (`ARCHITECTURE.md` section 16.3, x402 signature path). `test/x402-lifecycle.test.ts` covers the x402 key's install, revocation, and reinstall. `MemorySessionKeyVault` is for tests only.
+
+### Session key vault: local encrypted files (testnet and local development only)
+
+`FileSessionKeyVault` (`src/file-vault.ts`) is the one persistent `SessionKeyVault`. Each key is a file `<sha256(agentId)>.key` holding the key sealed with AES-256-GCM (fresh 96-bit IV, the vault's purpose and the agent ID as associated data) under a key derived from a passphrase with scrypt, N = 2^17, r = 8, p = 1, all from Node's `crypto`. `vault.json` records the scrypt salt and parameters and a sealed check value, so a wrong passphrase is refused at open. Files are 0600 in a 0700 directory owned by the process's user; a directory group or others can access is refused. Writes are create-only and atomic (a synced temporary file hard-linked into place), so the API and the worker can share a directory: `put` refuses an agent that already holds a key, `destroy` unlinks it. A damaged, modified, or moved key file throws, never reads as absent. Nothing logs a key or the passphrase.
+
+`loadWalletsRuntime(env)` builds WalletsService for a process: nothing without `WALLETS_CHAIN_ID`, and once it is set, the chain settings above and these vault variables, read by `loadFileVaults`, which refuses all of them with `MONADEUM_ENV=production`:
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `WALLETS_SESSION_VAULT_DIR` | with `WALLETS_CHAIN_ID` | Directory of the session-key vault. Created with mode 0700 when absent. |
+| `WALLETS_SESSION_VAULT_PASSPHRASE_FILE` or `WALLETS_SESSION_VAULT_PASSPHRASE` | with the directory | The passphrase, at least 16 characters; a file (a Docker secret) is preferred. One trailing newline in the file is ignored. |
+| `WALLETS_X402_VAULT_DIR` | with `WALLETS_X402_VALIDATOR_ADDRESS` | Directory of the x402-key vault. Must not be the session directory, inside it, or contain it. |
+| `WALLETS_X402_VAULT_PASSPHRASE_FILE` or `WALLETS_X402_VAULT_PASSPHRASE` | with the directory | Its passphrase. Use a different one from the session vault's. |
+
+It protects keys at rest only: whoever holds the files and a passphrase holds the keys, and a backup brings back keys destroyed after it was taken (`SECURITY.md` section 11). Production needs a secrets manager behind `SessionKeyVault`, which is not built. `test/file-vault.test.ts` covers the round trip, file modes, wrong passphrases and purposes, moved and modified files, two processes on one directory, the loader's refusals, and WalletsService issuing and revoking a key on it.
 
 ## Tests
 
@@ -49,7 +64,7 @@ The consuming app also supplies an `AgentWalletStore` and a `SponsorshipLedger` 
 
 ## Not verified yet
 
-- No run on Monad testnet: the spend policy contract is implemented but not yet deployed there. The opt-in test is the check.
+- No run on Monad testnet: the spend policy contract is implemented, and its deployment script exists (`contracts/script/DeployTestnet.s.sol`), but it has not been broadcast. The opt-in test is the check.
 - Installing `AgentSpendPolicy` as policy and hook is verified against the Kernel v3.1 source, Foundry tests, and a fork test against the Kernel v3.1 contracts deployed on Monad testnet (`ARCHITECTURE.md` section 16.3), not yet through a bundler.
 - Sponsorship through ZeroDev's paymaster has not been exercised on Monad; both spikes paid gas from the account.
 - The Kernel v3.1 nonce rules the revocation check relies on were read from the Kernel v3.1 source (`ValidationManager.sol`, `Kernel.sol`) on 2026-10-09, not observed on chain.

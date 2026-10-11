@@ -35,4 +35,4 @@ indexer/
 tests/
 ```
 
-`contracts/` holds the spend-policy contract (`ARCHITECTURE.md` section 16.3) and the owner-scoped reallocation contract (section 16.5), both tested and neither audited nor deployed; the other directories do not exist yet. They are created once the architecture they depend on has been decided and documented.
+`contracts/` holds the spend-policy contract (`ARCHITECTURE.md` section 16.3) and the owner-scoped reallocation contract (section 16.5), both tested and neither audited nor deployed, and a Monad testnet deployment script. `deploy/` holds the single-VPS testnet runtime and its runbook (`deploy/README.md`). The other directories do not exist yet. They are created once the architecture they depend on has been decided and documented.
