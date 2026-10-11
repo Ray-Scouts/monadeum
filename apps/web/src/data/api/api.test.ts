@@ -3,7 +3,8 @@ import { verifyMessage, verifyTypedData } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { loadWebConfig } from "../config";
 import { ApiError, createApiClient } from "./client";
-import { amount, explainAgent, REALLOCATION_OFF } from "./present";
+import { REALLOCATION_OFF_REASON } from "@monadeum/reallocation/switch";
+import { amount, explainAgent, REALLOCATION_OFF, REALLOCATION_ON, reallocationEnabled, reallocationNote } from "./present";
 import { explain, messageHex, rawPayload, signWith, walletCall, withDomainType } from "./signing";
 import { revocationFacts, stopViewFromError, stopViewFromResponse } from "./stop";
 import { apiAgent } from "./fixtures";
@@ -226,7 +227,34 @@ describe("stop this agent", () => {
 });
 
 describe("explainer states from the API", () => {
-  const owner = (policy: OwnerResponse["policy"]): OwnerResponse => ({ id: "u1", name: null, rootWallet: "0x1", policy });
+  const ON = { enabled: true, reason: null };
+  const owner = (policy: OwnerResponse["policy"], reallocation: OwnerResponse["reallocation"] = ON): OwnerResponse => ({ id: "u1", name: null, rootWallet: "0x1", reallocation, policy });
+  const policy = { agentIds: ["7", "8"], reallocationCap: null, slotCeiling: null, signedAtEvaluation: null, sequence: 2, policyHash: "0x" };
+  const OFF = { enabled: false, reason: REALLOCATION_OFF_REASON };
+
+  test("switch off: every agent reads as off with the study reason, and no policy step is suggested", () => {
+    for (const o of [owner(null, OFF), owner(policy, OFF), { id: "u1", name: null, rootWallet: "0x1", policy }, null]) {
+      const e = explainAgent(apiAgent({ registryId: "7" }), o);
+      expect(e.headline).toBe("Reallocation is off");
+      const text = e.lines.join(" ");
+      expect(text).toMatch(/off for every agent on this deployment/);
+      expect(text).not.toMatch(/Covered by your policy|signs a policy|sign a policy/);
+      expect(reallocationEnabled(o)).toBe(false);
+      expect(reallocationNote(o)).toContain("adds nothing measurable");
+    }
+    expect(explainAgent(apiAgent(), owner(policy, OFF)).lines.join(" ")).toMatch(/sequence 2\) has no effect while reallocation is off/);
+  });
+
+  test("switch off: the note carries the API's reason; switch on: the note says so and promises no returns", () => {
+    expect(reallocationNote(owner(null, { enabled: false, reason: "Off for maintenance." }))).toMatch(/^Off for maintenance\./);
+    expect(reallocationNote(owner(null))).toBe(REALLOCATION_ON);
+    expect(REALLOCATION_ON).not.toMatch(/outperform|higher returns|earn more/i);
+    expect(REALLOCATION_OFF.startsWith(REALLOCATION_OFF_REASON)).toBe(true);
+  });
+
+  test("a retired agent reads as retired whatever the switch", () => {
+    expect(explainAgent(apiAgent({ retirement: { evaluation: 4, rule: "starvation" } }), owner(null, OFF)).headline).toBe("Retired");
+  });
 
   test("no policy: reallocation is off for this owner, and no rank is invented", () => {
     const e = explainAgent(apiAgent(), owner(null));
@@ -235,7 +263,6 @@ describe("explainer states from the API", () => {
   });
 
   test("a policy names agents by registry ID; an agent without one is not covered", () => {
-    const policy = { agentIds: ["7", "8"], reallocationCap: null, slotCeiling: null, signedAtEvaluation: null, sequence: 2, policyHash: "0x" };
     expect(explainAgent(apiAgent({ registryId: null }), owner(policy)).headline).toBe("Not covered by your policy");
     const covered = explainAgent(apiAgent({ registryId: "7" }), owner(policy));
     expect(covered.headline).toBe("Covered by your policy");

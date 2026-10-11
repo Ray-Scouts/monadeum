@@ -87,6 +87,7 @@ export class AgentsController {
       id: user.id,
       name: null,
       rootWallet: user.ownerWallet,
+      reallocation: this.deps.settings.reallocation,
       policy: policy
         ? {
             agentIds: policy.document.agentIds,

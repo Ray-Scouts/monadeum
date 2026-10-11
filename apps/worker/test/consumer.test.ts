@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MemoryAgentStore } from "@monadeum/agent-registry";
-import { EVALUATION_CADENCE } from "@monadeum/reallocation";
+import { EVALUATION_CADENCE, REALLOCATION_DISABLED, ReallocationSwitchError } from "@monadeum/reallocation";
 import { WorkerConfigError, loadConsumerConfig } from "../src/config.js";
 import { WorkerJobHandlers, type ConsumerSettings, type TickRunner } from "../src/consumer/handlers.js";
 import { jobId, parseJob, scheduleId, tickAt } from "../src/consumer/jobs.js";
@@ -157,6 +157,43 @@ test("the consumer drives the real worker loop: triggers, duplicate triggers, ti
   assert.equal(evaluations, 1);
   assert.equal(w.contract.executed.length, 1);
   for (const id of ["1", "2", "3"]) assert.equal((await w.stores.agents.state(id)).returns.length, EVALUATION_CADENCE);
+});
+
+test("with the reallocation switch off, the consumer still runs the evaluation, for fitness and retirement, and nothing is settled", async () => {
+  const w = await world({ reallocationOwners: ["a"], reallocation: REALLOCATION_DISABLED });
+  const { worker, risk } = await w.boot();
+  const queue = new MemoryJobQueue();
+  const locks = new MemoryAgentLocks();
+  let now = at(1);
+  const handlers = new WorkerJobHandlers({ agents: w.stores.agents, runner: worker, queue, locks, settings, clock: () => now });
+  await handlers.handle({ kind: "sync" });
+  const results: Awaited<ReturnType<typeof worker.evaluate>>[] = [];
+  const original = worker.evaluate.bind(worker);
+  worker.evaluate = async (tick) => {
+    const r = await original(tick);
+    results.push(r);
+    return r;
+  };
+  for (let t = 1; t <= EVALUATION_CADENCE; t++) {
+    now = at(t);
+    for (const id of await queue.scheduled()) await handlers.handle({ kind: "trigger", agentId: id });
+    for (const job of queue.take()) assert.equal((await handlers.handle(job)).kind, "done");
+  }
+  assert.equal(results.length, 1, "the evaluation job is still scheduled on the cadence");
+  assert.equal(results[0]!.reallocationEnabled, false);
+  assert.equal(results[0]!.fitness.length, 3);
+  assert.deepEqual(results[0]!.settled, []);
+  assert.equal(w.contract.executed.length, 0);
+  assertOnlyApprovedPlansSent(w, risk.approved);
+  assert.ok(risk.approved.every((p) => !p.tickKey.includes("realloc")), "only trades were approved");
+});
+
+test("production refuses to run with reallocation on unless a new pre-registered study is acknowledged", async () => {
+  const prod = { MONADEUM_ENV: "production", DATABASE_URL: "postgres://unused", REDIS_URL: "redis://localhost:6379", WORKER_TICK_INTERVAL_MS: "60000" };
+  await assert.rejects(
+    runWorker({ env: { ...prod, MONADEUM_REALLOCATION_ENABLED: "true" }, runner: () => new RecordingRunner() }),
+    (e: unknown) => e instanceof ReallocationSwitchError && /MONADEUM_REALLOCATION_PRODUCTION_ACK/.test(e.message),
+  );
 });
 
 test("consumer configuration: REDIS_URL turns it on, the tick interval has no default, and bad values are refused", () => {

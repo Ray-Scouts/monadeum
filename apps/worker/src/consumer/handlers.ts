@@ -118,6 +118,9 @@ export class WorkerJobHandlers {
   }
 
   /**
+   * Runs whether or not the reallocation switch is on: the evaluation is also where fitness is computed and retirement
+   * applied (EVOLUTION.md section 6), and with the switch off the runner plans and settles nothing.
+   *
    * Takes every active agent's lock, so no tick changes running state the evaluation reads and writes. A tick of the
    * same number that has not run yet is measured into the next evaluation instead; the history is never lost.
    */

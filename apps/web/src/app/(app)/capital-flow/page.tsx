@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ApiCapitalFlow } from "@/components/api/screens";
+import { SampleReallocationNote } from "@/components/SampleReallocationNote";
 import { Card, CardHead, Identicon, Kpi, Pill, SampleBadge, ScreenHead } from "@/components/ui";
 import { USES_API } from "@/data/config";
 import { boundsFor } from "@/data/evaluate";
@@ -31,7 +32,8 @@ export default async function CapitalFlowPage({ searchParams }: { searchParams: 
       never changes an owner&apos;s total. It creates no agents and copies no genome.
     </ScreenHead>
   );
-  if (!owner) return <>{head}<p className="text-muted">No owners yet.</p></>;
+  const note = <SampleReallocationNote />;
+  if (!owner) return <>{head}{note}<p className="text-muted">No owners yet.</p></>;
 
   const mine = agents.filter((a) => a.ownerId === owner.id);
   const moves = allMoves.filter((m) => m.ownerId === owner.id);
@@ -51,6 +53,7 @@ export default async function CapitalFlowPage({ searchParams }: { searchParams: 
   return (
     <>
       {head}
+      {note}
 
       <nav aria-label="Owner">
         <ul className="m-0 flex list-none flex-wrap gap-2 p-0">

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { netEconomicPerformance } from "@monadeum/fitness";
-import { EVALUATION_CADENCE } from "@monadeum/reallocation";
+import { EVALUATION_CADENCE, REALLOCATION_DISABLED } from "@monadeum/reallocation";
 import { toCostedFill, type TradingService, type TradeSigner } from "@monadeum/trading";
 import type { Hex } from "viem";
 import { ATTACKER, DECIMALS, UNIT, assertOnlyApprovedPlansSent, world, type ProviderMode } from "./harness.js";
@@ -325,4 +325,42 @@ test("reallocation: a revoked owner policy moves nothing from the next evaluatio
   const evaluation = await worker.evaluate(EVALUATION_CADENCE);
   assert.deepEqual(evaluation.plan.moves, []);
   assert.equal(w.contract.executed.length, 0);
+});
+
+test("reallocation switch off: a committed policy and a clear ranking move nothing, and nothing reaches the RiskModule or the contract", async () => {
+  const w = await world({ reallocationOwners: ["a"], reallocation: REALLOCATION_DISABLED, agents: [{ agentId: "1", owner: "a" }, { agentId: "2", owner: "a" }] });
+  await seedFitness(w, { "1": series(true), "2": series(false) });
+  const { worker, risk } = await w.boot();
+  const total = w.token.total([...w.accounts.values()]);
+  const evaluation = await worker.evaluate(EVALUATION_CADENCE);
+  assert.equal(evaluation.reallocationEnabled, false);
+  assert.deepEqual(evaluation.plan, { owners: [], moves: [], moved: 0 });
+  assert.deepEqual(evaluation.settled, []);
+  assert.deepEqual(evaluation.fitness.map((f) => f.agentId).sort(), ["1", "2"], "fitness is still computed");
+  assert.equal(risk.approved.length, 0);
+  assert.equal(w.contract.executed.length, 0);
+  assert.deepEqual(await w.stores.debits.all(), []);
+  assert.equal(await w.token.balanceOf(w.accounts.get("2")!), 100n * UNIT);
+  assert.equal(w.token.total([...w.accounts.values()]), total);
+});
+
+test("reallocation switch omitted: the worker's default is off", async () => {
+  const w = await world({ agents: [{ agentId: "1", owner: "a" }, { agentId: "2", owner: "a" }] });
+  await seedFitness(w, { "1": series(true), "2": series(false) });
+  const { worker } = await w.boot();
+  const evaluation = await worker.evaluate(EVALUATION_CADENCE);
+  assert.equal(evaluation.reallocationEnabled, false);
+  assert.deepEqual(evaluation.settled, []);
+});
+
+test("reallocation switch off: retirement still runs (EVOLUTION.md section 6) and moves no capital (invariant 15)", async () => {
+  const w = await world({ reallocation: REALLOCATION_DISABLED, agents: [{ agentId: "1", owner: "a" }, { agentId: "2", owner: "a", capital: UNIT / 100n }] });
+  await seedFitness(w, { "1": series(true), "2": series(false) });
+  const { worker } = await w.boot();
+  const before = await w.token.balanceOf(w.accounts.get("2")!);
+  const evaluation = await worker.evaluate(EVALUATION_CADENCE);
+  assert.deepEqual(evaluation.retired.map((r) => r.agentId), ["2"], "below the capital floor");
+  assert.equal((await w.stores.agents.get("2"))!.status, "retired");
+  assert.equal(await w.token.balanceOf(w.accounts.get("2")!), before, "its balance stays in its own account");
+  assert.deepEqual(evaluation.settled, []);
 });

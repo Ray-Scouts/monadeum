@@ -25,7 +25,7 @@ Every response is JSON. An error is `{ "error": "<reason>", "detail"?: "..." }` 
 | `POST /agents/:id/stop` | session, owner | "Stop this agent" (issue #44): revokes the session key, subject to the bulk recovery hold. |
 | `GET /agents/:id/revocation` | session, owner | Revocation status read from chain. |
 | `GET /recovery/holds`, `POST /recovery/holds/:id/confirm`, `POST /recovery/holds/:id/release` | session, owner | The bulk recovery hold of `SECURITY.md` section 9. |
-| `GET /policies/reallocation`, `POST /policies/reallocation` | session, owner | The owner-signed reallocation policy. |
+| `GET /policies/reallocation`, `POST /policies/reallocation` | session, owner | The owner-signed reallocation policy, and the reallocation switch as `reallocation: { enabled, reason }`. The proposal answers `409 reallocation-disabled` while the switch is off. |
 | `GET /operations/:id`, `POST /operations/:id/signature` | session, starter | The signature relay for owner-signed operations. |
 
 ### Authentication and authorization
@@ -64,7 +64,7 @@ Both rows are written or neither. Without a session key vault the request answer
 
 ### Reallocation policy
 
-`POST /policies/reallocation` builds the owner's reallocation policy (`ReallocationPolicyV1` of `@monadeum/commitment`) from the caller's owner wallet and agents, naming each agent by its smart account address; an agent without one answers `409 agent-has-no-account`. It refuses any bound that loosens the protocol constants of `@monadeum/reallocation/constants`, converts fractions to the contract's basis points rounding down, takes the next sequence as the nonce, and relays the reallocation contract's own EIP-712 typed data (`policyTypedData`), in the domain of `API_REALLOCATION_CONTRACT` on `AUTH_CHAIN_ID` (`ARCHITECTURE.md` section 16.5). Without `API_REALLOCATION_CONTRACT` it answers `503 reallocation-contract-not-configured`. The verified signature is recorded append-only, with the agent IDs, and handed to the policy writer. There is no policy writer yet, so a signed policy is recorded with `committed: null`. The ledger's sequence equals the contract's `policyNonce(owner)` only while every commit and revocation goes through this ledger; the writer, when built, reads the on-chain nonce first, and the contract refuses a mismatch with `BadNonce`.
+`POST /policies/reallocation` builds the owner's reallocation policy (`ReallocationPolicyV1` of `@monadeum/commitment`) from the caller's owner wallet and agents, naming each agent by its smart account address; an agent without one answers `409 agent-has-no-account`. It refuses any bound that loosens the protocol constants of `@monadeum/reallocation/constants`, converts fractions to the contract's basis points rounding down, takes the next sequence as the nonce, and relays the reallocation contract's own EIP-712 typed data (`policyTypedData`), in the domain of `API_REALLOCATION_CONTRACT` on `AUTH_CHAIN_ID` (`ARCHITECTURE.md` section 16.5). While the reallocation switch is off (the default) it answers `409 reallocation-disabled`, with the reason as `detail`, before reading the body, and nothing is built, relayed, or recorded; `GET /policies/reallocation` and `GET /owners/me` report the switch as `reallocation: { enabled, reason }`. Without `API_REALLOCATION_CONTRACT` it answers `503 reallocation-contract-not-configured`. The verified signature is recorded append-only, with the agent IDs, and handed to the policy writer. There is no policy writer yet, so a signed policy is recorded with `committed: null`. The ledger's sequence equals the contract's `policyNonce(owner)` only while every commit and revocation goes through this ledger; the writer, when built, reads the on-chain nonce first, and the contract refuses a mismatch with `BadNonce`.
 
 ### Read endpoints and the web
 
@@ -97,6 +97,8 @@ AuthModule's variables (`libs/auth/README.md`) are required: `AUTH_PRIVY_APP_ID`
 | `API_SIGNATURE_TIMEOUT_SECONDS` | no | How long a signature request stays open. Proposed default 300. |
 | `API_OPERATION_WAIT_SECONDS` | no | How long one request waits for an operation's next state. Proposed default 20. |
 | `API_SETTLEMENT_DECIMALS` | no | Settlement-asset decimals, for the capital floor in base units. Default 6 (USDC). |
+| `MONADEUM_REALLOCATION_ENABLED` | no | `false` (default) or `true`; anything else refuses to start. Read by `loadReallocationSwitch` (`@monadeum/reallocation/switch`), as in the worker. Off: policy proposals are refused with `409 reallocation-disabled` (`ARCHITECTURE.md` section 5). |
+| `MONADEUM_REALLOCATION_PRODUCTION_ACK` | with the flag on in production | With `MONADEUM_ENV=production` and the flag `true`, the API refuses to start unless this is exactly `new-preregistered-study-reported-a-persistent-edge`, which may be set only after a new pre-registered study reports a persistent genome edge of at least the modeled size (`EVOLUTION.md` section 7). |
 | `API_REALLOCATION_CONTRACT` | no | The deployed reallocation contract (`contracts/src/AgentReallocation.sol`), the `verifyingContract` of the policy's EIP-712 domain. Unset: reallocation policies are refused with `503`. |
 
 The allowed origin is the origin of `AUTH_SIWE_URI`.

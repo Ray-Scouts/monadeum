@@ -28,14 +28,14 @@ function Loading() {
 
 export function ApiPopulation() {
   const { data, error } = useApiData(async (s) => {
-    const [population, mine] = await Promise.all([s.population(), s.agents()]);
-    return { population, agents: mine.agents };
+    const [population, mine, owner] = await Promise.all([s.population(), s.agents(), s.owner()]);
+    return { population, agents: mine.agents, owner };
   }, "population");
   if (!data) return error ? <ErrorNote error={error} /> : <Loading />;
   return (
     <>
       <ErrorNote error={error} />
-      <PopulationView population={data.population} agents={data.agents} settlement={settlement} />
+      <PopulationView population={data.population} agents={data.agents} owner={data.owner} settlement={settlement} />
     </>
   );
 }
@@ -156,7 +156,7 @@ export function ApiAgent({ id }: { id: string }) {
       <AgentFacts agent={agent} settlement={settlement} actions={<StopAgent agent={agent} onChanged={reload} />} />
       {agent.deployment !== "deployed" && <Redeploy agentId={agent.id} name={agent.name} onDone={reload} />}
       <StrategyCard agent={agent} />
-      <ExplainerCard explainer={explainAgent(agent, owner)} />
+      <ExplainerCard explainer={explainAgent(agent, owner)} owner={owner} />
       <Card>
         <CardHead title="Spends" />
         <SpendsTable spends={spends} settlement={settlement} />

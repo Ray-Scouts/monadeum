@@ -40,11 +40,20 @@ export interface OwnerPolicyView {
   policyHash: string;
 }
 
+/** The deployment's reallocation switch, as the API reports it (`MONADEUM_REALLOCATION_ENABLED`). */
+export interface ReallocationStatus {
+  enabled: boolean;
+  /** Why it is off; null when it is on. */
+  reason: string | null;
+}
+
 /** `GET /owners/me`. */
 export interface OwnerResponse {
   id: string;
   name: string | null;
   rootWallet: string | null;
+  /** Absent from an API built before the switch existed; the web then reads reallocation as off. */
+  reallocation?: ReallocationStatus;
   policy: OwnerPolicyView | null;
 }
 

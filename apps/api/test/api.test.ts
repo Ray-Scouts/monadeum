@@ -3,6 +3,7 @@ import { after, before, describe, it } from "node:test";
 import { MemoryAgentStore } from "@monadeum/agent-registry";
 import { PgAgentStore } from "@monadeum/db";
 import { hashReallocationPolicy } from "@monadeum/commitment";
+import { REALLOCATION_DISABLED, REALLOCATION_OFF_REASON } from "@monadeum/reallocation/switch";
 import { RECOVERY_DELAY_MS } from "@monadeum/recovery";
 import { accessToken, boot, call, createAgent, index, issueKey, newWallet, ORIGIN, privySignIn, settings, signRequest, signThrough, walletSignIn, type Backend, type Booted } from "./harness.js";
 
@@ -441,6 +442,38 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
       // The next proposal takes the next nonce, so a revoked or replaced signed policy cannot be replayed.
       const next = await call(b.app, "POST", "/policies/reallocation", { auth, body: { agentIds: ["registered-1", "registered-2"] } });
       assert.equal(next.body.policy.document.nonce, "1");
+    });
+
+    it("with the reallocation switch off, refuses every proposal with the reason, records nothing, and reports the switch", async () => {
+      const off = await boot(backend, { settings: settings({ reallocation: REALLOCATION_DISABLED }) });
+      try {
+        const who = newWallet();
+        const cookie = (await walletSignIn(off.app, who)).cookie;
+        for (const id of ["off-1", "off-2"]) {
+          assert.ok(await off.deps.agents.create({ agentId: id, owner: who.address, index: await off.deps.agents.nextIndex(who.address), name: id, preset: null, limits: { perTxCap: 1n, dailyCap: 1n }, registryId: null, createdAt: Date.now() }));
+        }
+        // A valid body and an invalid one both get the same refusal: the switch is checked before anything else.
+        for (const body of [{ agentIds: ["off-1", "off-2"] }, {}]) {
+          const res = await call(off.app, "POST", "/policies/reallocation", { auth: { cookie }, body });
+          assert.equal(res.status, 409);
+          assert.equal(res.body.error, "reallocation-disabled");
+          assert.equal(res.body.detail, REALLOCATION_OFF_REASON);
+        }
+        assert.equal(await off.deps.policies.latest(who.address), undefined, "nothing recorded");
+        const current = await call(off.app, "GET", "/policies/reallocation", { auth: { cookie } });
+        assert.equal(current.status, 200);
+        assert.deepEqual(current.body, { policy: null, reallocation: { enabled: false, reason: REALLOCATION_OFF_REASON } });
+        const me = await call(off.app, "GET", "/owners/me", { auth: { cookie } });
+        assert.deepEqual(me.body.reallocation, { enabled: false, reason: REALLOCATION_OFF_REASON });
+      } finally {
+        await off.close();
+      }
+    });
+
+    it("with the reallocation switch on, the read endpoints report it on", async () => {
+      const current = await call(b.app, "GET", "/policies/reallocation", { auth });
+      assert.deepEqual(current.body.reallocation, { enabled: true, reason: null });
+      assert.deepEqual((await call(b.app, "GET", "/owners/me", { auth })).body.reallocation, { enabled: true, reason: null });
     });
 
     it("refuses to build a policy before the reallocation contract is configured", async () => {

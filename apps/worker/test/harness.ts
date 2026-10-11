@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { hashRiskPolicy } from "@monadeum/commitment";
 import { FitnessService } from "@monadeum/fitness";
-import { ReallocationService } from "@monadeum/reallocation";
+import { REALLOCATION_ENABLED, ReallocationService, type ReallocationSwitch } from "@monadeum/reallocation";
 import { RiskService, type Decision, type ExecutionPlan, type PolicyDocument } from "@monadeum/risk";
 import { StrategyService } from "@monadeum/strategy";
 import { MemoryTickStore, type TickStore } from "@monadeum/tick";
@@ -252,6 +252,8 @@ export interface WorldOptions {
   budget?: SponsorshipBudget;
   /** Owners whose reallocation policy covers all their agents. */
   reallocationOwners?: ("a" | "b")[];
+  /** The reallocation switch. Default: on when `reallocationOwners` is given, otherwise omitted, which is off. */
+  reallocation?: ReallocationSwitch;
   executor?: "fake" | "unconfigured";
   information?: boolean;
   /** Replaces the module stores, for example with the Postgres ones a booted worker provides. */
@@ -333,6 +335,7 @@ export async function world(options: WorldOptions = {}) {
   const settings: WorkerSettings = {
     maxSlippageBps: 200,
     information: options.information === false ? null : { resource: (pair) => `/signal?pair=${encodeURIComponent(pair)}`, maxPrice: 10_000n },
+    reallocation: options.reallocation ?? (options.reallocationOwners ? REALLOCATION_ENABLED : undefined),
     clock: () => new Date("2026-10-10T12:00:00Z"),
   };
   const accounts = new Map((await stores.agents.list()).map((a) => [a.agentId, a.account]));
