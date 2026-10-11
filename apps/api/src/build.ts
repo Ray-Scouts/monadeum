@@ -12,9 +12,11 @@ import {
 } from "@monadeum/auth";
 import { MemoryAgentStore, type AgentStore } from "@monadeum/agent-registry";
 import type { ReallocationPolicyWriter } from "@monadeum/commitment";
-import { PgAgentStore, PgAgentWalletStore, PgChallengeStore, PgReadModelStore, PgSessionStore, PgSponsorshipLedger, PgUserStore, type Database } from "@monadeum/db";
+import { PgAgentStore, PgAgentWalletStore, PgChallengeStore, PgPaymentLog, PgReadModelStore, PgSessionStore, PgSponsorshipLedger, PgTradeStore, PgUserStore, type Database } from "@monadeum/db";
 import { InMemoryReadModelStore, type ReadModelStore } from "@monadeum/indexer";
+import { MemoryTradeStore, type TradeCounts } from "@monadeum/trading";
 import { MemoryAgentWalletStore, MemorySponsorshipLedger, type AgentWalletStore, type SponsorshipLedger, type WalletsService } from "@monadeum/wallets";
+import { MemoryPaymentLog, type PaymentTotals } from "@monadeum/x402";
 import type { ApiSettings } from "./config.js";
 import { API_ROLE, READER_ROLE, roleScoped } from "./database.js";
 import { defaultClock, type ApiDependencies } from "./dependencies.js";
@@ -48,6 +50,9 @@ export interface ApiStores {
   recovery: RecoveryLog;
   policies: PolicyLedger;
   readModel: ReadModelStore;
+  /** The worker's trade store and x402 payment log, read only: the API never writes either. */
+  trades: TradeCounts;
+  payments: PaymentTotals;
 }
 
 /** In-memory stores, for tests and local development only. Nothing survives a restart. */
@@ -66,16 +71,20 @@ export function memoryStores(): ApiStores {
     recovery: new MemoryRecoveryLog(),
     policies: new MemoryPolicyLedger(),
     readModel: new InMemoryReadModelStore(),
+    trades: new MemoryTradeStore(),
+    payments: new MemoryPaymentLog(),
   };
 }
 
 /**
  * Postgres stores on one migrated database. The module stores and the API's own tables run as `monadeum_api`; the
- * indexer read-model runs as `monadeum_reader`, which can only read it. The API never runs migrations: the schema is
- * applied by the owning role, and the API's login role holds only membership in the two group roles.
+ * indexer read-model, the worker's trade records, and its x402 payment log run as `monadeum_reader`, which can only read
+ * them (migrations 0004 and 0005). The API never runs migrations: the schema is applied by the owning role, and the
+ * API's login role holds only membership in the two group roles.
  */
 export function postgresStores(db: Database): ApiStores {
   const api = roleScoped(db, API_ROLE);
+  const reader = roleScoped(db, READER_ROLE);
   return {
     users: new PgUserStore(api),
     challenges: new PgChallengeStore(api),
@@ -87,7 +96,9 @@ export function postgresStores(db: Database): ApiStores {
     creation: new PgAgentCreation(api),
     recovery: new PgRecoveryLog(api),
     policies: new PgPolicyLedger(api),
-    readModel: new PgReadModelStore(roleScoped(db, READER_ROLE)),
+    readModel: new PgReadModelStore(reader),
+    trades: new PgTradeStore(reader),
+    payments: new PgPaymentLog(reader),
   };
 }
 
@@ -119,6 +130,8 @@ export function buildDependencies(input: BuildInput): ApiDependencies {
     policies: stores.policies,
     policyWriter: input.policyWriter ?? null,
     readModel: stores.readModel,
+    trades: stores.trades,
+    payments: stores.payments,
     relay: new SignatureRelay(input.settings.signatureTimeoutMs, input.settings.operationWaitMs),
     settings: input.settings,
     now,

@@ -177,8 +177,20 @@ export interface TradeStore {
   findByTransaction(hash: Hex): Promise<TradeRecord | undefined>;
 }
 
+/**
+ * Read side of the trade store, for the API. A trade is counted once its record is `filled`: an operation the chain
+ * included and this module attributed. A policy rejection, a blocked close, a failed or reverted operation, and a
+ * record still in flight or under review are not trades and are not counted. The agent is the order's `agentId`.
+ */
+export interface TradeCounts {
+  /** Filled trades of each agent in `agentIds`; an agent with none maps to 0. */
+  filledByAgent(agentIds: readonly string[]): Promise<Map<string, number>>;
+  /** Filled trades across every agent. */
+  filledTotal(): Promise<number>;
+}
+
 /** In-memory store for tests and local development only. */
-export class MemoryTradeStore implements TradeStore {
+export class MemoryTradeStore implements TradeStore, TradeCounts {
   private readonly rows = new Map<string, TradeRecord>();
   async claim(record: TradeRecord): Promise<boolean> {
     if (this.rows.has(record.key)) return false;
@@ -194,6 +206,17 @@ export class MemoryTradeStore implements TradeStore {
   async findByTransaction(hash: Hex): Promise<TradeRecord | undefined> {
     const h = hash.toLowerCase();
     return [...this.rows.values()].find((r) => r.fill?.transactionHash.toLowerCase() === h);
+  }
+  async filledByAgent(agentIds: readonly string[]): Promise<Map<string, number>> {
+    const counts = new Map(agentIds.map((id) => [id, 0]));
+    for (const r of this.rows.values()) {
+      const n = counts.get(r.order.agentId);
+      if (r.status === "filled" && n !== undefined) counts.set(r.order.agentId, n + 1);
+    }
+    return counts;
+  }
+  async filledTotal(): Promise<number> {
+    return [...this.rows.values()].filter((r) => r.status === "filled").length;
   }
 }
 
