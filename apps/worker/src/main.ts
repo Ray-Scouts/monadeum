@@ -6,6 +6,7 @@ import { FitnessModule } from "@monadeum/fitness";
 import { ReallocationModule, loadReallocationSwitch, type ReallocationSwitch } from "@monadeum/reallocation";
 import { RiskModule } from "@monadeum/risk";
 import { TickModule } from "@monadeum/tick";
+import { loadWalletsRuntime, type WalletsRuntimeOptions, type WalletsService } from "@monadeum/wallets";
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
 import { loadConsumerConfig, WorkerConfigError } from "./config.js";
@@ -72,6 +73,8 @@ export interface WorkerBootOptions {
   env: Record<string, string | undefined>;
   /** Overrides how DATABASE_URL is opened, for tests. */
   connect?: Connect;
+  /** Overrides WalletsModule's chain adapter and the vaults' scrypt parameters, for tests. */
+  wallets?: WalletsRuntimeOptions;
   log?: (message: string) => void;
 }
 
@@ -83,26 +86,42 @@ export interface WorkerBootOptions {
  *
  * It reads the reallocation switch (`loadReallocationSwitch`) before opening anything, so an invalid value, or
  * MONADEUM_REALLOCATION_ENABLED=true in production without the study acknowledgement, refuses to start.
+ *
+ * With `WALLETS_CHAIN_ID` set it also builds WalletsModule (`loadWalletsRuntime`) over the worker's wallet store and
+ * sponsorship ledger and the session key vault it shares with the API, and returns it as `wallets` for the tick runner.
+ * The only vault implemented is the local encrypted file vault, which refuses MONADEUM_ENV=production.
  */
 export async function bootWorker(options: WorkerBootOptions) {
   const reallocation = loadReallocationSwitch(options.env);
   options.log?.(reallocation.enabled ? "reallocation is on: evaluations plan and settle owner-scoped reallocation" : "reallocation is off: evaluations compute fitness and apply retirement, and plan and settle nothing");
-  const database = await openDatabase(loadDatabaseSettings(options.env), { connect: options.connect, log: options.log });
+  const runtime = await loadWalletsRuntime(options.env, options.wallets);
+  let database;
+  try {
+    database = await openDatabase(loadDatabaseSettings(options.env), { connect: options.connect, log: options.log });
+  } catch (error) {
+    runtime?.close();
+    throw error;
+  }
   const stores = database ? postgresWorkerStores(database.db) : memoryWorkerStores();
+  const wallets: WalletsService | null = runtime ? runtime.build(stores.wallets, stores.sponsorship) : null;
+  options.log?.(wallets ? "wallets: WalletsModule configured on the local file vault" : "wallets: WALLETS_CHAIN_ID is not set, WalletsModule is not configured");
   let app;
   try {
     app = await createWorker(stores);
   } catch (error) {
     await database?.close();
+    runtime?.close();
     throw error;
   }
   return {
     app,
     stores,
     reallocation,
+    wallets,
     close: async () => {
       await app.close();
       await database?.close();
+      runtime?.close();
     },
   };
 }
@@ -112,14 +131,15 @@ export interface WorkerRunOptions extends WorkerBootOptions {
    * Builds what runs ticks and evaluations over the booted stores: an `AgentWorker` once TradingService, X402Client,
    * WalletsService, and a market source are configured. Without it the consumer runs `UnconfiguredTickRunner`, which
    * fails every job closed, and MONADEUM_ENV=production refuses to start. It receives the reallocation switch read from
-   * the environment, which it passes to `AgentWorker` as `settings.reallocation`.
+   * the environment, which it passes to `AgentWorker` as `settings.reallocation`, and WalletsModule when
+   * `WALLETS_CHAIN_ID` is set (null otherwise).
    */
   /**
    * Recent settlement-asset logs for the `x402-reconcile` job, e.g. `RpcSettlementLogSource` over a viem public
    * client. Without it the job runs and checks nothing; while the x402 payer is disabled it checks nothing anyway.
    */
   x402Settlements?: SettlementLogSource;
-  runner?: (stores: WorkerStores, reallocation: ReallocationSwitch) => TickRunner;
+  runner?: (stores: WorkerStores, reallocation: ReallocationSwitch, wallets: WalletsService | null) => TickRunner;
   clock?: () => Date;
 }
 
@@ -158,7 +178,7 @@ export async function runWorker(options: WorkerRunOptions) {
   const connection = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
   const queue = new BullJobQueue(new Queue(QUEUE_NAME, { connection, prefix: config.prefix }));
   try {
-    const runner = options.runner ? options.runner(booted.stores, booted.reallocation) : new UnconfiguredTickRunner(log);
+    const runner = options.runner ? options.runner(booted.stores, booted.reallocation, booted.wallets) : new UnconfiguredTickRunner(log);
     if (!options.runner) log("no tick runner is configured: every tick and evaluation job is skipped, nothing is sent");
     const locks = new RedisAgentLocks(connection, `${config.prefix}:agent-lock:`);
     const principal = config.principal

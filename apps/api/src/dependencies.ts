@@ -13,13 +13,14 @@ import type { AgentCreation, AgentRegistry, PolicyLedger, RecoveryLog } from "./
 export const API_DEPENDENCIES = "API_DEPENDENCIES";
 
 /**
- * Everything the request handlers use, assembled by the process (`main.ts`) or a test. The API holds no key: the
+ * Everything the request handlers use, assembled by the process (`main.ts`) or a test. The API holds no owner key: the
  * WalletsService it is given signs owner operations only through the SignatureRelay, and its session key vault must
- * be the same secrets-manager-backed vault the worker uses, so a revocation here destroys the key the worker holds.
+ * be the same vault the worker uses, so a revocation here destroys the key the worker holds. On testnet that is the
+ * local encrypted file vault on a directory both processes mount; production needs a secrets manager.
  */
 export interface ApiDependencies {
   auth: AuthService;
-  /** Null when no chain, bundler, or session key vault is configured: deployment and stop answer 503. */
+  /** Null when WALLETS_CHAIN_ID is not set (no chain, bundler, or session key vault): deployment and stop answer 503. */
   wallets: WalletsService | null;
   /** WalletsModule's store, read for an agent's account address and session status. */
   walletStore: AgentWalletStore;

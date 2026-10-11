@@ -1,5 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { test } from "node:test";
+import { FakeChain } from "@monadeum/wallets/testing";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { PGlite } from "@electric-sql/pglite";
 import { DatabaseConfigError, PgTickStore, PgTradeStore, pgliteDatabase, type Connect } from "@monadeum/db";
 import { REALLOCATION_PRODUCTION_ACK, ReallocationService, ReallocationSwitchError } from "@monadeum/reallocation";
@@ -100,5 +105,63 @@ test("with DATABASE_URL, ticks run over the Postgres stores, and a restarted wor
     await second.close();
   } finally {
     await pg.close();
+  }
+});
+
+// WalletsModule over the local encrypted vault (testnet and local development only).
+
+const walletsEnv = (root: string) => ({
+  WALLETS_CHAIN_ID: "10143",
+  WALLETS_BUNDLER_URL: "https://bundler.example",
+  WALLETS_PAYMASTER_URL: "https://paymaster.example",
+  WALLETS_SETTLEMENT_ASSET: "0x00000000000000000000000000000000000000a1",
+  WALLETS_KURU_ROUTER: "0x00000000000000000000000000000000000000b1",
+  WALLETS_KURU_ROUTER_SELECTORS: "0x12345678",
+  WALLETS_REALLOCATION_CONTRACT: "0x00000000000000000000000000000000000000c1",
+  WALLETS_REALLOCATION_SELECTORS: "0x9abcdef0",
+  WALLETS_SPONSORED_OPERATIONS: "10",
+  WALLETS_SPONSORED_GAS_WEI: "100000",
+  WALLETS_SPEND_POLICY_ADDRESS: "0x00000000000000000000000000000000000000f0",
+  WALLETS_SESSION_VAULT_DIR: path.join(root, "session"),
+  WALLETS_SESSION_VAULT_PASSPHRASE: "a testnet passphrase, not a real one",
+});
+const cheap = { N: 2 ** 10, r: 8, p: 1 };
+
+test("without WALLETS_CHAIN_ID the worker has no WalletsModule; with it and a file vault, it builds one over its own stores", async () => {
+  const off = await bootWorker({ env: {} });
+  assert.equal(off.wallets, null);
+  await off.close();
+
+  const root = await mkdtemp(path.join(tmpdir(), "monadeum-worker-vault-"));
+  try {
+    const logs: string[] = [];
+    const booted = await bootWorker({ env: walletsEnv(root), wallets: { chain: new FakeChain(), scrypt: cheap }, log: (m) => logs.push(m) });
+    assert.ok(booted.wallets);
+    assert.match(logs.join("\n"), /WalletsModule configured/);
+    const account = privateKeyToAccount(generatePrivateKey());
+    const deployed = await booted.wallets.deploy({ agentId: "agent-1", owner: { address: account.address, signer: account }, index: 0n, limits: { perTxCap: 1n, dailyCap: 1n } });
+    assert.equal(deployed.ok, true);
+    assert.equal((await booted.stores.wallets.get("agent-1"))?.deployment.status, "deployed", "the service writes the worker's wallet store");
+    await booted.close();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the worker refuses the file vault with MONADEUM_ENV=production, before opening the database", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "monadeum-worker-vault-"));
+  try {
+    let connected = false;
+    const connect: Connect = () => {
+      connected = true;
+      throw new Error("must not connect");
+    };
+    await assert.rejects(
+      bootWorker({ env: { ...walletsEnv(root), MONADEUM_ENV: "production", DATABASE_URL: "postgres://test" }, connect, wallets: { chain: new FakeChain(), scrypt: cheap } }),
+      /testnet and local development only/,
+    );
+    assert.equal(connected, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
