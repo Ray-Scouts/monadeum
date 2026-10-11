@@ -58,7 +58,7 @@ export class PgTradeStore implements TradeStore, TradeCounts {
   }
 }
 
-const txKey =(record: TradeRecord): string | null => record.fill?.transactionHash.toLowerCase() ?? null;
+const txKey = (record: TradeRecord): string | null => record.fill?.transactionHash.toLowerCase() ?? null;
 
 /**
  * `X402SlotStore` on Postgres (`x402_nonce_slots`, migration 0012). `claim` is one INSERT ... ON CONFLICT DO NOTHING:
