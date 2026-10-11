@@ -44,7 +44,7 @@ Deployment and revocation are relayed by the API to the owner's wallet (`apps/ap
 
 ```bash
 # terminal 1, from apps/api after building it
-AUTH_PRIVY_APP_ID=app AUTH_PRIVY_VERIFICATION_KEY="<any PEM public key>" AUTH_CHAIN_ID=10143 \
+AUTH_PRIVY_APP_ID=app AUTH_PRIVY_VERIFICATION_KEY="<a P-256 PEM public key, for example from openssl ec -pubout>" AUTH_CHAIN_ID=10143 \
 AUTH_SIWE_DOMAIN=localhost:3000 AUTH_SIWE_URI=http://localhost:3000 \
 API_MAX_PER_TX_CAP=1000000 API_MAX_DAILY_CAP=5000000 API_PORT=3901 node dist/src/main.js
 # terminal 2, from apps/web
