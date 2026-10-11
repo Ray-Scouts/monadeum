@@ -2,6 +2,7 @@ import type { AgentRecord as WorkerAgentRecord } from "@monadeum/agent-registry"
 import type { Principal, UserRecord } from "@monadeum/auth";
 import { projectAccount, type AccountView, type ChainEvent } from "@monadeum/indexer";
 import type { AgentWalletRecord } from "@monadeum/wallets";
+import type { PaymentSpend } from "@monadeum/x402";
 import { getAddress, isAddressEqual, type Address } from "viem";
 import { fail, type ApiDependencies } from "./dependencies.js";
 import { jsonSafe } from "./json.js";
@@ -87,7 +88,10 @@ export interface AgentView {
   status: "active" | "retired" | null;
   principal: string | null;
   capital: null;
-  tradeCount: null;
+  /** Filled trades in the worker's trade store (`TradeCounts`). Null only when no trade store answered. */
+  tradeCount: number | null;
+  /** x402 spend in the worker's payment log (`PaymentSpend`). Null only when no payment log answered. */
+  x402: X402View | null;
   fitnessPercentile: null;
   lowWindows: null;
   zeroDownsideFlag: null;
@@ -126,7 +130,7 @@ function genomeView(agent: AgentRecord, worker: WorkerAgentRecord | undefined): 
   };
 }
 
-export function agentView(user: UserRecord, agent: AgentRecord, wallet: AgentWalletRecord | undefined, chain: AccountView | null, worker: WorkerAgentRecord | undefined): AgentView {
+export function agentView(user: UserRecord, agent: AgentRecord, wallet: AgentWalletRecord | undefined, chain: AccountView | null, worker: WorkerAgentRecord | undefined, activity: AgentActivity | null = null): AgentView {
   return {
     id: agent.agentId,
     name: agent.name,
@@ -135,7 +139,8 @@ export function agentView(user: UserRecord, agent: AgentRecord, wallet: AgentWal
     status: worker?.status ?? null,
     principal: worker ? worker.principal.toString() : null,
     capital: null,
-    tradeCount: null,
+    tradeCount: activity?.tradeCount ?? null,
+    x402: activity ? x402View(activity.x402) : null,
     fitnessPercentile: null,
     lowWindows: null,
     zeroDownsideFlag: null,
@@ -160,6 +165,32 @@ export async function chainView(deps: ApiDependencies, wallet: AgentWalletRecord
   if (!wallet) return null;
   const rows = await deps.readModel.events({ account: wallet.account.toLowerCase() as Address });
   return projectAccount(wallet.account, rows);
+}
+
+/** x402 spend as the API serves it: settlement-asset base units as decimal strings, providers as the log stores them. */
+export interface X402View {
+  purchases: number;
+  spent: string;
+  byProvider: { provider: string; spent: string }[];
+}
+
+export function x402View(spend: PaymentSpend): X402View {
+  return { purchases: spend.purchases, spent: spend.spent.toString(), byProvider: spend.byProvider.map((p) => ({ provider: p.provider, spent: p.spent.toString() })) };
+}
+
+/** An agent's filled trades and x402 spend, from the worker's trade store and payment log. */
+export interface AgentActivity {
+  tradeCount: number;
+  x402: PaymentSpend;
+}
+
+/**
+ * The activity of each of `agentIds`, in two reads however many agents there are. The caller passes only agents it has
+ * already authorized (`ownedAgent`, or the caller's own `listByOwner`): these stores are keyed by agent ID alone.
+ */
+export async function activityOf(deps: ApiDependencies, agentIds: readonly string[]): Promise<Map<string, AgentActivity>> {
+  const [trades, spend] = await Promise.all([deps.trades.filledByAgent(agentIds), deps.payments.spendByAgent(agentIds)]);
+  return new Map(agentIds.map((id) => [id, { tradeCount: trades.get(id) ?? 0, x402: spend.get(id) ?? { purchases: 0, spent: 0n, byProvider: [] } }]));
 }
 
 /** Every indexed `Spent` event of the account, oldest first. */

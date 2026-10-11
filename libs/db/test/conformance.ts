@@ -7,9 +7,9 @@ import type { AgentRecord, AgentRegistry, AgentState, DebitRecord, DebitStore } 
 import type { ChallengeStore, SessionStore, UserRecord, UserStore, WalletChallenge } from "@monadeum/auth";
 import type { TickRecord, TickStore } from "@monadeum/tick";
 import { SettlementAssetMismatchError, type BlockHash, type ChainEvent, type ReadModelStore, type SyncBatch } from "@monadeum/read-model";
-import type { Position, PositionStore, TradeRecord, TradeStore } from "@monadeum/trading";
+import type { Position, PositionStore, TradeCounts, TradeRecord, TradeStore } from "@monadeum/trading";
 import type { AgentWalletRecord, AgentWalletStore, SponsorshipLedger, TickOperationRecord } from "@monadeum/wallets";
-import type { PaymentLog, PaymentLogEntry, SlotClaim, X402SlotStore } from "@monadeum/x402";
+import type { PaymentLog, PaymentLogEntry, PaymentTotals, SlotClaim, X402SlotStore } from "@monadeum/x402";
 import type { Address, Hex } from "viem";
 
 export interface Stores {
@@ -18,8 +18,8 @@ export interface Stores {
   users: UserStore;
   challenges: ChallengeStore;
   sessions: SessionStore;
-  trades: TradeStore;
-  payments: PaymentLog;
+  trades: TradeStore & TradeCounts;
+  payments: PaymentLog & PaymentTotals;
   slots: X402SlotStore;
   ticks: TickStore;
   readModel: ReadModelStore;
@@ -515,6 +515,23 @@ export function conformance(name: string, harness: Harness): void {
       assert.equal(await trades.findByTransaction(hash(1)), undefined);
     });
 
+    it("counts filled trades per agent and in total, and nothing else", async () => {
+      const { trades } = await harness.fresh();
+      const of = (agentId: string, key: string, tx: Hex | null): TradeRecord => {
+        const t = trade(key, tx);
+        return { ...t, order: { ...t.order, agentId } };
+      };
+      await trades.write(of("a", "a:1", hash(11)));
+      await trades.write(of("a", "a:2", hash(12)));
+      await trades.write(of("a", "a:3", null));
+      await trades.write({ ...of("a", "a:4", null), status: "failed", failure: { kind: "policy", reason: "rejected" } });
+      await trades.write(of("b", "b:1", hash(13)));
+      await trades.write(of("c", "c:1", hash(14)));
+      assert.deepEqual(await trades.filledByAgent(["a", "b", "z"]), new Map([["a", 2], ["b", 1], ["z", 0]]));
+      assert.deepEqual(await trades.filledByAgent([]), new Map());
+      assert.equal(await trades.filledTotal(), 4);
+    });
+
     it("lets exactly one of several concurrent claims for a tick win", async () => {
       const { trades } = await harness.fresh();
       const results = await Promise.all(Array.from({ length: 8 }, () => trades.claim(trade("t1"))));
@@ -535,6 +552,30 @@ export function conformance(name: string, harness: Harness): void {
       assert.deepEqual(await payments.findBySettlement("ref-1"), settled);
       assert.equal(await payments.findBySettlement("ref-2"), undefined);
       assert.equal(await payments.get("p3"), undefined);
+    });
+
+    it("tallies spend per agent and in total from entries with a nonzero price, by provider", async () => {
+      const { payments } = await harness.fresh();
+      const entry = (key: string, provider: "nansen" | "defillama", price: bigint): PaymentLogEntry => ({ ...payment(key), provider, price, anomaly: null });
+      await payments.write(entry("a:1:nansen:/q", "nansen", BIG));
+      await payments.write(entry("a:2:defillama:/q", "defillama", 7n));
+      await payments.write(entry("a:3:nansen:/q", "nansen", 5n));
+      await payments.write(entry("a:4:nansen:/q", "nansen", 0n));
+      await payments.write(entry("b:1:nansen:/q", "nansen", 3n));
+      await payments.write(entry("ab:1:nansen:/q", "nansen", 100n));
+      const byAgent = await payments.spendByAgent(["a", "b", "z"]);
+      assert.deepEqual(byAgent.get("a"), {
+        purchases: 3, spent: BIG + 12n,
+        byProvider: [{ provider: "defillama", spent: 7n }, { provider: "nansen", spent: BIG + 5n }],
+      });
+      assert.deepEqual(byAgent.get("b"), { purchases: 1, spent: 3n, byProvider: [{ provider: "nansen", spent: 3n }] });
+      assert.deepEqual(byAgent.get("z"), { purchases: 0, spent: 0n, byProvider: [] });
+      assert.equal(byAgent.size, 3);
+      assert.deepEqual(await payments.spendByAgent([]), new Map());
+      assert.deepEqual(await payments.spendTotal(), {
+        purchases: 5, spent: BIG + 115n,
+        byProvider: [{ provider: "defillama", spent: 7n }, { provider: "nansen", spent: BIG + 108n }],
+      });
     });
 
     it("lets exactly one of several concurrent claims for a purchase win", async () => {

@@ -10,7 +10,9 @@ export {
   decodeHeader,
   encodeHeader,
   parsePaymentRequired,
+  paymentAgentId,
   parseSettlement,
+  tallyPayments,
 } from "./client.js";
 export type {
   BuyResult,
@@ -19,7 +21,9 @@ export type {
   PaymentLog,
   PaymentLogEntry,
   PaymentPayload,
+  PaymentSpend,
   PaymentTerms,
+  PaymentTotals,
   Provider,
   ProviderEndpoint,
   Purchase,

@@ -86,6 +86,51 @@ export interface PaymentLog {
   findBySettlement(ref: string): Promise<PaymentLogEntry | undefined>;
 }
 
+/**
+ * x402 spend as the payment log records it, in settlement-asset base units. A purchase is counted, and its price added,
+ * by the same rule as `X402Client.spent`: once its entry carries a nonzero price, that is, once payment was attempted
+ * at accepted terms. An unconfirmed or anomalous payment therefore counts in full, so spend is never understated; a
+ * purchase that never reached payment, or that the payer refused to sign, has price 0 and is not counted.
+ */
+export interface PaymentSpend {
+  purchases: number;
+  spent: bigint;
+  /** Spend per provider as stored in the entry, sorted by provider; a provider with no counted purchase is absent. */
+  byProvider: { provider: string; spent: bigint }[];
+}
+
+/** Read side of the payment log, for the API. The agent of an entry is `paymentAgentId(entry.key)`. */
+export interface PaymentTotals {
+  /** Spend of each agent in `agentIds`; an agent with no counted purchase maps to an empty tally. */
+  spendByAgent(agentIds: readonly string[]): Promise<Map<string, PaymentSpend>>;
+  /** Spend across every agent. */
+  spendTotal(): Promise<PaymentSpend>;
+}
+
+/**
+ * The agent a payment log entry belongs to. Every purchase key begins with the tick key, `<agentId>:<tick>:`, so the
+ * agent ID is the key up to its first colon. This holds because agent IDs contain no colon (the API creates them under
+ * `^[A-Za-z0-9_-]{1,64}$`); an ID with a colon would be misattributed.
+ */
+export function paymentAgentId(key: string): string {
+  const i = key.indexOf(":");
+  return i < 0 ? key : key.slice(0, i);
+}
+
+/** Tallies entries by the `PaymentSpend` rule. */
+export function tallyPayments(entries: Iterable<PaymentLogEntry>): PaymentSpend {
+  let purchases = 0;
+  let spent = 0n;
+  const byProvider = new Map<string, bigint>();
+  for (const e of entries) {
+    if (e.price <= 0n) continue;
+    purchases += 1;
+    spent += e.price;
+    byProvider.set(e.provider, (byProvider.get(e.provider) ?? 0n) + e.price);
+  }
+  return { purchases, spent, byProvider: [...byProvider].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([provider, s]) => ({ provider, spent: s })) };
+}
+
 export interface Purchase {
   tickKey: string;
   provider: Provider;
@@ -301,7 +346,7 @@ export function parseSettlement(header: string | null, network: string, payer: s
 }
 
 /** In-memory log for tests and local development only. */
-export class MemoryPaymentLog implements PaymentLog {
+export class MemoryPaymentLog implements PaymentLog, PaymentTotals {
   private readonly rows = new Map<string, PaymentLogEntry>();
   async claim(entry: PaymentLogEntry): Promise<boolean> {
     if (this.rows.has(entry.key)) return false;
@@ -316,5 +361,12 @@ export class MemoryPaymentLog implements PaymentLog {
   }
   async findBySettlement(ref: string): Promise<PaymentLogEntry | undefined> {
     return [...this.rows.values()].find((r) => r.settlementRef === ref);
+  }
+  async spendByAgent(agentIds: readonly string[]): Promise<Map<string, PaymentSpend>> {
+    const entries = [...this.rows.values()];
+    return new Map(agentIds.map((id) => [id, tallyPayments(entries.filter((e) => paymentAgentId(e.key) === id))]));
+  }
+  async spendTotal(): Promise<PaymentSpend> {
+    return tallyPayments(this.rows.values());
   }
 }

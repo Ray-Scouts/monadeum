@@ -43,5 +43,6 @@ export type {
   TradeRecord,
   TradeSigner,
   TradeStatus,
+  TradeCounts,
   TradeStore,
 } from "./types.js";
