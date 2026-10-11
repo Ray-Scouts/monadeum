@@ -61,7 +61,7 @@ Every external response, from an x402 provider or otherwise, is validated agains
 
 ## 8. Fail-closed behavior
 
-Stated once, applied everywhere: any state where the system cannot determine whether a proposed action is within policy does not execute the action. A timed-out RPC call, a malformed API response, an ambiguous account state, a worker that crashed mid-decision, none of these are treated as "probably fine, proceed." Each is treated as a failed tick: no action taken, logged, retried on the next scheduled cycle. This is `THREAT-MODEL.md` invariant 10 restated as an operating rule rather than a proof obligation.
+Stated once, applied everywhere: any state where the system cannot determine whether a proposed action is within policy does not execute the action. A timed-out RPC call, a malformed API response, an ambiguous account state, a worker that crashed mid-decision, none of these are treated as "probably fine, proceed." Each is treated as a failed tick: no action taken, logged, retried on the next scheduled cycle. This is `THREAT-MODEL.md` invariant 10 restated as an operating rule rather than a proof obligation. On the x402 path, an account without `X402PaymentValidator` installed cannot pay at all, and a purchase with no free slot in the current hour, or with terms the validator would refuse, is never signed: it is a failed call (section 5), not a reason to sign through any other key or to set Kernel's skip-signature flag.
 
 ## 9. Emergency controls and circuit breakers
 
