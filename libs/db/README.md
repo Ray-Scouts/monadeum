@@ -27,12 +27,12 @@ const wallets = new PgAgentWalletStore(db);
 
 ## Roles
 
-Migrations 0004 to 0008 create the group roles and their grants. Each process's login role is made a member of one, except the API's, which is a member of `monadeum_api` and `monadeum_reader` and runs each statement under one of them; no process connects as the table owner.
+Migrations 0004 to 0009 create the group roles and their grants. Each process's login role is made a member of one, except the API's, which is a member of `monadeum_api` and `monadeum_reader` and runs each statement under one of them; no process connects as the table owner.
 
 | Role | Writes | Reads |
 |---|---|---|
 | `monadeum_indexer` | read-model tables | read-model tables, migration ledger |
-| `monadeum_worker` | wallet, trade, x402, tick, agent state, and debit tables (`SELECT`, `INSERT`, `UPDATE`; no `DELETE`); agents (`UPDATE` only: it retires agents but never creates one) | those tables, agents, policy versions, migration ledger |
+| `monadeum_worker` | wallet, trade, x402, tick, agent state, and debit tables (`SELECT`, `INSERT`, `UPDATE`; no `DELETE`); agents (`UPDATE` only: it retires agents and writes their principal, but never creates one) | those tables, agents, policy versions, migration ledger, and the read-model's `chain_events` and `indexer_cursor` for the principal job (0009) |
 | `monadeum_reader` | nothing | read-model tables and views, wallet, trade, x402, tick, agent, agent state, and debit tables, migration ledger |
 | `monadeum_policy_operator` | policy versions (`INSERT` only) | nothing |
 | `monadeum_api` | auth tables; wallet accounts and sponsorship (`SELECT`, `INSERT`, `UPDATE`; no `DELETE`); the API tables of 0007 (recovery actions and signed policies `INSERT` only, holds also `UPDATE`) | those tables, agents (`SELECT` and `INSERT`: agent creation writes the record, never changes or deletes one, 0008), migration ledger |

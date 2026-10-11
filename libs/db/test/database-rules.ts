@@ -163,6 +163,21 @@ export function databaseRules(name: string, db: Database): void {
       await assert.rejects(as(db, "monadeum_policy_operator", "UPDATE indexer_cursor SET block_hash = block_hash"), DENIED);
     });
 
+    it("the worker reads the read-model for principal and writes none of it; readers see funding transfers", async () => {
+      await reset();
+      await new PgReadModelStore(asRole(db, "monadeum_indexer")).apply(batch(10, [chainEvent(8, 0, "settlement.transfer-in")], { finalized: true }));
+      const worker = new PgReadModelStore(asRole(db, "monadeum_worker"));
+      assert.equal(await worker.finalizedThrough(), 10n);
+      assert.equal((await worker.events({ kind: "settlement.transfer-in" })).length, 1);
+      await assert.rejects(worker.apply(batch(20, [], { finalized: true })), DENIED);
+      await assert.rejects(worker.rollback({ number: 1n, hash: `0x${"00".repeat(32)}` }), DENIED);
+      for (const sql of ["DELETE FROM chain_events", "UPDATE indexer_cursor SET finalized = true", "DELETE FROM indexer_blocks", "SELECT * FROM indexer_blocks"]) {
+        await assert.rejects(as(db, "monadeum_worker", sql), DENIED, sql);
+      }
+      await as(db, "monadeum_reader", "SELECT * FROM agent_settlement_transfers");
+      await assert.rejects(as(db, "monadeum_indexer", "SELECT * FROM worker_agents"), DENIED);
+    });
+
     it("the worker role runs every worker store, and nothing else writes them", async () => {
       await reset();
       const worker = asRole(db, "monadeum_worker");
