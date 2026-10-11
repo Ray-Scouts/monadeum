@@ -11,7 +11,7 @@ import { jsonSafe } from "./json.js";
  */
 export type SigningRequest = { kind: "message"; message: SignableMessage } | { kind: "typed-data"; typedData: TypedDataDefinition };
 
-export type OperationKind = "deploy" | "revoke" | "policy";
+export type OperationKind = "deploy" | "revoke" | "policy" | "activate";
 export type OperationStatus = "awaiting-signature" | "running" | "succeeded" | "failed";
 
 /** What the client sees. `result` is the operation's own JSON-safe outcome. */

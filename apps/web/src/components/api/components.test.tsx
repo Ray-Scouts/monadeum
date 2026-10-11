@@ -4,7 +4,9 @@ import { apiAgent } from "@/data/api/fixtures";
 import { stopViewFromError, stopViewFromResponse } from "@/data/api/stop";
 import { ApiError } from "@/data/api/client";
 import { loadWebConfig } from "@/data/config";
-import type { Operation } from "@/data/api/types";
+import type { Operation, SessionView } from "@/data/api/types";
+import { activateViewFromError, activateViewFromOperation } from "@/data/api/activate";
+import { ActivatePanel, type ActivatePanelProps } from "./ActivateAgent";
 import { CreateFormView } from "./CreateAgent";
 import { SignatureRequestView } from "./OperationSigner";
 import { SignInPanel } from "./SignIn";
@@ -313,5 +315,87 @@ describe("create in api mode", () => {
     expect(html).toContain("Per-transaction cap (USDC)");
     expect(html).toContain("population cap");
     expect(html).not.toMatch(/riskTolerance|entryThreshold/);
+  });
+});
+
+describe("activate this agent", () => {
+  const keyless = apiAgent({ session: null });
+  const chainSession: SessionView = {
+    status: "active",
+    keyAddress: "0x00000000000000000000000000000000000000cc",
+    permissionId: "0x12345678",
+    issuedAt: 0,
+    keyHeld: true,
+    state: { installed: false, validatorNonce: 0, currentNonce: 1, validNonceFrom: 0 },
+    enableNonce: 1,
+    acceptedOnChain: true,
+  };
+  const base: ActivatePanelProps = { agent: keyless, view: { state: "idle" }, session: null, settlement, onActivate: noop };
+
+  test("states what the key can and cannot do, and that activation does not start trading", () => {
+    const html = text(renderToStaticMarkup(<ActivatePanel {...base} />));
+    expect(html).toContain("Activate this agent");
+    expect(html).toContain("Activate agent");
+    expect(html).toContain("The key can");
+    expect(html).toContain("Spend at most 1.5 USDC per transaction and 5 USDC per rolling day");
+    expect(html).toContain("The key cannot");
+    expect(html).toContain("Send funds to an address of its choosing");
+    expect(html).toContain("has not been checked yet");
+    expect(html).toContain("Activating does not make the agent trade yet");
+  });
+
+  test("a stopped agent is offered a new key, and the old one is said to stay revoked", () => {
+    const html = text(renderToStaticMarkup(<ActivatePanel {...base} agent={apiAgent({ session: { status: "revoked", keyAddress: "0x00000000000000000000000000000000000000cc", issuedAt: 0, revokedAt: 1 } })} />));
+    expect(html).toContain("Activate this agent again");
+    expect(html).toContain("revoked for good");
+  });
+
+  test("the active state shows the key as read from chain and no activation button", () => {
+    const html = text(renderToStaticMarkup(<ActivatePanel {...base} agent={apiAgent()} session={chainSession} />));
+    expect(html).toContain("Active");
+    expect(html).not.toContain("Activate agent");
+    expect(html).toContain("Accepted on chain: the account will install the permission with the agent's first operation.");
+    expect(html).toContain("approval bound to nonce 1");
+  });
+
+  test("activation is signed through the plain-language summary with the raw Kernel typed data expandable", () => {
+    const operation: Operation = {
+      id: "op",
+      kind: "activate",
+      agentIds: ["ag1"],
+      owner: "0x00000000000000000000000000000000000000bb",
+      status: "awaiting-signature",
+      signatureRequest: {
+        id: "r",
+        expiresAt: 0,
+        kind: "typed-data",
+        typedData: { domain: { name: "Kernel", version: "0.3.1", chainId: 10143, verifyingContract: "0x00000000000000000000000000000000000000aa" }, types: { Enable: [{ name: "nonce", type: "uint32" }] }, primaryType: "Enable", message: { nonce: 1 } },
+      },
+      result: null,
+      error: null,
+    };
+    expect(activateViewFromOperation(operation).state).toBe("signing");
+    const html = renderToStaticMarkup(<SignatureRequestView operation={operation} name={() => "alpha"} busy={false} error={null} onSign={noop} />);
+    expect(text(html)).toContain("Activate alpha: approve a session key that can make only the allowlisted calls");
+    expect(text(html)).toContain("sends no transaction and costs no gas");
+    expect(html).toContain("<details>");
+    expect(html).toContain("&quot;primaryType&quot;: &quot;Enable&quot;");
+  });
+
+  test("the outcome is taken from the API: issued and accepted on chain, refused, or failed", () => {
+    const finished = (status: Operation["status"], result: unknown, error: string | null = null): Operation => ({
+      id: "op", kind: "activate", agentIds: ["ag1"], owner: "0xbb", status, signatureRequest: null, result, error,
+    });
+    const ok = activateViewFromOperation(finished("succeeded", { result: { ok: true, keyAddress: "0xcc", permissionId: "0x12", issued: true }, session: chainSession }));
+    expect(ok.state).toBe("active");
+    const notAccepted = activateViewFromOperation(finished("succeeded", { result: { ok: true, keyAddress: "0xcc", permissionId: "0x12", issued: true }, session: { ...chainSession, acceptedOnChain: false } }));
+    expect(notAccepted.state).toBe("failed");
+    const refused = activateViewFromOperation(finished("succeeded", { result: { ok: false, reason: "rejected", detail: "nonce moved" }, session: null }));
+    expect(refused.state === "failed" && refused.message).toContain("rejected: nonce moved");
+    expect(activateViewFromOperation(finished("failed", null, "the owner did not sign in time")).state).toBe("failed");
+    expect(activateViewFromError(new ApiError(409, "already-active")).state).toBe("active");
+    expect(activateViewFromError(new ApiError(503, "wallets-unavailable")).state).toBe("unavailable");
+    const html = text(renderToStaticMarkup(<ActivatePanel {...base} view={activateViewFromError(new ApiError(409, "not-deployed"))} />));
+    expect(html).toContain("not deployed yet");
   });
 });

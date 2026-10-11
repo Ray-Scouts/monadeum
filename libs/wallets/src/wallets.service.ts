@@ -120,6 +120,30 @@ export function isRevokedOnChain(state: PermissionState, enableNonce: number): b
   return validatorDead && state.currentNonce > enableNonce;
 }
 
+/**
+ * The chain accepts the session key's permission: either it is installed at or above `validNonceFrom`, or it is not
+ * installed yet and the owner's enable signature can still install it, because Kernel v3.1 binds that signature to
+ * `currentNonce` and installs the permission with the first session-key operation (enable mode).
+ */
+export function isSessionAcceptedOnChain(state: PermissionState, enableNonce: number): boolean {
+  if (state.installed) return state.validatorNonce >= state.validNonceFrom;
+  return state.currentNonce === enableNonce && enableNonce >= state.validNonceFrom;
+}
+
+/** The session key as WalletsModule and the chain see it, for an agent that has one. */
+export interface SessionStatus {
+  status: "active" | "revoking" | "revoked";
+  keyAddress: Address;
+  permissionId: Hex;
+  issuedAt: number;
+  /** The key is held by this process's vault. */
+  keyHeld: boolean;
+  state: PermissionState;
+  enableNonce: number;
+  /** `isSessionAcceptedOnChain`: the chain would accept an operation signed by this key now. */
+  acceptedOnChain: boolean;
+}
+
 const brief = (error: unknown) => (error instanceof Error ? error.message : String(error)).split("\n")[0]!.slice(0, 200);
 
 /**
@@ -298,9 +322,22 @@ export class WalletsService {
       }
       if (record.session?.status === "revoking") return { ok: false, reason: "revoked", detail: "a revocation is not yet verified" };
 
+      if (!(await this.chain.isDeployed(record.account))) return { ok: false, reason: "not-deployed", detail: "the account has no code on chain" };
+
+      // Held only in this process's memory until the owner has approved it and the chain accepts the approval.
       const privateKey = generatePrivateKey();
       const keyAddress = privateKeyToAddress(privateKey);
       const approval = await this.chain.approveSession({ owner: input.owner, index: record.index, account: record.account, sessionKeyAddress: keyAddress });
+      // Read back from chain: the account would accept the approval now. Otherwise nothing is recorded or kept.
+      let state: PermissionState;
+      try {
+        state = await this.chain.permissionState(record.account, approval.permissionId);
+      } catch (error) {
+        return { ok: false, reason: "rejected", detail: `cannot read permission state: ${brief(error)}` };
+      }
+      if (!isSessionAcceptedOnChain(state, approval.enableNonce)) {
+        return { ok: false, reason: "rejected", detail: "the account does not accept the approval: its Kernel nonce moved while the owner was signing; retry" };
+      }
       await this.vault.destroy(input.agentId);
       await this.vault.put(input.agentId, privateKey);
       record.session = {
@@ -463,6 +500,27 @@ export class WalletsService {
       await markRevoked();
       return { ok: true, revokedLocallyAt, onChain: "verified", operation: { userOpHash: sent.userOpHash, sponsored: sent.sponsored, gasCost: sent.gasCost } };
     });
+  }
+
+  /**
+   * The session key's state read from chain and the vault: whether the account accepts it now (installed, or
+   * installable by the owner's enable signature at the first session-key operation). Null when the agent has none.
+   */
+  async sessionStatus(agentId: string): Promise<SessionStatus | null> {
+    const record = await this.store.get(agentId);
+    const session = record?.session;
+    if (!record || !session) return null;
+    const state = await this.chain.permissionState(record.account, session.permissionId);
+    return {
+      status: session.status,
+      keyAddress: session.keyAddress,
+      permissionId: session.permissionId,
+      issuedAt: session.issuedAt,
+      keyHeld: (await this.vault.get(agentId)) !== null,
+      state,
+      enableNonce: session.enableNonce,
+      acceptedOnChain: isSessionAcceptedOnChain(state, session.enableNonce),
+    };
   }
 
   /** Independent check, from chain state and the vault, that an agent's session key can no longer sign. */

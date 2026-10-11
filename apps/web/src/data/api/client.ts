@@ -11,6 +11,7 @@ import type {
   PopulationResponse,
   PresetsResponse,
   RevocationStatus,
+  SessionView,
   StopResponse,
   WalletChallenge,
 } from "./types";
@@ -60,6 +61,10 @@ export interface SessionClient {
   /** "Stop this agent": revokes its session key. Answers 503 `wallets-unavailable` when the API has no vault. */
   stop(agentId: string): Promise<StopResponse>;
   revocation(agentId: string): Promise<RevocationStatus>;
+  /** "Activate this agent": starts the owner-signed issuance of its session key. */
+  activate(agentId: string): Promise<{ operation: Operation }>;
+  /** The session key as the chain and WalletsModule see it. 404 `no-session` when none was issued. */
+  sessionStatus(agentId: string): Promise<SessionView>;
   holds(): Promise<{ holds: HoldView[] }>;
   confirmHold(holdId: string, count: number): Promise<{ status: "waiting"; readyAt: number; hold: HoldView }>;
   releaseHold(holdId: string): Promise<StopResponse>;
@@ -146,6 +151,8 @@ export function createApiClient(baseUrl: string, fetchImpl: Fetch = (input, init
         createAgent: ({ name, perTxCap, dailyCap, preset }) => post("/agents", preset === undefined ? { name, perTxCap, dailyCap } : { name, perTxCap, dailyCap, preset }),
         stop: (id) => post(`/agents/${seg(id)}/stop`),
         revocation: (id) => get(`/agents/${seg(id)}/revocation`),
+        activate: (id) => post(`/agents/${seg(id)}/activate`),
+        sessionStatus: (id) => get(`/agents/${seg(id)}/session`),
         holds: () => get("/recovery/holds"),
         confirmHold: (id, count) => post(`/recovery/holds/${seg(id)}/confirm`, { count }),
         releaseHold: (id) => post(`/recovery/holds/${seg(id)}/release`),

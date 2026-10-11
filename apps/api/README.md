@@ -23,6 +23,8 @@ Every response is JSON. An error is `{ "error": "<reason>", "detail"?: "..." }` 
 | `GET /genome/presets` | session | The genome presets an agent can be created from, the configured pair, and the hash each would commit. |
 | `POST /agents` | session | Creates an agent from a genome preset and starts its owner-signed deployment. |
 | `POST /agents/:id/deploy` | session, owner | Retries deployment. |
+| `POST /agents/:id/activate` | session, owner | "Activate this agent": starts the owner-signed issuance of the agent's session key. |
+| `GET /agents/:id/session` | session, owner | The session key read from chain and WalletsModule, including whether the account accepts it now. |
 | `POST /agents/:id/stop` | session, owner | "Stop this agent" (issue #44): revokes the session key, subject to the bulk recovery hold. |
 | `GET /agents/:id/revocation` | session, owner | Revocation status read from chain. |
 | `GET /recovery/holds`, `POST /recovery/holds/:id/confirm`, `POST /recovery/holds/:id/release` | session, owner | The bulk recovery hold of `SECURITY.md` section 9. |
@@ -38,7 +40,7 @@ Every response is JSON. An error is `{ "error": "<reason>", "detail"?: "..." }` 
 
 ### Owner-signed operations
 
-The API never holds an owner key. Deployment, revocation, and the reallocation policy each run as an operation whose signer relays every signature request to the owner's wallet:
+The API never holds an owner key. Deployment, activation, revocation, and the reallocation policy each run as an operation whose signer relays every signature request to the owner's wallet:
 
 1. The starting request answers with `operation.status: "awaiting-signature"` and `operation.signatureRequest`: `{ id, expiresAt, kind: "message", message }` (EIP-191, which is how Kernel's ECDSA validator has the owner sign a user operation hash) or `{ id, expiresAt, kind: "typed-data", typedData }` (EIP-712; integers are decimal strings).
 2. The owner's wallet signs it, and the client posts `{ requestId, signature }` to `POST /operations/:id/signature`.
@@ -58,6 +60,25 @@ The user operation hash is a 32-byte digest, so the wallet shows the owner a has
 4. starts the owner-signed deployment as below.
 
 Both rows are written or neither. Without a session key vault the request answers `503 wallets-unavailable` before anything is written. Principal is 0 until the worker's principal job recomputes it from finalized, indexed owner transfers to the deployed account (`EVOLUTION.md` section 1.1); until then the worker does not tick or evaluate the agent. The relayed allocation transfer that funds an agent from the embedded wallet (`ARCHITECTURE.md` section 6.1) is not built. The agent view serves the committed genome (`genome`, with `hash` and `preset`; `informationBudget` in base units as a decimal string), `principal` in base units as a decimal string, and the worker's `status`.
+
+### Activate this agent
+
+`POST /agents/:id/activate` issues the agent's session key through `WalletsService.issueSessionKey`, as an owner-signed operation of kind `activate`. Refusals, all before any key is generated:
+
+| Status and reason | When |
+|---|---|
+| `404 not-found` | The agent does not exist or the caller does not own it. |
+| `409 not-deployed` | WalletsModule has not recorded the account as deployed. Deploy it first. |
+| `409 agent-retired` | The worker's record says the agent is retired. |
+| `409 already-active` | The agent has an active session key. |
+| `409 revocation-pending` | A stop destroyed the previous key but its on-chain revocation is not verified yet. |
+| `503 wallets-unavailable` | No chain, bundler, or session key vault is configured. |
+
+A revoked key can be replaced: the agent gets a new key and the old one stays revoked.
+
+The response (`202`) is `{ operation }` with one signature request of kind `typed-data`: Kernel v3.1's EIP-712 enable data (`primaryType: "Enable"`, in the account's domain) for a permission validator scoped to the call allowlist, with the spend policy as policy and hook. Until the owner signs, the key exists only in the operation's memory; nothing is in the vault or the record. The owner posts the signature to `POST /operations/:id/signature`. WalletsModule then checks that the account has code and that the chain accepts the approval (the Kernel nonce still equals the one the signature is bound to, or the permission is installed and valid), and only then puts the key in the vault the worker reads and records it as `active`. The finished operation's `result` is `{ result, session }`: WalletsModule's `IssueResult` and the session status read from chain, the same object `GET /agents/:id/session` returns (`status`, `keyAddress`, `permissionId`, `issuedAt`, `keyHeld`, `state` with `installed`, `validatorNonce`, `currentNonce`, `validNonceFrom`, `enableNonce`, and `acceptedOnChain`).
+
+No user operation is sent at activation, so no gas is spent and the sponsorship budget is not touched. Kernel installs the permission with the agent's first session-key operation, so right after activation `state.installed` is false and `acceptedOnChain` is true because the enable signature is still valid. "Stop this agent" works in both states. Activation does not start trading: the worker has no tick runner or market configured, and an unfunded agent is not ticked.
 
 ### Stop this agent
 
@@ -123,11 +144,12 @@ The allowed origin is the origin of `AUTH_SIWE_URI`.
 
 ## Tests
 
-`bun run --filter @monadeum/api test` runs offline. `test/api.test.ts` boots the application with `@nestjs/testing` and the Fastify adapter and drives it through HTTP injection, once on the in-memory stores and once on PGlite with every statement under the API's two roles, so a missing grant fails the suite. WalletsModule runs on its test chain from `@monadeum/wallets/testing`, extended so every owner operation requires an owner signature that recovers to the owner, which is what makes the relay testable. Privy tokens are verified by a stand-in; AuthModule's own tests cover the real `@privy-io/node` verification. `test/creation.test.ts` creates agents end to end and checks, on PGlite under the real roles, that the worker loads the record as `monadeum_worker`, that the genome hash verifies, that a client cannot inject genome fields or create an agent for another owner wallet, that an ownership mismatch stays refused, that both records are written or neither, and that the population cap holds. `test/roles.test.ts` checks that the grants of migrations 0007 and 0008 are no wider than stated. `test/activity.test.ts` writes trade records and payment log entries as the worker would (on PGlite through `monadeum_worker`) and checks each agent's `tradeCount` and `x402` in the list and the detail, that another owner's agent and its figures are never served, and the platform totals of `GET /population`. `test/evaluations.test.ts` checks, on both backends, that the evaluation fields are null before any evaluation, served from the latest record and a bounded history to the owner, never to another owner, and that the population carries only aggregates.
+`bun run --filter @monadeum/api test` runs offline. `test/api.test.ts` boots the application with `@nestjs/testing` and the Fastify adapter and drives it through HTTP injection, once on the in-memory stores and once on PGlite with every statement under the API's two roles, so a missing grant fails the suite. WalletsModule runs on its test chain from `@monadeum/wallets/testing`, extended so every owner operation requires an owner signature that recovers to the owner, and every session approval an EIP-712 enable signature that does, which is what makes the relay testable. Activation is covered end to end: refused for another user's agent, an undeployed account, an active key, and an unverified revocation; issued through the relayed typed-data signature with nothing kept before it; verified against chain state; then stopped, and activated again with a new key. Privy tokens are verified by a stand-in; AuthModule's own tests cover the real `@privy-io/node` verification. `test/creation.test.ts` creates agents end to end and checks, on PGlite under the real roles, that the worker loads the record as `monadeum_worker`, that the genome hash verifies, that a client cannot inject genome fields or create an agent for another owner wallet, that an ownership mismatch stays refused, that both records are written or neither, and that the population cap holds. `test/roles.test.ts` checks that the grants of migrations 0007 and 0008 are no wider than stated. `test/activity.test.ts` writes trade records and payment log entries as the worker would (on PGlite through `monadeum_worker`) and checks each agent's `tradeCount` and `x402` in the list and the detail, that another owner's agent and its figures are never served, and the platform totals of `GET /population`. `test/evaluations.test.ts` checks, on both backends, that the evaluation fields are null before any evaluation, served from the latest record and a bounded history to the owner, never to another owner, and that the population carries only aggregates.
 
 ## Not verified yet
 
 - No run against a live Privy app, a bundler, or Monad testnet. The relay has been exercised only against the test chain; whether an embedded wallet's `personal_sign` over a user operation hash produces the signature Kernel's ECDSA validator accepts is an assumption from `libs/wallets`, not observed here.
+- Activation through an embedded wallet: the test chain checks that the enable signature is EIP-712 typed data that recovers to the owner, but that Privy's `eth_signTypedData_v4` over Kernel's real enable data produces the signature Kernel accepts at the first session-key operation has not been observed. The opt-in testnet test in `libs/wallets` covers the same issuance with a local key.
 - Blind hash signing: the owner signs a user operation hash it cannot check against the calls. Showing a verifiable preview needs the client to recompute the hash from the prepared operation, which WalletsModule does not expose.
 - Rate limiting and the relay are in process. More than one API instance needs a shared throttler storage and sticky routing for operations, or a relay that persists the prepared operation; neither is built.
 - No policy writer submits a signed policy to the reallocation contract yet, and the sequence-as-nonce rule above holds only while this ledger sees every change.

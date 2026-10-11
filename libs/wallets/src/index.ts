@@ -1,5 +1,5 @@
 export { WalletsModule } from "./wallets.module.js";
-export { WalletsService, isRevokedOnChain } from "./wallets.service.js";
+export { WalletsService, isRevokedOnChain, isSessionAcceptedOnChain } from "./wallets.service.js";
 export type {
   DeployResult,
   ExecuteResult,
@@ -9,6 +9,7 @@ export type {
   OperationOutcome,
   RevocationStatus,
   RevokeResult,
+  SessionStatus,
   TickExecuteResult,
   TickStatus,
   WalletsSettings,
