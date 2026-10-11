@@ -1,6 +1,6 @@
 # Audit package
 
-This directory is the material an external auditor needs to review the on-chain contracts of this repository, prepared under issue #46. It is organized per contract so that each contract in scope has its own section. Today it covers `AgentSpendPolicy`, the on-chain spend policy for agent smart accounts (issue #25), in sections 1 to 11, and `X402PaymentValidator`, which bounds the account's x402 payment signatures, in section 12. The owner-scoped reallocation contract (issue #31, `contracts/src/AgentReallocation.sol`) is written and tested but not in this package yet; section 10 states what adding it involves.
+This directory is the material an external auditor needs to review the on-chain contracts of this repository, prepared under issue #46. It is organized per contract so that each contract in scope has its own section. Today it covers `AgentSpendPolicy`, the on-chain spend policy for agent smart accounts (issue #25), in sections 1 to 11, `X402PaymentValidator`, which bounds the account's x402 payment signatures, in section 12, and `AgentReallocation`, the owner-scoped reallocation and retirement contract (issue #31, merged in #105), in section 13.
 
 `SECURITY.md` section 3 sets the gate this package serves: `AgentSpendPolicy` carries no real user-controlled capital, on testnet or mainnet, before an external audit is complete and every finding is resolved or explicitly accepted as residual risk in `SECURITY.md`.
 
@@ -18,6 +18,7 @@ Contents:
 10. Adding the reallocation contract
 11. Request for proposal (draft)
 12. X402PaymentValidator
+13. AgentReallocation
 
 ## 1. Scope
 
@@ -146,7 +147,7 @@ Coverage of `src/` (test and mock files excluded), from `forge coverage` with fo
 | --- | --- | --- | --- | --- |
 | `src/AgentSpendPolicy.sol` | 100.00% (120/120) | 100.00% (163/163) | 100.00% (31/31) | 100.00% (25/25) |
 
-Regenerated on 2026-10-10 after the traded-asset change, and again after rebasing onto the `X402PaymentValidator` change (107 tests passed, the two fork suites skipped; `AgentSpendPolicy.sol` figures unchanged by the rebase, which touched only its comments; the validator's own figures are in the same `summary.txt`; before the change: 106/106 lines, 139/139 statements, 26/26 branches, 23/23 functions). Before this package, coverage was 99.06% of lines and 96.15% of branches. The one uncovered branch was the second, independent refusal of an uncounted settlement-asset selector in `_check`, unreachable through `setAllowed` by design. `test_check_rejectsUncountedSettlementSelectorEvenIfStored` writes such an entry into storage directly to show `check` refuses it on its own. Coverage is a floor, not evidence of correctness: the invariant and fuzz suites in section 4 are the substantive checks.
+Regenerated on 2026-10-10 after the traded-asset change, and again after rebasing onto the `X402PaymentValidator` change (107 tests passed, the two fork suites skipped; `AgentSpendPolicy.sol` figures unchanged by the rebase, which touched only its comments; the validator's own figures are in the same `summary.txt`; before the change: 106/106 lines, 139/139 statements, 26/26 branches, 23/23 functions). Before this package, coverage was 99.06% of lines and 96.15% of branches. The one uncovered branch was the second, independent refusal of an uncounted settlement-asset selector in `_check`, unreachable through `setAllowed` by design. `test_check_rejectsUncountedSettlementSelectorEvenIfStored` writes such an entry into storage directly to show `check` refuses it on its own. Coverage is a floor, not evidence of correctness: the invariant and fuzz suites in section 4 are the substantive checks. The same run reports `X402PaymentValidator` (section 12.3) and `AgentReallocation` (section 13.4).
 
 To regenerate, from the repository root, with Foundry 1.8.5 installed:
 
@@ -266,19 +267,10 @@ This step needs testnet funds and a bundler endpoint, so it is a manual run, not
 - The Kuru router and any other allowlisted target.
 - Off-chain components: the RiskModule (`libs/risk`), the wallet library (`libs/wallets`), the agent runtime, and any bundler or paymaster.
 - Test code, mocks, and the fork test, except as evidence for the claims above.
-- The reallocation contract (issue #31) until it is added under section 10.
 
 ## 10. Adding the reallocation contract
 
-When the reallocation contract from issue #31 is merged, it is added to this package as its own set of sections, without changing the sections above unless the two contracts interact:
-
-- Add its files and nSLOC to the scope table in section 1, and the merged commit.
-- Add a system overview subsection with its trust model, in particular the owner, the signed reallocation policy, and who may call it.
-- Add its integration assumptions: how it pulls funds (the counted `approve` it relies on from this contract, section 8, item 7), and its interaction with the settlement asset.
-- Add its invariants, at least `THREAT-MODEL.md` invariants 3, 4, 12, 13, and 15, each mapped to the tests that check them.
-- Extend `coverage.sh` output and the static-analysis triage to its files.
-- Revisit section 8, item 7: once its code is in scope, whether it can forward funds outside the owner's agents is an audited property rather than an assumption.
-- Update the request for proposal below with the combined nSLOC.
+Done: the reallocation contract is section 13, with its scope, trust model, integration assumptions (including the counted `approve` of section 8, item 7, now an audited property, 13.2), invariants `THREAT-MODEL.md` 3, 4, 12, 13, and 15 mapped to tests, coverage, static-analysis triage, and known limitations. `coverage.sh` covers all three contracts again (13.4).
 
 ## 11. Request for proposal (draft)
 
@@ -286,7 +278,7 @@ This is a draft for issue #46. It has not been sent to any auditor.
 
 **Project**: monadeum, an agent economy on Monad in which each agent trades through a ZeroDev Kernel v3.1 smart account under a session key.
 
-**Scope**: `AgentSpendPolicy` and its interfaces, 261 nSLOC in three files (section 1), and `X402PaymentValidator`, 196 nSLOC (section 12), at a pinned commit. Planned addition before engagement if ready: the owner-scoped reallocation contract (issue #31), size to be stated when merged.
+**Scope**: `AgentSpendPolicy` and its interfaces, 261 nSLOC in three files (section 1), `X402PaymentValidator`, 196 nSLOC (section 12), and `AgentReallocation` with its interface, 370 nSLOC (section 13): 827 nSLOC in all, at a pinned commit.
 
 **What we ask the auditor to focus on**:
 
@@ -298,13 +290,14 @@ This is a draft for issue #46. It has not been sent to any auditor.
 6. The rolling window arithmetic and its edge cases.
 7. The known limitations in section 8: whether any is worse than stated, and whether any accepted risk should be fixed instead.
 8. `X402PaymentValidator`: whether any signature a fully compromised x402 key can produce moves the settlement asset other than to a listed payee, above `maxValue`, or beyond the 24-hour rate bound, and whether the self-protection rule in section 12.1 holds against direct calls from the account (section 12).
+9. `AgentReallocation`: whether any sequence of calls by a compromised session key, a compromised operator, or both moves capital across owners, debits an account other than the caller, exceeds the cap, floor, or ceiling, or opens evaluations faster than `minEvaluationInterval` (section 13).
 
 **Materials provided**: this README, the interface NatSpec, `ARCHITECTURE.md` section 16.3, `THREAT-MODEL.md` section 7, the test suites, the coverage report, and the static-analysis triage.
 
 **Timeline assumptions** (to confirm with the auditor, not commitments):
 
-- Size: 261 nSLOC is a small engagement. Our working estimate is 3 to 5 auditor-days for this contract alone, plus time for the reallocation contract once its size is known. This is an assumption, not a quote.
-- Start: after the reallocation contract is merged, so both are audited in one engagement, unless that slips past the testnet deployment target (issue #48), in which case `AgentSpendPolicy` goes first on its own.
+- Size: 827 nSLOC across three contracts. Our working estimate is 3 to 5 auditor-days for `AgentSpendPolicy`, plus 2 to 3 for `X402PaymentValidator` and 4 to 6 for `AgentReallocation`. These are assumptions, not quotes.
+- Start: all three contracts are merged, so they can be audited in one engagement.
 - Fix review: one round of fix review included, on the commits that resolve findings.
 - Gate: no real user-controlled capital on testnet or mainnet before the report is final and every finding is resolved or accepted in `SECURITY.md` (section 3 of that document).
 
@@ -394,3 +387,95 @@ Run on 2026-10-10 against this file, with the same tools, versions, and commands
 5. **Relies on Kernel v3.1 storage semantics** for the self-protection rule (X3). A different account implementation, or a Kernel version that changes install ordering, needs this rule rechecked; a caller that is not a Kernel account reverts on `validationConfig`.
 6. **Facilitator acceptance is unverified** (X8). If the facilitator refuses ERC-1271 signatures, agents cannot pay x402; nothing fails open.
 7. **Wired, off by default**: WalletsModule installs the validator in the deployment operation and uninstalls it on revocation, and the worker's payer is disabled until a facilitator on Monad is confirmed to accept ERC-1271 (`ARCHITECTURE.md` section 16.3). The x402 key has no production vault implementation yet (`SECURITY.md` section 11).
+
+## 13. AgentReallocation
+
+`contracts/src/AgentReallocation.sol` (merged in #105) is in scope for the same engagement, with the same gate. It does not change any file in sections 1 or 12, and it interacts with `AgentSpendPolicy` only through the counted `approve` described in 13.2. `ARCHITECTURE.md` section 16.5 is its design record, including the owner decisions accepted for testnet; `EVOLUTION.md` sections 3.1, 3.3, and 6 define the mechanism. Deployment does not turn reallocation on: every off-chain path that would submit a move or relay a policy is behind the reallocation switch, off by default (`ARCHITECTURE.md` section 5).
+
+### 13.1 Scope and model
+
+| File | nSLOC | Role |
+| --- | --- | --- |
+| `contracts/src/AgentReallocation.sol` | 280 | Implementation: moves, owner policy, operator registry, evaluation counter, roles |
+| `contracts/src/IAgentReallocation.sol` | 90 | Interface and NatSpec specification |
+| **Total** | **370** | |
+
+nSLOC from Aderyn 0.6.8, run 2026-10-10. Both files use `pragma solidity ^0.8.24`, compiled with the settings of section 1. No upgradeability, no pause. The settlement asset, the capital floor (`6 * 10^decimals / 100`, `decimals` read from the token at deployment), and `minEvaluationInterval` are immutable.
+
+| Actor | Can | Cannot |
+| --- | --- | --- |
+| Source account (its session key) | Call `reallocate` to debit itself once per evaluation, after a counted `approve` of the total | Debit any other account; exceed the policy's cap, floor, or a sink's ceiling; move to another owner's agent |
+| Owner (root wallet) | Commit or revoke its own policy, directly or by EIP-712 signature (EOA only, low-`s`); retire its own agents | Loosen any bound past the protocol constants; name another owner's agent |
+| Operator (multisig contract) | Register agents (owner set once), set principal, advance the evaluation counter at most once per `minEvaluationInterval`, retire agents | Move capital; change an agent's owner; bypass a policy |
+| Admin (multisig contract) | Replace the operator; propose a new admin (two-step) | Anything the operator cannot |
+| Anyone else | Relay a signed policy or revocation | Anything else |
+
+### 13.2 Integration assumptions
+
+| # | Assumption | Verified by |
+| --- | --- | --- |
+| R1 | The settlement asset has standard `transferFrom` and `balanceOf` semantics; a token that delivers less, takes more, or returns false is refused by the balance checks | `test_feeOnTransferTokenReverts`, `test_sourceDebitedMoreThanTheTotalReverts`, `test_falseReturningTokenReverts` |
+| R2 | A source is debited only through an allowance it set itself. With `AgentSpendPolicy`, that is a counted `approve(thisContract, total)` in the same operation, so every reallocated amount has passed the source's `perTxCap` and `dailyCap`, and `reallocate` itself counts 0 | `test/ReallocationSpendPolicy.t.sol` (`test_batchedMoveIsCountedOnceByTheSpendPolicy`, `test_approveAbovePerTxCapIsRejectedInValidation`, `test_movesAcrossEvaluationsShareTheDailyCap`) |
+| R3 | The account's allowlist holds only the `reallocate` selector on this contract, which makes it an allowed spender and keeps the session key away from the owner and operator functions | `test_sessionKeyCannotReachOwnerOrOperatorFunctions`, `test_unlistedReallocationContractIsNotAnAllowedSpender` |
+| R4 | The operator's registry (owner, principal, status) matches the platform's records; the contract cannot check it against the Kernel account | Assumption; operator trust, 13.5 item 1 |
+| R5 | Block timestamps are monotonic, so `minEvaluationInterval` spaces evaluations in wall-clock time | Assumption, as section 3.4 |
+| R6 | The EIP-712 policy hash equals `libs/commitment`'s, so the planner and the contract agree on the commitment | `test/ReallocationCommitmentVector.t.sol` |
+
+This resolves section 8, item 7 for this contract: with its code in scope, it can forward funds only from `msg.sender` to Active agents of the same owner named by that owner's policy in force, which is now an audited property rather than an assumption.
+
+### 13.3 Invariants and tests
+
+| ID | Invariant | Source | Tests |
+| --- | --- | --- | --- |
+| RV1 | Total and per-owner capital are conserved by every move, retirement, deposit, and withdrawal; the contract never holds a balance | `THREAT-MODEL.md` invariants 3 and 13 | `invariant_totalCapitalConserved`; `invariant_perOwnerCapitalConserved`; `test_moveAtCapTransfersSourceToSinkAndEmits` |
+| RV2 | No move exceeds the cap of the source's balance or leaves it below the floor; one debit per source per evaluation | `THREAT-MODEL.md` invariant 4 | `invariant_sourceBounds`; `test_capPlusOneReverts`; `test_capAppliesToTheSumOfCredits`; `test_protocolFloorMinusOneReverts`; `test_secondDebitInOneEvaluationReverts`; `testFuzz_singleMoveMatchesModelAndConserves` |
+| RV3 | No sink ends above the slot ceiling times its principal through a move | `THREAT-MODEL.md` invariant 12 | `invariant_sinkCeiling`; `test_ceilingPlusOneReverts`; `test_ceilingCountsDuplicateCreditsToOneSink` |
+| RV4 | Source and sinks share one owner, named by that owner's policy in force with the given hash | `THREAT-MODEL.md` invariant 13 | `invariant_contractMatchesModel`; `test_mismatchedOwnersRevert`; `test_ownerCannotNameAnotherOwnersAgent`; `test_uncoveredAgentReverts`; `test_revocationTakesEffectImmediately`; `test_replacedPolicyHashAndCoverageNoLongerApply` |
+| RV5 | A retired or unregistered agent is never moved; retirement is one way and moves nothing | `THREAT-MODEL.md` invariant 15 | `invariant_retirement`; `test_retirementMovesNoCapital`; `test_retiredAgentIsNeitherSourceNorSink`; `test_retirementIsOneWayAndRestricted` |
+| RV6 | Evaluations are never opened closer together than `minEvaluationInterval`; the first is not spaced | `ARCHITECTURE.md` 16.5 | `invariant_evaluationSpacing`; `test_evaluationSpacingAtTheBound`; `test_firstEvaluationIsNotSpaced`; `testFuzz_evaluationSpacing` |
+| RV7 | Policy bounds are never looser than the protocol constants; signatures are bound to this deployment, consume a nonce, and refuse other keys and malleable forms | `EVOLUTION.md` 3.1 item 8 | `test_commitRejectsLooserBoundsAndBadShapes`; `test_commitRejectsWrongNonceAndWrongSender`; `test_policySignatureFromAnotherKeyOrMalleableRejected`; `test_signatureForAnotherDeploymentRejected` |
+| RV8 | Operator and admin are contracts; roles are enforced | `ARCHITECTURE.md` 16.5 | `test_operatorAndAdminRoles`; `test_rolesWithoutCodeRejected`; `test_adminFunctionsRefuseOthersAndZeroOperator` |
+
+The invariant suite (`test/AgentReallocation.invariant.t.sol`) drives three owners and one unregistered account through moves (including repeats in one evaluation), commits with random and wrong nonces, revocations, retirements, principal changes, deposits, withdrawals, and evaluation advances at random times, against an independent model of every rule; `test_handlerExercisesBothOutcomes` checks the run is not vacuous. Configuration as section 4: 256 runs, depth 64, `fail_on_revert = true`; fuzz tests run 1000 cases. `test/AgentReallocationEdges.t.sol`, added with this section, covers the constructor and role paths the main suite did not reach and a token that takes more from the source than it delivers.
+
+### 13.4 Coverage and static analysis
+
+`bash contracts/audit/coverage.sh` failed on `main` since #105: coverage compiles with the optimizer and via-IR off, and one handler function of `test/AgentReallocation.invariant.t.sol` (`commit`) held too many locals for the legacy code generator ("stack too deep"). The function is now split in two (`_commitSeeded`), with the same behavior; the script runs again. From `forge coverage` with forge 1.8.5, 2026-10-10, 178 tests passed and the fork suites skipped:
+
+| File | Lines | Statements | Branches | Functions |
+| --- | --- | --- | --- | --- |
+| `src/AgentReallocation.sol` | 99.41% (168/169) | 99.19% (244/246) | 95.92% (47/49) | 100.00% (28/28) |
+
+The two uncovered branches are unreachable by construction and kept as defense in depth: the re-check in `_authorize` that a stored policy's bounds are not looser than the protocol constants (`_commit` already refuses such a policy, and nothing else writes one), and `_commit`'s zero-owner check (`commitPolicy` requires `msg.sender == owner`, and `commitPolicyBySig` fails signature recovery first). Before the edge tests the branch figure was 83.67% (41/49).
+
+Slither 0.11.4 and Aderyn 0.6.8 (commands as section 6) and `forge lint`, 2026-10-10. Every finding that names `AgentReallocation.sol` or `IAgentReallocation.sol`:
+
+| # | Tool | Finding | Location | Triage |
+| --- | --- | --- | --- | --- |
+| RS1 | Slither, forge lint | `calls-loop` (3) | `_credit` (`balanceOf` twice), `_transferFrom` | **Accepted by design.** One transfer per credit, and each is checked by balance before and after. The only callee is the immutable settlement asset; a revert in any credit reverts the whole move, which is the intended atomicity |
+| RS2 | Slither, forge lint | `reentrancy-events` | `_credit`, `Reallocated` after `transferFrom` | **Accepted.** The callee is the settlement asset fixed at deployment, not a caller-supplied contract; the event is emitted only after the balance checks pass |
+| RS3 | Aderyn H-2 | State change after external call | `reallocate`: `lastDebitEvaluation` written after `balanceOf(msg.sender)` | **False positive.** `balanceOf` is a view on the trusted settlement asset; the one-debit marker is written before any transfer, so a re-entrant `reallocate` in the same evaluation reverts with `AlreadyDebited` |
+| RS4 | Slither, forge lint | `timestamp` | `advanceEvaluation` | **Accepted by design.** Spacing is minutes to hours; producer influence on a timestamp is far smaller (16.5) |
+| RS5 | Slither | `low-level-calls` (2) | constructor `decimals()`, `_transferFrom` | **Accepted, reviewed.** Both handle tokens that return nothing or revert: the constructor refuses them (`UnsupportedDecimals`), `_transferFrom` accepts an empty or `true` return and refuses `false` (`TransferFailed`) |
+| RS6 | Slither | `cyclomatic-complexity` 15 | `_authorize` | **Accepted, informational.** One check per rule, each with its own error |
+| RS7 | Slither, Aderyn L-11 | `pragma`: `^0.8.24` | both files | **Open, to decide.** `AgentSpendPolicy` and `X402PaymentValidator` pin `0.8.24` (D7); this implementation does not. Pinning changes no bytecode under the pinned compiler in `foundry.toml` and is a one-line change for the auditor to confirm |
+| RS8 | forge lint | `incorrect-strict-equality` | `reallocate`, `balanceOf(source) != sourceBefore - total` | **False positive, intended.** Exactness is the rule: the source must lose exactly the total (R1) |
+| RS9 | forge lint | `unsafe-typecast` | constructor, `uint8(decimals)` | **False positive.** Guarded: values above 255 are reported as 255, and any value outside 2 to 36 reverts |
+| RS10 | forge lint | `missing-zero-check` | `proposeAdmin` | **False positive, intended.** `address(0)` cancels a pending proposal; any other address must be a contract |
+| RS11 | forge lint (10), Aderyn L-8 (3) | `require-revert-in-loop` | `_authorize`, `_credit`, `_commit` loops | **False positive.** One bad credit or agent must reject the whole move or policy |
+| RS12 | Aderyn L-1 | Costly operations inside loop | `_commit` coverage writes | **Accepted.** One store per named agent, an owner operation |
+| RS13 | Aderyn L-2 | `ecrecover` malleability | `_recover` | **False positive.** High-`s` and any `v` other than 27 or 28 are refused before `ecrecover` (`test_policySignatureFromAnotherKeyOrMalleableRejected`) |
+| RS14 | Aderyn L-4, L-5 | Large numeric literal; literal instead of constant | `SLOT_CEILING_BPS`, `BPS`, ABI offsets in `_recover` and `_transferFrom`, decimals bounds | **Accepted, informational.** The large literals are named constants; the others are ABI offsets and the documented decimals range |
+| RS15 | Aderyn L-6 | Local variable shadows state variable | `PolicyState.capitalFloor` (struct field) vs `capitalFloor()` | **False positive.** A struct member, not a local; the two are always accessed qualified (`p.capitalFloor`, `capitalFloor`) |
+| RS16 | Aderyn L-7 | `PUSH0` opcode | both files | Same as D4 |
+| RS17 | Aderyn L-10 | Unsafe ERC20 operation | `_transferFrom` | **False positive.** The return value is checked by hand to accept tokens that return nothing (RS5) |
+
+### 13.5 Known limitations and residual risk
+
+1. **Operator trust.** The operator writes owner, principal, and status, and advances the evaluation counter; the contract cannot check the registry against the Kernel account (R4). A compromised operator cannot move capital between owners, debit an account without that account's own operation, loosen a bound, or move anything without a signed policy in force. It can register a new account under a chosen owner (which matters only if that owner signs a policy naming it), raise an agent's principal and with it its ceiling within that owner's own capital, retire agents, or stop advancing evaluations (fail closed). `ARCHITECTURE.md` 16.5 and `THREAT-MODEL.md` section 8 hold the full statement.
+2. **Minimum evaluation spacing bounds, but does not remove, operator-driven churn.** A compromised operator can advance the counter every `minEvaluationInterval` seconds, and a session key that is also compromised can then make one capped debit per advance, bounded by the floor and by the source's `dailyCap` through the counted `approve`. The testnet value, 600 seconds, is an assumption, not a measurement (16.5).
+3. **Multisig threshold is not checkable on-chain.** The contract refuses a role address with no code, not a contract with one signer; the 2-of-3 threshold is a deployment requirement checked at deployment and by monitoring.
+4. **Settlement-asset-only capital.** Positions in other assets (WETH in the default deployment) are not counted: conservative for the source's cap and floor, but a sink holding an open position can exceed `slot_ceiling` times principal in total value (16.5, known gaps).
+5. **Off-chain ranking and zero-downside flag.** Which agents are source and sink, and the zero-downside flag, are computed off-chain and not verifiable on-chain (`THREAT-MODEL.md` section 8).
+6. **EOA owners only.** Policy signatures are ECDSA from an externally owned account; ERC-1271 owners are not supported.
+7. **Not deployed, and not exercised against a deployed Kernel account.** Its interaction with an account is tested against the test double of section 5, not a fork or a bundler.

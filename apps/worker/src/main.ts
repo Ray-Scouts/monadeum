@@ -31,8 +31,9 @@ export type { ChainReader, MarketReading, MarketSource } from "./ports.js";
 export { WORKER_STORES, memoryWorkerStores, postgresWorkerStores } from "./stores.js";
 export type { WorkerStores } from "./stores.js";
 export { WorkerConfigError, loadConsumerConfig } from "./config.js";
-export { DisabledX402Payer, agentOfTickKey, buildX402Payer, loadX402PayerConfig } from "./x402.js";
-export type { WorkerX402PayerConfig } from "./x402.js";
+export { DisabledX402Payer, RpcSettlementLogSource, X402Reconciler, agentOfTickKey, buildX402Payer, loadX402PayerConfig } from "./x402.js";
+export type { LogReader, ReconcileReport, SettlementLogSource, WorkerX402PayerConfig } from "./x402.js";
+import { X402Reconciler, loadX402PayerConfig, type SettlementLogSource } from "./x402.js";
 export type { WorkerConsumerConfig } from "./config.js";
 export { UnconfiguredTickRunner, WorkerJobHandlers } from "./consumer/handlers.js";
 export type { ConsumerSettings, JobOutcome, TickRunner } from "./consumer/handlers.js";
@@ -113,6 +114,11 @@ export interface WorkerRunOptions extends WorkerBootOptions {
    * fails every job closed, and MONADEUM_ENV=production refuses to start. It receives the reallocation switch read from
    * the environment, which it passes to `AgentWorker` as `settings.reallocation`.
    */
+  /**
+   * Recent settlement-asset logs for the `x402-reconcile` job, e.g. `RpcSettlementLogSource` over a viem public
+   * client. Without it the job runs and checks nothing; while the x402 payer is disabled it checks nothing anyway.
+   */
+  x402Settlements?: SettlementLogSource;
   runner?: (stores: WorkerStores, reallocation: ReallocationSwitch) => TickRunner;
   clock?: () => Date;
 }
@@ -127,6 +133,7 @@ export async function runWorker(options: WorkerRunOptions) {
   const log = options.log ?? (() => {});
   const production = loadDatabaseSettings(options.env).production;
   const config = loadConsumerConfig(options.env);
+  const x402 = loadX402PayerConfig(options.env);
   if (!config && production) throw new WorkerConfigError("MONADEUM_ENV is production and REDIS_URL is not set: refusing to start without a consumer");
   if (production && !options.runner) {
     throw new WorkerConfigError("MONADEUM_ENV is production and no tick runner is configured: trading, x402, and wallets are not wired in this process");
@@ -158,6 +165,14 @@ export async function runWorker(options: WorkerRunOptions) {
       ? new PrincipalSync({ agents: booted.stores.agents, readModel: booted.stores.readModel, settlementAsset: config.principal.settlementAsset, locks, lockTtlMs: config.settings.lockTtlMs })
       : undefined;
     if (!principal) log("WORKER_SETTLEMENT_ASSET_ADDRESS is not set: principals are not recomputed, so no agent becomes funded");
+    const x402Reconciler = new X402Reconciler({
+      payerEnabled: x402.enabled,
+      source: options.x402Settlements ?? null,
+      asset: config.principal?.settlementAsset ?? null,
+      agents: booted.stores.agents,
+      slots: booted.stores.x402Slots,
+      payments: booted.stores.payments,
+    });
     const handlers = new WorkerJobHandlers({
       agents: booted.stores.agents,
       runner,
@@ -166,11 +181,14 @@ export async function runWorker(options: WorkerRunOptions) {
       settings: config.settings,
       clock: options.clock ?? (() => new Date()),
       principal,
+      x402Reconciler,
       log,
     });
     log((await handlers.sync()).detail);
     await queue.scheduleSync(config.syncIntervalMs);
     if (config.principal) await queue.schedulePrincipal(config.principal.intervalMs);
+    // Scheduled whether or not the payer is on: while it is off, each run checks nothing and says so.
+    await queue.scheduleX402Reconcile(x402.reconcileIntervalMs);
     const consumer = startConsumer(connection, handlers, { concurrency: config.concurrency, prefix: config.prefix, log });
     log(`consumer running on ${booted.stores.durable ? "Postgres" : "in-memory"} stores, concurrency ${config.concurrency}`);
     return {

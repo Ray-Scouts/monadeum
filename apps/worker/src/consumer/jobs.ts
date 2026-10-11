@@ -10,10 +10,14 @@ import { tickKey } from "@monadeum/tick";
  * - `evaluate`: runs one evaluation for the population.
  * - `principal`: a repeatable job that recomputes every agent's principal from finalized funding transfers
  *   (`PrincipalSync`, EVOLUTION.md section 1.1).
+ * - `x402-reconcile`: a repeatable job that matches recent on-chain x402 settlements from agent accounts to the
+ *   payment log and raises `x402-settlement-unmatched` and `x402-settlement-mismatch` alerts (`X402Reconciler`,
+ *   SECURITY.md section 12). A no-op while the x402 payer is disabled.
  */
 export type WorkerJob =
   | { kind: "sync" }
   | { kind: "principal" }
+  | { kind: "x402-reconcile" }
   | { kind: "trigger"; agentId: string }
   | { kind: "tick"; agentId: string; tick: number }
   | { kind: "evaluate"; tick: number };
@@ -50,6 +54,7 @@ export function parseJob(name: string, data: unknown): WorkerJob {
   const tick = typeof d.tick === "number" && Number.isSafeInteger(d.tick) && d.tick > 0 ? d.tick : null;
   if (name === "sync") return { kind: "sync" };
   if (name === "principal") return { kind: "principal" };
+  if (name === "x402-reconcile") return { kind: "x402-reconcile" };
   if (name === "trigger" && agentId) return { kind: "trigger", agentId };
   if (name === "tick" && agentId && tick !== null) return { kind: "tick", agentId, tick };
   if (name === "evaluate" && tick !== null) return { kind: "evaluate", tick };

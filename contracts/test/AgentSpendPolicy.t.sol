@@ -103,7 +103,7 @@ contract AgentSpendPolicyTest is PolicyTestBase {
     function testFuzz_check_rejectsNonAllowlistedTargetRegardlessOfAmount(address target, uint256 amount, bytes4 sel)
         public
     {
-        vm.assume(target != asset && target != router && target != repro);
+        vm.assume(target != asset && target != router && target != repro && target != traded);
         bytes[3] memory datas = [
             abi.encodeWithSelector(TRANSFER, router, amount),
             abi.encodeWithSelector(APPROVE, router, amount),
@@ -286,7 +286,7 @@ contract AgentSpendPolicyTest is PolicyTestBase {
         uint256 amount,
         bool viaApprove
     ) public {
-        vm.assume(recipient != router && recipient != repro);
+        vm.assume(recipient != router && recipient != repro && recipient != traded);
         IAgentSpendPolicy.Call memory c = _tradedCall(viaApprove ? APPROVE : TRANSFER, recipient, amount);
         vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.RecipientNotAllowed.selector, recipient));
         policy.check(account, _one(c));
@@ -407,7 +407,7 @@ contract AgentSpendPolicyTest is PolicyTestBase {
     function testFuzz_check_rejectsRecipientWithoutAllowedSelector(address recipient, uint256 amount, bool viaApprove)
         public
     {
-        vm.assume(recipient != router && recipient != repro && recipient != asset);
+        vm.assume(recipient != router && recipient != repro && recipient != asset && recipient != traded);
         IAgentSpendPolicy.Call memory c = viaApprove ? _approve(recipient, amount) : _transfer(recipient, amount);
         vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.RecipientNotAllowed.selector, recipient));
         policy.check(account, _one(c));

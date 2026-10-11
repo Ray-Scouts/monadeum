@@ -168,6 +168,12 @@ contract ReallocationHandler is Test {
         } else {
             mask = _ownedMask(o);
         }
+        _commitSeeded(o, mask, seed);
+    }
+
+    /// Split from `commit` so that no frame holds more locals than the legacy code generator can reach, which
+    /// `forge coverage` needs: it compiles without the optimizer and without via-IR.
+    function _commitSeeded(uint256 o, uint256 mask, uint256 seed) internal {
         uint256 kind = (seed >> 24) % 16; // kinds 0, 1, 2 and 4 are looser than the protocol
         uint256 cap = kind == 0 ? 2_001 : kind == 1 ? 0 : 1 + (seed >> 32) % 2_000;
         uint256 ceil = kind == 2 ? 40_001 : kind == 3 ? 40_000 : 1 + (seed >> 48) % 40_000;
