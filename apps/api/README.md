@@ -68,7 +68,7 @@ Both rows are written or neither. Without a session key vault the request answer
 
 ### Read endpoints and the web
 
-The agent view carries the field names of `Agent` in `apps/web/src/data/types.ts`. `status`, `principal`, and `genome` come from the worker's record, in the units above, which differ from the web's sample types (base-unit strings, not dollars). Fields no service produces yet (`capital`, `tradeCount`, `fitnessPercentile`, `lowWindows`, `zeroDownsideFlag`, `retirement`, `capitalHistory`) are `null`, not invented; the API's own fields (`deployment`, `session`, `limits`, `chain`) are what it can source today. Switching the web's `PopulationSource` to the API is the follow-up for issue #42; this package does not touch `apps/web`.
+The agent view carries the field names of `Agent` in `apps/web/src/data/types.ts`. `status`, `principal`, and `genome` come from the worker's record, in the units above, which differ from the web's sample types (base-unit strings, not dollars). Fields no service produces yet (`capital`, `tradeCount`, `fitnessPercentile`, `lowWindows`, `zeroDownsideFlag`, `retirement`, `capitalHistory`) are `null`, not invented; the API's own fields (`deployment`, `session`, `limits`, `chain`) are what it can source today. `apps/web` reads these endpoints in its `api` mode (`apps/web/README.md`) with views of its own, which name the null fields as not served rather than rendering them.
 
 ## Storage
 

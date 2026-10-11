@@ -64,4 +64,4 @@ The consuming app also supplies the three stores and the `OwnerWalletHandoff`, t
 - Privy issues identity tokens only when they are enabled for the app in the Privy dashboard; this is an assumption about the dashboard setting to confirm with the live run.
 - The issue #19 spike used Privy's React SDK 3.48.0 only; it did not exercise any server SDK. `@privy-io/node` is the package Privy's npm registry entry for the earlier `@privy-io/server-auth` points to as its replacement (checked 2026-10-10).
 - The rotation procedure above has not been exercised against a real Privy key change.
-- The frontend (`apps/web`) still runs on sample data: its sign-in step already lists social login first and the external wallet below an "advanced" divider, but it does not call Privy or this module.
+- The frontend (`apps/web`) calls Privy and this module through `apps/api` in its `api` mode, but that path has not been run against a live Privy app either.
