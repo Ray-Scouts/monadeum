@@ -89,7 +89,7 @@ What the script deploys, all with constructor arguments from the environment (de
 
 Before sending anything, the script refuses unless: the chain id is 10143; the settlement asset has code, reports 6 decimals, and exposes the EIP-3009 `TRANSFER_WITH_AUTHORIZATION_TYPEHASH`; operator and admin each have code, a threshold of at least 2, and at least 3 owners; the interval is nonzero; and the broadcasting account is `0x6179...c1e3`. After deploying it reads every constructor-set value back and writes `contracts/deployments/monad-testnet.latest.json` (not committed).
 
-**Fund the deployer first.** The simulation of 2026-10-11 estimated 6,769,868 gas for the three deployments and "Estimated amount required: 1.374283204006769868 MON" at a 203 gwei maximum fee, against a balance of 0.9637 MON. That figure is the worst case at the maximum fee; at the 100 gwei base fee observed the same day the three cost about 0.70 MON. Monad's documentation states that a transaction is charged for its gas limit, not the gas it uses (ASSUMPTION here: not re-verified on this deployment). Each transaction must also be covered at its own maximum fee when sent, so top the deployer up to at least 1.5 MON from the testnet faucet before broadcasting.
+**Fund the deployer first.** The simulation of 2026-10-11 estimated 6,769,868 gas for the three deployments and "Estimated amount required: 1.374283204006769868 MON" at a 203 gwei maximum fee, against a balance of 0.9637 MON. That figure is the worst case at the maximum fee; at the 100 gwei base fee observed the same day the three cost about 0.70 MON. Monad's documentation states that a transaction is charged for its gas limit, not the gas it uses; the broadcast of 2026-10-11 is consistent with that (below: each receipt's `gasUsed` equals its transaction's gas limit). Each transaction must also be covered at its own maximum fee when sent, so top the deployer up to at least 1.5 MON from the testnet faucet before broadcasting.
 
 Simulate (sends nothing, needs no key):
 
@@ -120,7 +120,15 @@ forge script script/DeployTestnet.s.sol:DeployTestnet \
   --broadcast --slow -vvv
 ```
 
-If the deployer sends no other transaction first (its nonce was 1 on 2026-10-11), the addresses are the ones the simulation predicted: `AgentSpendPolicy` `0xe54512401B8fCD0DCc3f4Aa4929b99F05AbA3f05`, `AgentReallocation` `0x4e7500415e81017670a9cFb8763f873EE6694A7f`, `X402PaymentValidator` `0xCA918F53FFc7507Bd41602c0bD1ef72558705991`.
+**The testnet deployment (FACT, broadcast by the owner on 2026-10-11 and checked on chain the same day).** The addresses are the ones the simulation predicted from the deployer's nonce 1:
+
+| Contract | Address | Transaction | Block | Gas |
+|---|---|---|---|---|
+| `AgentSpendPolicy` | `0xe54512401B8fCD0DCc3f4Aa4929b99F05AbA3f05` | `0xe57f5b866b9eb5a438d137fdd126030c4bbec09d5a2d30b9ad14489a72af344e` | 70167444 | 1,975,698 |
+| `AgentReallocation` | `0x4e7500415e81017670a9cFb8763f873EE6694A7f` | `0x654a555c3214551412c29a6a17ec391ea9dd2b032221880116fd0e58a213ee3e` | 70167453 | 2,860,335 |
+| `X402PaymentValidator` | `0xCA918F53FFc7507Bd41602c0bD1ef72558705991` | `0x914bb2d21130dd014ccc0688dbf5afca6df3bdd94f37880e560f1908e117bf0f` | 70167461 | 1,933,835 |
+
+The three cost 6,769,868 gas at an effective 103.4075 gwei, 0.70005512521 MON in total, read from the receipts. Each receipt's `gasUsed` equals the transaction's gas limit. Read back on chain: every address has code; `settlementAsset()` of all three is the testnet USDC above; on `AgentReallocation`, `operator()` and `admin()` are the Safe, `pendingAdmin()` is zero, `minEvaluationInterval()` is 36000, `capitalFloor()` is 60000, and `currentEvaluation()` and `lastEvaluationAt()` are 0. The record is `contracts/deployments/monad-testnet.json`, and `deploy/.env.testnet.example` carries these values. The commands below are how a redeployment is recorded and checked.
 
 Record the result and check it on chain:
 
@@ -151,7 +159,10 @@ for v in POSTGRES_SUPERUSER_PASSWORD DB_OWNER_PASSWORD DB_API_PASSWORD DB_WORKER
 nano deploy/.env.testnet
 ```
 
-Fill in every `CHANGE_ME`: the two domains, the passwords above, `PRIVY_APP_ID` and `PRIVY_VERIFICATION_KEY` from the Privy dashboard, `WALLETS_BUNDLER_URL` (a ZeroDev project for chain 10143), and from step 2 `SPEND_POLICY_ADDRESS`, `REALLOCATION_CONTRACT`, and `INDEXER_START_BLOCK`.
+Fill in every `CHANGE_ME`: the two domains, the passwords above, `PRIVY_APP_ID` from the Privy dashboard, and `WALLETS_BUNDLER_URL` (a ZeroDev project for chain 10143). `SPEND_POLICY_ADDRESS`, `REALLOCATION_CONTRACT`, and `INDEXER_START_BLOCK` already hold the 2026-10-11 deployment from step 2; change them only after a redeployment.
+
+- **Privy keys.** Leave `PRIVY_VERIFICATION_KEY` empty. The API then verifies Privy tokens against the keys Privy publishes for the app (`https://auth.privy.io/api/v1/apps/<PRIVY_APP_ID>/jwks.json`), selected by each token's `kid`, so a key rotation at Privy needs no change on the VPS. That endpoint listed two ES256 keys for this project's app on 2026-10-11, so one static key may not verify both access and identity tokens. The API needs outbound HTTPS to `auth.privy.io` (it is on the `egress` network); if the key set cannot be fetched and no cached key is current, Privy sign-in fails closed. Setting `PRIVY_VERIFICATION_KEY` pins one PEM key and disables the fetch (`libs/auth/README.md`).
+- **ZeroDev bundler.** The bundler for chain 10143 lists EntryPoint 0.7 in `eth_supportedEntryPoints` (FACT, checked 2026-10-11), the EntryPoint Kernel v3.1 uses here. The bundler URL carries the project ID, so in the ZeroDev dashboard's Access Control, restrict the project to the VPS's public IP, so a leaked URL cannot be used from elsewhere. Neither the URL nor the project ID is committed anywhere.
 
 Create the two vault passphrases as files, owned by the container user (uid 1000), readable by nobody else, and different from each other:
 
@@ -295,6 +306,6 @@ None of this is a mainnet deployment. Before one:
 
 1. **No Kuru WETH/USDC market on this USDC.** The decided pair is WETH/USDC, but Kuru's documented testnet market is MON/USDC with a native-MON base, quoted in a different token, `0x3bA3d39AFcf8bb994f7964B3e0171Ea2Ba361570` ("USD Coin", FACT on chain 2026-10-11), not in the testnet USDC the contracts are deployed against. No trade can run on testnet until a market on this USDC is chosen, or the settlement asset is changed (which means redeploying all three contracts).
 2. **Which ZeroDev project** serves chain 10143 for the bundler and, optionally, the paymaster.
-3. **Testnet x402 providers.** `WALLETS_X402_VALIDATOR_ADDRESS` stays empty until there are pay-to addresses to list; the payer stays off regardless.
+3. **Testnet x402 providers.** `WALLETS_X402_VALIDATOR_ADDRESS` stays empty until there are pay-to addresses to list, although the validator is deployed (`0xCA918F53FFc7507Bd41602c0bD1ef72558705991`); the payer stays off regardless.
 4. **Explorer source verification** for the three contracts (the explorer's verification API and settings were not checked).
 5. **Who holds each Safe owner key** (see "Before mainnet").

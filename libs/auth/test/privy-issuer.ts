@@ -20,15 +20,19 @@ export interface IdLinkedAccount {
 
 export class PrivyIssuer {
   readonly publicKeyPem: string;
+  /** The public key as a JWKS member, carrying `kid` when the issuer has one, as Privy's published set does. */
+  readonly publicJwk: Record<string, unknown>;
   private readonly privateKey: KeyObject;
 
-  constructor() {
+  /** With a `kid`, every token header names it, so a verifier can select this key from a key set. */
+  constructor(readonly kid?: string) {
     const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
     this.publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+    this.publicJwk = { ...publicKey.export({ format: "jwk" }), use: "sig", alg: "ES256", ...(kid ? { kid } : {}) };
     this.privateKey = privateKey;
   }
 
-  jwt(payload: Record<string, unknown>, header: Record<string, unknown> = { alg: "ES256", typ: "JWT" }): string {
+  jwt(payload: Record<string, unknown>, header: Record<string, unknown> = { alg: "ES256", typ: "JWT", ...(this.kid ? { kid: this.kid } : {}) }): string {
     const input = `${b64url(header)}.${b64url(payload)}`;
     const signature = sign("sha256", Buffer.from(input), { key: this.privateKey, dsaEncoding: "ieee-p1363" });
     return `${input}.${signature.toString("base64url")}`;

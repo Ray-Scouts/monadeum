@@ -79,7 +79,7 @@ The database rules are the worker's and the indexer's: `bootApi` reads `DATABASE
 
 ## Configuration
 
-AuthModule's variables (`libs/auth/README.md`) are required: `AUTH_PRIVY_APP_ID`, `AUTH_PRIVY_VERIFICATION_KEY`, `AUTH_CHAIN_ID`, `AUTH_SIWE_DOMAIN`, `AUTH_SIWE_URI`, and optionally the two TTLs. None of the variables below is a secret except `DATABASE_URL`, which carries a password.
+AuthModule's variables (`libs/auth/README.md`) are required: `AUTH_PRIVY_APP_ID`, `AUTH_CHAIN_ID`, `AUTH_SIWE_DOMAIN`, `AUTH_SIWE_URI`, and optionally the two TTLs and `AUTH_PRIVY_VERIFICATION_KEY`, a static key that replaces fetching Privy's published key set. None of the variables below is a secret except `DATABASE_URL`, which carries a password.
 
 | Variable | Required | Meaning |
 |---|---|---|

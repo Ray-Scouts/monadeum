@@ -1,5 +1,7 @@
 import { verifyAccessToken, verifyIdentityToken } from "@privy-io/node";
+import type { JWTVerifyGetKey } from "jose";
 import { getAddress, isAddress, type Address } from "viem";
+import { CachedJwks, privyJwksUrl, type JwksCacheOptions } from "./jwks.js";
 
 /** A verified Privy access token: who the user is, for this session. It says nothing about wallets. */
 export interface PrivySession {
@@ -26,17 +28,32 @@ export interface PrivyVerifier {
 }
 
 /**
- * Verifies Privy-issued tokens locally with `@privy-io/node` 0.35.0: an ES256 signature against the app's
- * verification key, issuer `privy.io`, audience the app ID, and expiry, read from the installed SDK's
- * `lib/auth.js`. Nothing is fetched from Privy at request time and the Privy app secret is not used.
- * The verification key is public; it is copied from the Privy dashboard into configuration.
+ * Verifies Privy-issued tokens with `@privy-io/node` 0.35.0: an ES256 signature, issuer `privy.io`, audience the app
+ * ID, and expiry, read from the installed SDK's `lib/auth.js`. The Privy app secret is not used.
+ *
+ * The key comes from one of two sources. By default, Privy's published key set for the app
+ * (`https://auth.privy.io/api/v1/apps/<appId>/jwks.json`), cached and selected by `kid` (see `CachedJwks`); this is
+ * what keeps a key rotation at Privy from needing a configuration change. If a static PEM verification key is given,
+ * only that key is used and nothing is fetched.
  */
 export class PrivyTokenVerifier implements PrivyVerifier {
-  constructor(private readonly appId: string, private readonly verificationKey: string) {}
+  readonly keySource: "static" | "jwks";
+  /** A PEM string, which the SDK imports as ES256 on each call, or the cached JWKS resolver. */
+  private readonly key: string | JWTVerifyGetKey;
+
+  constructor(private readonly appId: string, verificationKey?: string | null, jwks: JwksCacheOptions = {}) {
+    if (verificationKey) {
+      this.keySource = "static";
+      this.key = verificationKey;
+    } else {
+      this.keySource = "jwks";
+      this.key = new CachedJwks(privyJwksUrl(appId), jwks).getKey;
+    }
+  }
 
   async verifyAccessToken(token: string): Promise<PrivySession> {
     try {
-      const claims = await verifyAccessToken({ access_token: token, app_id: this.appId, verification_key: this.verificationKey });
+      const claims = await verifyAccessToken({ access_token: token, app_id: this.appId, verification_key: this.key });
       return { privyUserId: claims.user_id, sessionId: claims.session_id, expiresAt: claims.expiration };
     } catch (error) {
       throw new PrivyTokenError(`access token rejected: ${error instanceof Error ? error.message : String(error)}`);
@@ -46,7 +63,7 @@ export class PrivyTokenVerifier implements PrivyVerifier {
   async verifyIdentityToken(token: string): Promise<PrivyIdentity> {
     let user;
     try {
-      user = await verifyIdentityToken({ identity_token: token, app_id: this.appId, verification_key: this.verificationKey });
+      user = await verifyIdentityToken({ identity_token: token, app_id: this.appId, verification_key: this.key });
     } catch (error) {
       throw new PrivyTokenError(`identity token rejected: ${error instanceof Error ? error.message : String(error)}`);
     }
