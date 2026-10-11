@@ -68,12 +68,44 @@ export class PrivyTokenVerifier implements PrivyVerifier {
       throw new PrivyTokenError(`identity token rejected: ${error instanceof Error ? error.message : String(error)}`);
     }
     if (typeof user.id !== "string" || !user.id) throw new PrivyTokenError("identity token has no subject");
+    // The SDK keeps `wallet_client_type` only for `privy` wallets and maps every other client to "unknown", which
+    // drops the newer embedded wallets Privy issues as `privy-v2`. The signature is already verified above, so the
+    // raw claim is read here instead.
     const embeddedWallets: Address[] = [];
-    for (const account of user.linked_accounts) {
-      if (account.type !== "wallet" || !("wallet_client_type" in account) || account.wallet_client_type !== "privy") continue;
-      if (account.chain_type !== "ethereum" || !isAddress(account.address, { strict: false })) continue;
+    const unrecognized = new Set<string>();
+    for (const account of rawLinkedAccounts(token)) {
+      if (account.type !== "wallet" || account.chain_type !== "ethereum") continue;
+      const client = typeof account.wallet_client_type === "string" ? account.wallet_client_type : "";
+      if (!EMBEDDED_WALLET_CLIENTS.has(client)) {
+        if (client.startsWith("privy")) unrecognized.add(client);
+        continue;
+      }
+      if (typeof account.address !== "string" || !isAddress(account.address, { strict: false })) continue;
       embeddedWallets.push(getAddress(account.address));
     }
+    if (unrecognized.size > 0) console.warn(`privy identity token: unrecognized embedded wallet client types: ${[...unrecognized].join(", ")}`);
     return { privyUserId: user.id, isGuest: user.is_guest, embeddedWallets };
+  }
+}
+
+/** Privy embedded wallet client types: `privy` (original) and `privy-v2` (the current embedded wallets). */
+const EMBEDDED_WALLET_CLIENTS = new Set(["privy", "privy-v2"]);
+
+interface RawLinkedAccount {
+  type?: unknown;
+  chain_type?: unknown;
+  wallet_client_type?: unknown;
+  address?: unknown;
+}
+
+/** The `linked_accounts` claim of an identity token whose signature has already been verified, as Privy issued it. */
+function rawLinkedAccounts(token: string): RawLinkedAccount[] {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")) as Record<string, unknown>;
+    const claim = payload.linked_accounts;
+    const parsed: unknown = typeof claim === "string" ? JSON.parse(claim) : [];
+    return Array.isArray(parsed) ? (parsed as RawLinkedAccount[]) : [];
+  } catch {
+    throw new PrivyTokenError("identity token has a malformed linked_accounts claim");
   }
 }

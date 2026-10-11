@@ -91,6 +91,19 @@ test("the identity token yields only Privy embedded Ethereum wallets", async () 
   await assert.rejects(verifier.verifyIdentityToken(new PrivyIssuer().identityToken("did:privy:a", [])), PrivyTokenError);
 });
 
+test("a privy-v2 embedded wallet counts as embedded; an external wallet never does", async () => {
+  const { issuer, verifier } = setup();
+  const mine = wallet().address;
+  const identity = await verifier.verifyIdentityToken(
+    issuer.identityToken("did:privy:a", [
+      { type: "wallet", address: mine, chain_type: "ethereum", wallet_client_type: "privy-v2", id: "w2", lv: 1 },
+      { type: "wallet", address: wallet().address, chain_type: "ethereum", wallet_client_type: "coinbase_wallet", lv: 1 },
+      { type: "wallet", address: "not-an-address", chain_type: "ethereum", wallet_client_type: "privy-v2", lv: 1 },
+    ]),
+  );
+  assert.deepEqual(identity.embeddedWallets, [mine]);
+});
+
 // Primary path.
 
 test("social sign-in creates one user whose owner wallet is the embedded wallet, and hands it off once", async () => {
