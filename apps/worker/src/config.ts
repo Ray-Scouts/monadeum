@@ -39,8 +39,9 @@ function integer(env: Env, name: string, fallback: number | null, min: number): 
 
 /**
  * Reads the consumer's configuration, or returns null when REDIS_URL is unset (no consumer). Every variable is
- * documented in ARCHITECTURE.md section 11. WORKER_TICK_INTERVAL_MS has no default: no tick length has been decided,
- * and the tick number every key is built from depends on it.
+ * documented in ARCHITECTURE.md section 11. WORKER_TICK_INTERVAL_MS has no default even though
+ * the tick length is decided, one hour (3600000): the tick number every key is built from depends on it, so a
+ * deployment states it explicitly rather than inheriting it.
  */
 export function loadConsumerConfig(env: Env): WorkerConsumerConfig | null {
   const redisUrl = env.REDIS_URL?.trim();

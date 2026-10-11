@@ -35,9 +35,9 @@ The spend policy contract is `contracts/src/AgentSpendPolicy.sol` (issue #25). T
 | `WALLETS_SPONSORED_GAS_WEI` | yes | Sponsored gas per agent in wei, deployment included, revocations excluded. |
 | `WALLETS_X402_VALIDATOR_ADDRESS` | no | Deployed `X402PaymentValidator`. Unset: no x402 key is created and agents cannot pay x402. Set: deployment fails closed if it has no code. |
 | `WALLETS_X402_PAYEES` | with the validator | Comma-separated x402 provider pay-to addresses, 1 to 8. |
-| `WALLETS_X402_MAX_VALUE` | no | Settlement-asset base units per payment. Defaults to the proposal 50000 (0.05 USDC), pending the owner. |
-| `WALLETS_X402_PAYMENTS_PER_EPOCH` | no | Payments per hour. Defaults to the proposal 4, pending the owner. 24-hour worst case: 26 x this x `WALLETS_X402_MAX_VALUE`. |
-| `WALLETS_X402_MAX_VALIDITY` | no | Seconds an authorization stays valid, at most 3600. Defaults to the proposal 300. |
+| `WALLETS_X402_MAX_VALUE` | no | Settlement-asset base units per payment. Defaults to the decided value 50000 (0.05 USDC). |
+| `WALLETS_X402_PAYMENTS_PER_EPOCH` | no | Payments per hour. Defaults to the decided value 4. 24-hour worst case: 26 x this x `WALLETS_X402_MAX_VALUE`. |
+| `WALLETS_X402_MAX_VALIDITY` | no | Seconds an authorization stays valid, at most 3600. Defaults to the decided value 300. |
 
 The consuming app also supplies an `AgentWalletStore` and a `SponsorshipLedger` backed by Postgres (`PgAgentWalletStore` and `PgSponsorshipLedger` in `@monadeum/db`), and a `SessionKeyVault` backed by a secrets manager, which is not built yet; session keys never go to Postgres. With x402 configured, the settings carry a second `SessionKeyVault` for the x402 keys, which must be a different instance (`ARCHITECTURE.md` section 16.3, x402 signature path). `test/x402-lifecycle.test.ts` covers the x402 key's install, revocation, and reinstall. The in-memory implementations here are for tests and local development only.
 

@@ -43,7 +43,7 @@ export {
   x402Nonce,
   x402ValidatorInstallData,
   KERNEL_MODULE_TYPE_VALIDATOR,
-  X402_PROPOSED_LIMITS,
+  X402_LIMITS,
   decodeX402InstallData,
   decodeX402ModuleCall,
   validatorValidationId,

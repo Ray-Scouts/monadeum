@@ -5,7 +5,7 @@ import {
   MemorySessionKeyVault,
   MemorySponsorshipLedger,
   WalletsService,
-  X402_PROPOSED_LIMITS,
+  X402_LIMITS,
   buildScope,
   kernelWrappedHash,
   x402AuthorizationDigest,
@@ -43,7 +43,7 @@ async function world(options: { now?: bigint; paymentsPerEpoch?: number } = {}) 
   const chain = new FakeChain();
   chain.deployContract(VALIDATOR);
   const x402Vault = new MemorySessionKeyVault();
-  const limits = { ...X402_PROPOSED_LIMITS, paymentsPerEpoch: options.paymentsPerEpoch ?? X402_PROPOSED_LIMITS.paymentsPerEpoch };
+  const limits = { ...X402_LIMITS, paymentsPerEpoch: options.paymentsPerEpoch ?? X402_LIMITS.paymentsPerEpoch };
   const scope = buildScope({
     settlementAsset: USDC, kuruRouter: getAddress("0x00000000000000000000000000000000000000b1"), kuruRouterSelectors: ["0x12345678"],
     reallocation: getAddress("0x00000000000000000000000000000000000000c1"), reallocationSelectors: ["0x9abcdef0"],
