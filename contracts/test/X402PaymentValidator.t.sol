@@ -363,6 +363,10 @@ contract X402PaymentValidatorTest is X402TestBase {
         assertEq(validator.KERNEL_WRAPPER_TYPE_HASH(), keccak256("Kernel(bytes32 hash)"));
         assertEq(validator.kernelWrappedHash(address(account), keccak256("x")), account.wrappedHash(keccak256("x")));
         assertEq(_wrap(keccak256("x")), account.wrappedHash(keccak256("x")));
+        assertEq(
+            validator.authorizationDigest(address(account), nansen, 9, 1, 2, bytes32("n")),
+            _twaDigest(address(account), nansen, 9, 1, 2, bytes32("n"))
+        );
     }
 
     /// Cross-language vector for libs/x402 (authorization.ts): the nonce of a fixed account, hour, and slot.

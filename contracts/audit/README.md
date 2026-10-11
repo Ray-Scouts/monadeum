@@ -1,6 +1,6 @@
 # Audit package
 
-This directory is the material an external auditor needs to review the on-chain contracts of this repository, prepared under issue #46. It is organized per contract so that each contract in scope has its own section. Today it covers one contract, `AgentSpendPolicy`, the on-chain spend policy for agent smart accounts (issue #25). The owner-scoped reallocation contract (issue #31) is being written separately and is not in this package yet; section 10 states what adding it involves.
+This directory is the material an external auditor needs to review the on-chain contracts of this repository, prepared under issue #46. It is organized per contract so that each contract in scope has its own section. Today it covers `AgentSpendPolicy`, the on-chain spend policy for agent smart accounts (issue #25), in sections 1 to 11, and `X402PaymentValidator`, which bounds the account's x402 payment signatures, in section 12. The owner-scoped reallocation contract (issue #31) is being written separately and is not in this package yet; section 10 states what adding it involves.
 
 `SECURITY.md` section 3 sets the gate this package serves: `AgentSpendPolicy` carries no real user-controlled capital, on testnet or mainnet, before an external audit is complete and every finding is resolved or explicitly accepted as residual risk in `SECURITY.md`.
 
@@ -17,6 +17,7 @@ Contents:
 9. Out of scope
 10. Adding the reallocation contract
 11. Request for proposal (draft)
+12. X402PaymentValidator
 
 ## 1. Scope
 
@@ -51,7 +52,7 @@ Trust model:
 | Account owner (root validator) | Setting limits and the allowlist through `setLimits` and `setAllowed`, which read the account from `msg.sender`; choosing install flags | Nothing is enforced against the owner; the owner can always change or remove the policy |
 | Session key | Nothing | Assumed fully compromised: the policy must bound everything it can do through user operations |
 | Kernel v3.1 implementation | Calling the entry points in the sequence its source shows (section 3) | n/a, its behavior is an assumption the fork test checks |
-| Settlement asset | Standard ERC-20 `transfer` and `approve` semantics | Its ERC-1271 signature paths are not bounded (section 8) |
+| Settlement asset | Standard ERC-20 `transfer` and `approve` semantics | Its ERC-1271 signature paths are not bounded by this contract; `X402PaymentValidator` bounds the one the system uses (section 12) |
 | Allowlisted non-asset targets (Kuru router, reallocation contract) | Pulling funds only through allowances the account set with a counted `approve` | Not decoded: their arguments are not inspected |
 | Anyone else | Nothing | May call every external function; each writes only state keyed by `msg.sender` |
 
@@ -99,7 +100,7 @@ The contract's decoder (`_decodeExecute`) is a reimplementation of K4, not a cal
 | --- | --- | --- |
 | A1 | `transfer(to, amount)` and `approve(spender, amount)` have standard semantics: the counted `amount` is exactly what moves or is approved. No fee-on-transfer, rebasing, or hooks on the recipient. | Assumption about USDC. Tests use a mock token |
 | A2 | No selector other than `transfer` and `approve` on the asset can move it uncounted, because `setAllowed` refuses every other selector and `check` refuses them again. | `testFuzz_setAllowed_settlementAssetAdmitsOnlyTransferAndApprove`, `test_check_rejectsUncountedSettlementSelectorEvenIfStored` |
-| A3 | The asset's signature-authorized paths (EIP-3009 `transferWithAuthorization`, EIP-2612 `permit`) are reachable from a smart account only through ERC-1271, which this policy blocks by default. On Monad mainnet's USDC, those paths appear to accept ERC-1271 signatures (section 8, item 5). | Fork for the default; mainnet calls for the asset behavior |
+| A3 | The asset's signature-authorized paths (EIP-3009 `transferWithAuthorization`, EIP-2612 `permit`) are reachable from a smart account only through ERC-1271, which this policy blocks by default. On Monad mainnet's USDC, those paths accept ERC-1271 signatures (section 8, item 5). | Fork for the default; Monad mainnet fork for the asset behavior (`test/fork/X402MainnetFork.t.sol`) |
 | A4 | USDC is an upgradeable proxy controlled by its issuer, and can blocklist addresses. An upgrade could change A1. A blocklisted account's counted transfer reverts in execution, which reverts the hook's record with it under exec type default. | Assumption; not testable here |
 
 ### 3.4 Chain
@@ -241,8 +242,8 @@ This step needs testnet funds and a bundler endpoint, so it is a manual run, not
 2. **Try mode over-counts.** Exec type `0x01` (try) is accepted, and `record` counts every counted call in the operation, including one that later fails. This over-counts and never under-counts: the cost is headroom, not safety.
 3. **`perTxCap` of 0 rejects every counted call, including an amount of 0.** This is the fail-closed default for an account never configured. It also means an owner who freezes an agent by setting `perTxCap` to 0 blocks the session key from revoking an approval with `approve(spender, 0)`; the owner can still revoke through the root validator.
 4. **`perTxCap > 0` with `dailyCap` of 0, or a window already at the cap, passes validation and reverts in execution.** Each such operation is included and pays gas. A compromised session key can therefore spend the account's gas balance (or a paymaster's sponsorship) on operations that revert, and it can do the same with any allowlisted call that reverts. Gas spend is not bounded by this contract; a paymaster or gas policy and off-chain monitoring are the controls.
-5. **The signature policy fails by default, and opting out is wider than x402.** `checkSignaturePolicy` always fails, so a session key cannot produce an ERC-1271 signature unless the owner installs the policy with Kernel's skip-signature flag. On 2026-10-10, calls to Monad mainnet's USDC (`0x754704Bc059F8C67012fEd69BC8A327a5aafb603`) with a contract as `from` returned the ERC-1271 path's invalid-signature errors (`FiatTokenV2: invalid signature`, `EIP2612: invalid signature`) for the `bytes`-signature `transferWithAuthorization` and `permit`, where an externally owned `from` gets the ECDSA length error. That indicates the token accepts ERC-1271 signatures for both, though no signature was actually accepted in that check. If so, a session key with the skip-signature flag could authorize a transfer or an approval of the account's whole balance to any address, outside both caps and the recipient rule. The flag must not be set until the policy bounds the signature path.
-6. **x402 coverage is an open question.** If x402 settles through EIP-3009 authorizations, as `ARCHITECTURE.md` 16.3 assumes but has not verified, x402 payments never pass through `check`, and only the application-layer caps bound them. Item 5 is the consequence of opting out today.
+5. **The signature policy always fails, and the skip-signature flag is never set.** `checkSignaturePolicy` always fails, so a session key cannot produce an ERC-1271 signature; the owner could override that only with Kernel's skip-signature flag, which the design forbids for every agent (`ARCHITECTURE.md` 16.3). On 2026-10-10, calls to Monad mainnet's USDC (`0x754704Bc059F8C67012fEd69BC8A327a5aafb603`) with a contract as `from` returned the ERC-1271 path's invalid-signature errors (`FiatTokenV2: invalid signature`, `EIP2612: invalid signature`) for the `bytes`-signature `transferWithAuthorization` and `permit`, where an externally owned `from` gets the ECDSA length error. That indicates the token accepts ERC-1271 signatures for both, though no signature was actually accepted in that check. A Monad mainnet fork then confirmed it (`test_fork_skipSignatureFlagWouldLetASessionKeyPermitTheWholeBalance`, block 112242207): with the flag, a session key's signature made USDC grant a `permit` of the whole balance to an arbitrary spender, outside both caps and the recipient rule. The flag must never be set; x402 uses the separate validator of section 12 instead.
+6. **x402 is outside this contract.** x402 settles through EIP-3009 authorizations (the x402 specification's default for USDC, `ARCHITECTURE.md` 16.3), which never pass through `check` or `record`. `X402PaymentValidator` (section 12) bounds them with its own payee list and rate bound, which adds to `dailyCap`.
 7. **Uncounted calls are not decoded.** Calls to the Kuru router and the reallocation contract count 0. If either can be made to forward funds to an arbitrary address, or to pull more than the account approved, the recipient rule and the caps do not see it. This is a property of those contracts (issue #20 for the router).
 8. **The allowlist is the owner's responsibility beyond the two self-protection rules.** Only the policy and the account are refused as targets regardless of configuration. Allowlisting the EntryPoint (`withdrawTo` moves the account's deposit), a Kernel module, a validator, or any contract that forwards calls would hand the session key a path this policy does not inspect. Any allowlisted target also becomes a valid recipient under the derived recipient rule.
 9. **The hook must be installed with the policy.** If the policy is installed on a permission without this contract as that permission's hook, validation still applies the per-transaction rules, but `record` never runs and the daily cap does not apply. Kernel does not tie the two together; the installer must.
@@ -279,7 +280,7 @@ This is a draft for issue #46. It has not been sent to any auditor.
 
 **Project**: monadeum, an agent economy on Monad in which each agent trades through a ZeroDev Kernel v3.1 smart account under a session key.
 
-**Scope**: `AgentSpendPolicy` and its interfaces, 239 nSLOC in three files (section 1), at a pinned commit. Planned addition before engagement if ready: the owner-scoped reallocation contract (issue #31), size to be stated when merged.
+**Scope**: `AgentSpendPolicy` and its interfaces, 239 nSLOC in three files (section 1), and `X402PaymentValidator` (section 12), at a pinned commit. Planned addition before engagement if ready: the owner-scoped reallocation contract (issue #31), size to be stated when merged.
 
 **What we ask the auditor to focus on**:
 
@@ -289,6 +290,7 @@ This is a draft for issue #46. It has not been sent to any auditor.
 4. ERC-7562 compliance of the validation path for an unstaked policy (section 3.2).
 5. The rolling window arithmetic and its edge cases.
 6. The known limitations in section 8: whether any is worse than stated, and whether any accepted risk should be fixed instead.
+7. `X402PaymentValidator`: whether any signature a fully compromised x402 key can produce moves the settlement asset other than to a listed payee, above `maxValue`, or beyond the 24-hour rate bound, and whether the self-protection rule in section 12.1 holds against direct calls from the account (section 12).
 
 **Materials provided**: this README, the interface NatSpec, `ARCHITECTURE.md` section 16.3, `THREAT-MODEL.md` section 7, the test suites, the coverage report, and the static-analysis triage.
 
@@ -300,3 +302,78 @@ This is a draft for issue #46. It has not been sent to any auditor.
 - Gate: no real user-controlled capital on testnet or mainnet before the report is final and every finding is resolved or accepted in `SECURITY.md` (section 3 of that document).
 
 **Deliverables requested**: a written report with severity-rated findings, a fix-review addendum, and permission to publish the final report in this repository.
+
+## 12. X402PaymentValidator
+
+`contracts/src/X402PaymentValidator.sol` is in scope for the same engagement, with the same gate: it carries no real user-controlled capital before the audit. It is a separate contract from `AgentSpendPolicy` and does not change any file in section 1. `ARCHITECTURE.md` section 16.3 ("x402 signature path") is its design record, including the options rejected and why.
+
+### 12.1 Scope and model
+
+| File | Lines | Role |
+| --- | --- | --- |
+| `contracts/src/X402PaymentValidator.sol` | 196 | Kernel v3.1 validator (module type 1) that approves ERC-1271 signatures only for bounded EIP-3009 `transferWithAuthorization` payments, plus its local `IValidator`, Kernel-view, and domain-separator interfaces |
+
+Lines are non-blank, non-comment lines from a plain line filter, not Aderyn's nSLOC; rerun Aderyn for the engagement figure. Same compiler, settings, and toolchain as section 1. No owner, admin, upgradeability, or pause; the settlement asset is an immutable constructor argument; configuration is keyed by account.
+
+Each agent account has two keys besides the owner: the trading session key (a permission with `AgentSpendPolicy` as policy and hook) and an x402 key, which only this validator trusts. The owner installs the validator through the root validator with `abi.encode(signer, maxValue, paymentsPerEpoch, maxValidity, payees)`.
+
+What it enforces, in `isValidSignatureWithSender(sender, hash, data)` called by the account:
+
+- the account's configuration is live;
+- `data` is exactly `abi.encode(to, value, validAfter, validBefore, slot) || r || s || v` (225 bytes);
+- `to` is a listed payee; `0 < value <= maxValue`; `0 < validBefore - validAfter <= maxValidity <= 3600`; `slot < paymentsPerEpoch`;
+- `hash` equals Kernel's wrapping, under the account's EIP-712 domain, of the settlement asset's digest of `TransferWithAuthorization(account, to, value, validAfter, validBefore, keccak256(abi.encode(NONCE_TAG, account, validAfter / 3600, slot)))`;
+- `(r, s, v)` recovers to the configured signer, with low `s` and `v` in {27, 28}.
+
+`validateUserOp` always returns 1 (failed). `sender` is not checked, by design (16.3). Trust model differences from section 2: the x402 key is assumed fully compromised and the validator must bound everything it can sign; the listed payees are third parties the owner chose, trusted for nothing.
+
+### 12.2 Integration assumptions
+
+| # | Assumption | Verified by |
+| --- | --- | --- |
+| X1 | Kernel v3.1 `isValidSignature` in validator mode (`0x01 | validator | rest`) calls `validator.isValidSignatureWithSender(msg.sender, _toWrappedHash(hash), rest)` from the account, after checking only that the validation's hook is nonzero | Source; mainnet fork |
+| X2 | `_toWrappedHash(h)` is the EIP-712 hash of `Kernel(bytes32 hash)` (`KERNEL_WRAPPER_TYPE_HASH`) under the domain the account's `eip712Domain()` returns | Source; mainnet fork (the validator computes it from `eip712Domain()` and the payment settles) |
+| X3 | Kernel records a validation (hook nonzero) before calling `onInstall`, and clears the hook before calling `onUninstall`; `validationConfig(bytes21)` reads that state | Source (`_installValidation`, `_uninstallValidation`); mainnet fork (install and uninstall through root operations) |
+| X4 | On the permission path, a policy cannot receive per-policy data on ERC-1271 (`SignerPrefixNotPresent`), which is why this is a validator | Source; mainnet fork (`test_fork_permissionPathCannotCarryPolicyData`) |
+| X5 | Kernel's ERC-1271 path does not read `validNonceFrom`; uninstalling is the revocation | Source |
+| X6 | The settlement asset accepts each EIP-3009 nonce once per authorizer, requires `validAfter < now < validBefore`, and checks a contract authorizer through ERC-1271 at settlement | FiatToken v2.2 behavior; mainnet fork against Monad's USDC (settlement, nonce reuse refused, uninstall invalidates a signed authorization) |
+| X7 | The settlement asset's `DOMAIN_SEPARATOR()` is its EIP-712 domain for `TransferWithAuthorization`, and its type hash equals `TRANSFER_WITH_AUTHORIZATION_TYPEHASH` | Read from Monad mainnet USDC on 2026-10-10; mainnet fork |
+| X8 | The facilitator used on Monad accepts ERC-1271 signatures for EIP-3009 | **Not verified.** The x402 reference facilitator does (16.3, fact 2) |
+
+### 12.3 Invariants and tests
+
+| ID | Invariant | Tests |
+| --- | --- | --- |
+| V1 | Every movement out of the account through this path goes to a listed payee for at most `maxValue` | `invariant_onlyListedPayeesWithinMaxValue`; `test_transferToAnUnlistedAddressIsRejected`; `test_unboundedTransferWithAuthorizationIsRejected`; `test_fork_unboundedTransferWithAuthorizationRefused` |
+| V2 | No 24-hour period sees more than `26 * paymentsPerEpoch * maxValue` leave the account | `invariant_rolling24hOutflowWithinBound`; `test_payment_everySlotOfAnHourOnceThenNoMore`; `test_payment_aSlotIsFreshAgainInTheNextHour` |
+| V3 | No `permit`, `receiveWithAuthorization`, other token, other authorizer, or digest that differs from the supplied fields is approved | `invariant_noAllowanceEverGranted`; `testFuzz_permitNeverApproved`; `testFuzz_rejectsEveryOtherHash`; `test_permitForTheWholeBalanceIsRejected`; `test_receiveWithAuthorizationDigestIsRejected`; `test_anotherTokenDomainIsRejected`; `test_anotherAuthorizerIsRejected`; `test_randomNonceAsTheReferenceClientUsesIsRejected`; `test_unwrappedDigestIsRejected`; `test_fork_permitRefusedByTheX402Validator` |
+| V4 | An honestly described, correctly signed authorization is approved exactly when every bound holds | `testFuzz_acceptsIffWithinBounds`; one test per bound |
+| V5 | Only the configured key's low-s signature is approved | `test_validator_anotherKeyIsInvalid`; `test_validator_highSOrBadVIsInvalid` |
+| V6 | No user operation is ever validated | `test_validateUserOp_alwaysFails` |
+| V7 | Direct calls from the account cannot replace a live configuration or retire one Kernel lists | `invariant_configurationUnchanged`; `test_directCallsFromTheAccountCannotWidenALiveConfig`; `test_directInstallWhileKernelDoesNotListTheValidatorIsRefused` |
+| V8 | Uninstalling stops every signature, including ones made earlier, and drops the payee list | `test_uninstallKillsOutstandingAuthorizationsAndDropsPayees`; `test_fork_uninstallKillsOutstandingAuthorization` |
+| V9 | Configuration is validated and per account | `test_installValidatesConfiguration`; `test_configurationIsPerAccount`; `test_installFromANonKernelCallerReverts` |
+
+The invariant handler acts as a fully compromised x402 key and, separately, as a session key that reaches the validator from the account: in-bounds and out-of-bounds payments, random nonces, lying fields, permits, and direct `onInstall`/`onUninstall` calls with a widened configuration, with time jumps across hours. Suites: `test/X402PaymentValidator.t.sol` (unit and fuzz), `test/X402PaymentValidator.invariant.t.sol`, and `test/fork/X402MainnetFork.t.sol` (opt-in, `--fork-url` at Monad mainnet; 6 tests passed on 2026-10-10 at block 112242207, including `test_fork_skipSignatureFlagWouldLetASessionKeyPermitTheWholeBalance`, which shows the risk behind section 8, item 5). Coverage of `src/X402PaymentValidator.sol` from `forge coverage` with forge 1.8.5: 100% of statements and branches; `coverage.sh` does not include it yet.
+
+### 12.4 Static analysis
+
+`forge lint` (Foundry 1.8.5) on this file, 2026-10-10; Slither and Aderyn not yet rerun on it.
+
+| # | Finding | Location | Triage |
+| --- | --- | --- | --- |
+| XL1 | `locked-ether` | contract | Same as S2: `onInstall`, `onUninstall`, and `validateUserOp` are `payable` because Kernel's interfaces declare them so; Kernel sends no value |
+| XL2 | `missing-events-access-control` | `onUninstall`, `delete _config[...]` | **False positive.** `Uninstalled` is emitted on the next line |
+| XL3 | `require-revert-in-loop` | `onInstall` payee loop | **False positive.** One bad payee must reject the whole install |
+| XL4 | `unused-return` | `kernelWrappedHash`, `eip712Domain()` | **False positive.** Only `name`, `version`, `chainId`, and `verifyingContract` enter the domain hash; Kernel's `fields` is `0x0f` (those four) |
+| XL5 | `unsafe-typecast` | `_listedByKernel`, `bytes21(abi.encodePacked(...))` | **False positive.** The packed value is exactly 21 bytes |
+
+### 12.5 Known limitations
+
+1. **Rate bound, not amount window.** The bound is per hour of `validAfter`, so up to 26 hours of slots can land in one 24-hour period, and it adds to `dailyCap` rather than sharing it. The deployment chooses `paymentsPerEpoch` and `maxValue` with that product in mind.
+2. **Listed payees are trusted to be the providers.** A payee that colludes with an attacker receives up to the bound. The payee list is the owner's, fixed at install.
+3. **Anyone can submit a signed authorization**, an EIP-3009 property: it can only pay its signed payee its signed amount once, inside its window.
+4. **Exhausted slots fail closed**: once an hour's slots are used, the agent cannot pay until the next hour.
+5. **Relies on Kernel v3.1 storage semantics** for the self-protection rule (X3). A different account implementation, or a Kernel version that changes install ordering, needs this rule rechecked; a caller that is not a Kernel account reverts on `validationConfig`.
+6. **Facilitator acceptance is unverified** (X8). If the facilitator refuses ERC-1271 signatures, agents cannot pay x402; nothing fails open.
+7. **Not wired**: WalletsModule does not yet install or uninstall the validator, and the x402 key has no vault implementation (`SECURITY.md` section 11).
