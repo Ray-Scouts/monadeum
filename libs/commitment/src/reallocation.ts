@@ -52,7 +52,8 @@ export interface ReallocationPolicyV1 {
 export interface ReallocationDomain {
   name: string;
   version: string;
-  chainId: bigint;
+  /** A number, not a bigint, so the domain survives JSON on its way to the owner's wallet unchanged. */
+  chainId: number;
   verifyingContract: Address;
 }
 
@@ -60,9 +61,15 @@ export function reallocationDomain(chainId: number | bigint, verifyingContract: 
   return {
     name: REALLOCATION_DOMAIN_NAME,
     version: REALLOCATION_DOMAIN_VERSION,
-    chainId: BigInt(chainId),
+    chainId: safeChainId(chainId),
     verifyingContract: address(verifyingContract, "$.verifyingContract"),
   };
+}
+
+function safeChainId(chainId: number | bigint): number {
+  const n = Number(chainId);
+  if (!Number.isSafeInteger(n) || n <= 0) throw new CanonicalizationError("$.chainId", "expected a positive safe integer");
+  return n;
 }
 
 function address(value: unknown, path: string): Address {
@@ -144,7 +151,7 @@ export function revokeReallocationPolicyTypedData(owner: Address, nonce: bigint,
 /** Equal to `AgentReallocation.domainSeparator` for the same chain and contract. */
 export function reallocationDomainSeparator(domain: ReallocationDomain): Hex {
   return hashDomain({
-    domain,
+    domain: { ...domain, chainId: BigInt(domain.chainId) },
     types: {
       EIP712Domain: [
         { name: "name", type: "string" },

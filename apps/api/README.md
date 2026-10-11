@@ -64,7 +64,7 @@ Both rows are written or neither. Without a session key vault the request answer
 
 ### Reallocation policy
 
-`POST /policies/reallocation` builds the `ReallocationPolicyV1` document from the caller's owner wallet and agents, refuses any bound that loosens the protocol constants of `@monadeum/reallocation/constants`, takes the next sequence, and relays EIP-712 typed data over the section 16.4 policy hash. The verified signature is recorded append-only and handed to the policy writer. Two things are provisional: the typed data (`policyTypedData`), which the reallocation contract (issue #31) may replace with its own scheme, and the agent identifiers, which are identity registry token IDs that do not exist until the registry is deployed (section 9), so today every agent answers `409 agent-not-registered`. There is no policy writer until the contract exists, so a signed policy is recorded with `committed: null`.
+`POST /policies/reallocation` builds the owner's reallocation policy (`ReallocationPolicyV1` of `@monadeum/commitment`) from the caller's owner wallet and agents, naming each agent by its smart account address; an agent without one answers `409 agent-has-no-account`. It refuses any bound that loosens the protocol constants of `@monadeum/reallocation/constants`, converts fractions to the contract's basis points rounding down, takes the next sequence as the nonce, and relays the reallocation contract's own EIP-712 typed data (`policyTypedData`), in the domain of `API_REALLOCATION_CONTRACT` on `AUTH_CHAIN_ID` (`ARCHITECTURE.md` section 16.5). Without `API_REALLOCATION_CONTRACT` it answers `503 reallocation-contract-not-configured`. The verified signature is recorded append-only, with the agent IDs, and handed to the policy writer. There is no policy writer yet, so a signed policy is recorded with `committed: null`. The ledger's sequence equals the contract's `policyNonce(owner)` only while every commit and revocation goes through this ledger; the writer, when built, reads the on-chain nonce first, and the contract refuses a mismatch with `BadNonce`.
 
 ### Read endpoints and the web
 
@@ -97,6 +97,7 @@ AuthModule's variables (`libs/auth/README.md`) are required: `AUTH_PRIVY_APP_ID`
 | `API_SIGNATURE_TIMEOUT_SECONDS` | no | How long a signature request stays open. Proposed default 300. |
 | `API_OPERATION_WAIT_SECONDS` | no | How long one request waits for an operation's next state. Proposed default 20. |
 | `API_SETTLEMENT_DECIMALS` | no | Settlement-asset decimals, for the capital floor in base units. Default 6 (USDC). |
+| `API_REALLOCATION_CONTRACT` | no | The deployed reallocation contract (`contracts/src/AgentReallocation.sol`), the `verifyingContract` of the policy's EIP-712 domain. Unset: reallocation policies are refused with `503`. |
 
 The allowed origin is the origin of `AUTH_SIWE_URI`.
 
@@ -109,4 +110,4 @@ The allowed origin is the origin of `AUTH_SIWE_URI`.
 - No run against a live Privy app, a bundler, or Monad testnet. The relay has been exercised only against the test chain; whether an embedded wallet's `personal_sign` over a user operation hash produces the signature Kernel's ECDSA validator accepts is an assumption from `libs/wallets`, not observed here.
 - Blind hash signing: the owner signs a user operation hash it cannot check against the calls. Showing a verifiable preview needs the client to recompute the hash from the prepared operation, which WalletsModule does not expose.
 - Rate limiting and the relay are in process. More than one API instance needs a shared throttler storage and sticky routing for operations, or a relay that persists the prepared operation; neither is built.
-- The policy typed data and the identity registry IDs are provisional, as above.
+- No policy writer submits a signed policy to the reallocation contract yet, and the sequence-as-nonce rule above holds only while this ledger sees every change.

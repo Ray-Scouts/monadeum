@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { MemoryAgentStore } from "@monadeum/agent-registry";
 import { PgAgentStore } from "@monadeum/db";
+import { hashReallocationPolicy } from "@monadeum/commitment";
 import { RECOVERY_DELAY_MS } from "@monadeum/recovery";
-import { accessToken, boot, call, createAgent, index, issueKey, newWallet, ORIGIN, privySignIn, signRequest, signThrough, walletSignIn, type Backend, type Booted } from "./harness.js";
+import { accessToken, boot, call, createAgent, index, issueKey, newWallet, ORIGIN, privySignIn, settings, signRequest, signThrough, walletSignIn, type Backend, type Booted } from "./harness.js";
 
 // End-to-end: the Nest application on Fastify, driven through HTTP injection, over WalletsModule's test chain. Every
 // suite runs twice, on the in-memory stores and on Postgres (PGlite, in process) with the API's statements running
@@ -373,47 +374,89 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
     });
     after(() => b.close());
 
-    const register = async (agentId: string, registryId: string | null, by = userOwner) => {
-      assert.ok(await b.deps.agents.create({ agentId, owner: by, index: await b.deps.agents.nextIndex(by), name: agentId, preset: null, limits: { perTxCap: 1n, dailyCap: 1n }, registryId, createdAt: Date.now() }));
+    const register = async (agentId: string, by = userOwner) => {
+      assert.ok(await b.deps.agents.create({ agentId, owner: by, index: await b.deps.agents.nextIndex(by), name: agentId, preset: null, limits: { perTxCap: 1n, dailyCap: 1n }, registryId: null, createdAt: Date.now() }));
     };
+    // The agent's smart account address, as WalletsModule records it.
+    const giveAccount = async (agentId: string, account: `0x${string}`, by = userOwner) => {
+      assert.ok(await b.stores.walletStore.claim({ agentId, owner: by, index: 0n, account, deployment: { status: "deployed", userOpHash: null }, session: null }));
+    };
+    const ACCOUNT_1 = "0x0000000000000000000000000000000000000a01" as const;
+    const ACCOUNT_2 = "0x0000000000000000000000000000000000000A02" as const;
 
-    it("refuses agents without an identity registry ID, other users' agents, and bounds that loosen the protocol", async () => {
-      await register("unregistered-1", null);
-      await register("unregistered-2", null);
-      const res = await call(b.app, "POST", "/policies/reallocation", { auth, body: { agentIds: ["unregistered-1", "unregistered-2"] } });
+    it("refuses agents without an account, other users' agents, and bounds that loosen the protocol", async () => {
+      await register("no-account-1");
+      await register("no-account-2");
+      const res = await call(b.app, "POST", "/policies/reallocation", { auth, body: { agentIds: ["no-account-1", "no-account-2"] } });
       assert.equal(res.status, 409);
-      assert.equal(res.body.error, "agent-not-registered");
-      await register("registered-1", "11");
-      await register("foreign", "99", newWallet().address);
+      assert.equal(res.body.error, "agent-has-no-account");
+      await register("registered-1");
+      await giveAccount("registered-1", ACCOUNT_1);
+      await register("foreign", newWallet().address);
       assert.equal((await call(b.app, "POST", "/policies/reallocation", { auth, body: { agentIds: ["registered-1", "foreign"] } })).status, 404);
-      const loose = await call(b.app, "POST", "/policies/reallocation", { auth, body: { agentIds: ["registered-1", "unregistered-1"], reallocationCap: 0.5 } });
+      const loose = await call(b.app, "POST", "/policies/reallocation", { auth, body: { agentIds: ["registered-1", "no-account-1"], reallocationCap: 0.5 } });
       assert.equal(loose.status, 400);
       assert.equal(loose.body.error, "loosens-protocol-bound");
       assert.equal((await call(b.app, "POST", "/policies/reallocation", { auth, body: { agentIds: ["registered-1"] } })).status, 400);
     });
 
-    it("relays EIP-712 typed data to the owner, records the verified signature, and commits it", async () => {
-      await register("registered-2", "12");
+    it("relays the reallocation contract's EIP-712 typed data, records the verified signature, and commits it", async () => {
+      await register("registered-2");
+      await giveAccount("registered-2", ACCOUNT_2);
       const res = await call(b.app, "POST", "/policies/reallocation", { auth, body: { agentIds: ["registered-1", "registered-2"], reallocationCap: 0.1 } });
       assert.equal(res.status, 202);
       const op = res.body.operation;
       assert.equal(op.signatureRequest.kind, "typed-data");
-      assert.equal(op.signatureRequest.typedData.primaryType, "ReallocationPolicy");
-      assert.equal(op.signatureRequest.typedData.message.policyHash, res.body.policy.policyHash);
-      assert.deepEqual(res.body.policy.document.agents, ["11", "12"]);
+      const typed = op.signatureRequest.typedData;
+      assert.equal(typed.primaryType, "ReallocationPolicy");
+      assert.equal(typed.domain.name, "Monadeum Reallocation");
+      assert.equal(String(typed.domain.chainId), "10143");
+      assert.equal(typed.domain.verifyingContract.toLowerCase(), "0x000000000000000000000000000000000000a110");
+      assert.deepEqual(typed.message.agents.map((a: string) => a.toLowerCase()), [ACCOUNT_1, ACCOUNT_2.toLowerCase()]);
+      assert.equal(Number(typed.message.capBps), 1_000);
+      assert.equal(Number(typed.message.slotCeilingBps), 40_000);
+      assert.equal(String(typed.message.capitalFloor), "60000");
+      assert.equal(String(typed.message.nonce), "0");
+      const expected = hashReallocationPolicy({
+        owner: userOwner,
+        agents: [ACCOUNT_1, ACCOUNT_2],
+        capBps: 1_000,
+        slotCeilingBps: 40_000,
+        capitalFloor: 60_000n,
+        nonce: 0n,
+      });
+      assert.equal(res.body.policy.policyHash, expected);
+      assert.deepEqual(res.body.policy.document.agentIds, ["registered-1", "registered-2"]);
       const done = await signThrough(b.app, auth, op, owner);
       assert.equal(done.status, "succeeded");
       assert.equal(done.result.committed.txHash, `0x${"ab".repeat(32)}`);
       assert.equal(commits.length, 1);
+      assert.equal((commits[0] as { policyHash: string }).policyHash, expected);
       const current = await call(b.app, "GET", "/policies/reallocation", { auth });
       assert.equal(current.body.policy.sequence, 0);
-      assert.equal(current.body.policy.policyHash, res.body.policy.policyHash);
+      assert.equal(current.body.policy.policyHash, expected);
       const me = await call(b.app, "GET", "/owners/me", { auth });
-      assert.deepEqual(me.body.policy.agentIds, ["11", "12"]);
+      assert.deepEqual(me.body.policy.agentIds, ["registered-1", "registered-2"]);
       assert.equal(me.body.policy.reallocationCap, 0.1);
-      // The next proposal takes the next sequence, so every owner change commits a distinct hash.
+      // The next proposal takes the next nonce, so a revoked or replaced signed policy cannot be replayed.
       const next = await call(b.app, "POST", "/policies/reallocation", { auth, body: { agentIds: ["registered-1", "registered-2"] } });
-      assert.equal(next.body.policy.document.sequence, 1);
+      assert.equal(next.body.policy.document.nonce, "1");
+    });
+
+    it("refuses to build a policy before the reallocation contract is configured", async () => {
+      const bare = await boot(backend, { settings: settings({ reallocationContract: null }) });
+      try {
+        const who = newWallet();
+        const cookie = (await walletSignIn(bare.app, who)).cookie;
+        for (const id of ["x-1", "x-2"]) {
+          assert.ok(await bare.deps.agents.create({ agentId: id, owner: who.address, index: await bare.deps.agents.nextIndex(who.address), name: id, preset: null, limits: { perTxCap: 1n, dailyCap: 1n }, registryId: null, createdAt: Date.now() }));
+        }
+        const res = await call(bare.app, "POST", "/policies/reallocation", { auth: { cookie }, body: { agentIds: ["x-1", "x-2"] } });
+        assert.equal(res.status, 503);
+        assert.equal(res.body.error, "reallocation-contract-not-configured");
+      } finally {
+        await bare.close();
+      }
     });
   });
 }

@@ -1,6 +1,7 @@
 import { loadAuthConfig, type AuthConfig } from "@monadeum/auth";
 import { loadDatabaseSettings, type DatabaseSettings } from "@monadeum/db";
 import { PAIR } from "./genome.js";
+import { getAddress, isAddress, type Address } from "viem";
 
 // Environment variables of the API process, documented in apps/api/README.md. None of them is a private key: the API
 // never holds an owner key or a session key, and the Privy verification key AuthModule reads is a public key.
@@ -37,6 +38,11 @@ export interface ApiSettings {
   agentPair: string;
   /** Agent creation is refused once this many Active agents exist (EVOLUTION.md section 4). */
   populationCap: number;
+  /**
+   * The deployed reallocation contract (ARCHITECTURE.md section 16.5). Its address is part of the EIP-712 domain the
+   * owner signs, so without it no policy can be proposed. Null until the contract is deployed.
+   */
+  reallocationContract: Address | null;
 }
 
 export interface ApiConfig {
@@ -76,6 +82,13 @@ function baseUnits(env: Env, name: string): bigint {
   return value;
 }
 
+function optionalAddress(env: Env, name: string): Address | null {
+  const raw = env[name]?.trim();
+  if (!raw) return null;
+  if (!isAddress(raw, { strict: false })) throw new ApiConfigError(`${name} must be a 20-byte address`);
+  return getAddress(raw);
+}
+
 /** Reads and validates the configuration, including AuthModule's (`loadAuthConfig`). */
 export function loadApiConfig(env: Env = process.env): ApiConfig {
   const auth = loadAuthConfig(env);
@@ -108,6 +121,7 @@ export function loadApiConfig(env: Env = process.env): ApiConfig {
       settlementDecimals: integer(env, "API_SETTLEMENT_DECIMALS", 6, 0, 36),
       agentPair,
       populationCap: integer(env, "API_POPULATION_CAP", DEFAULT_POPULATION_CAP, 1, 1_000_000),
+      reallocationContract: optionalAddress(env, "API_REALLOCATION_CONTRACT"),
     },
   };
 }

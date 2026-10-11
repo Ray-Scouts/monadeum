@@ -30,6 +30,7 @@ export function settings(overrides: Partial<ApiSettings> = {}): ApiSettings {
     settlementDecimals: 6,
     agentPair: "WETH/USDC",
     populationCap: 50,
+    reallocationContract: "0x000000000000000000000000000000000000A110",
     ...overrides,
   };
 }

@@ -1,5 +1,11 @@
 import type { Principal } from "@monadeum/auth";
-import { buildPolicyCommitment, hashReallocationPolicy, normalizeReallocationPolicy, type ReallocationPolicyV1 } from "@monadeum/commitment";
+import {
+  buildPolicyCommitment,
+  hashReallocationPolicy,
+  reallocationDomain,
+  reallocationPolicyTypedData,
+  type ReallocationPolicyV1,
+} from "@monadeum/commitment";
 import { CAPITAL_FLOOR, MIN_POLICY_AGENTS, REALLOCATION_CAP, SLOT_CEILING } from "@monadeum/reallocation/constants";
 import { Body, Controller, Get, HttpCode, Inject, Post, UseGuards } from "@nestjs/common";
 import type { Address, Hex, LocalAccount } from "viem";
@@ -9,24 +15,15 @@ import { Caller, SessionGuard } from "./session.js";
 
 const MAX_POLICY_AGENTS = 100;
 
+const BPS = 10_000;
+
 /**
- * The EIP-712 typed data the owner signs for a reallocation policy: the section 16.4 policy hash, bound to the owner,
- * the sequence, and the chain. Provisional: the reallocation contract (issue #31) fixes the scheme it verifies, and
- * this definition changes with it if it differs.
+ * The EIP-712 typed data the owner signs for a reallocation policy: exactly what the reallocation contract verifies in
+ * `commitPolicyBySig`, in the domain of the deployed contract on `chainId` (ARCHITECTURE.md section 16.5). Its struct
+ * hash is the on-chain commitment.
  */
-export function policyTypedData(chainId: number, owner: Address, sequence: number, policyHash: Hex) {
-  return {
-    domain: { name: "Monadeum Reallocation Policy", version: "1", chainId },
-    types: {
-      ReallocationPolicy: [
-        { name: "owner", type: "address" },
-        { name: "sequence", type: "uint256" },
-        { name: "policyHash", type: "bytes32" },
-      ],
-    },
-    primaryType: "ReallocationPolicy",
-    message: { owner, sequence: BigInt(sequence), policyHash },
-  } as const;
+export function policyTypedData(chainId: number, contract: Address, policy: ReallocationPolicyV1) {
+  return reallocationPolicyTypedData(policy, reallocationDomain(chainId, contract));
 }
 
 /** The protocol capital floor in settlement-asset base units. */
@@ -36,10 +33,15 @@ export function capitalFloorBaseUnits(decimals: number): bigint {
 }
 
 /**
- * Owner-signed reallocation policy (EVOLUTION.md section 3.1 item 8). The API builds the document from the caller's
- * own agents and the caller's owner wallet, checks that it only tightens the protocol bounds, and relays the typed data
- * to the owner's wallet. A verified signature is recorded append-only and handed to the policy writer, which commits it
- * on chain; until the reallocation contract exists there is no writer and the policy is recorded but not committed.
+ * Owner-signed reallocation policy (EVOLUTION.md section 3.1 item 8). The API builds the policy from the caller's own
+ * agents and the caller's owner wallet, checks that it only tightens the protocol bounds, and relays the contract's
+ * EIP-712 typed data to the owner's wallet. A verified signature is recorded append-only and handed to the policy
+ * writer, which commits it on chain through `commitPolicyBySig`; without a writer the policy is recorded but not
+ * committed. The policy names agents by smart account address, which is how the contract keys them.
+ *
+ * The nonce is the ledger's next sequence. It equals the contract's `policyNonce(owner)` only while every commit and
+ * revocation for this owner goes through this ledger; a writer must read the on-chain nonce before committing, and the
+ * contract refuses a mismatch with `BadNonce` (fails closed).
  */
 @Controller("policies")
 @UseGuards(SessionGuard)
@@ -64,37 +66,54 @@ export class PolicyController {
     if (agentIds.length < MIN_POLICY_AGENTS) fail(400, "invalid-body", "agentIds must be distinct");
 
     // Tightening only (invariant 5): each optional bound is checked against the protocol value it may not loosen.
-    const tightening: Partial<Pick<ReallocationPolicyV1, "reallocationCap" | "slotCeiling" | "capitalFloor">> = {};
+    // Fractions become the contract's basis points rounding down, which can only tighten a bound further.
+    let capBps = Math.round(REALLOCATION_CAP * BPS);
+    let slotCeilingBps = Math.round(SLOT_CEILING * BPS);
+    const protocolFloor = capitalFloorBaseUnits(this.deps.settings.settlementDecimals);
+    let capitalFloor = protocolFloor;
     if (b.reallocationCap !== undefined) {
       if (typeof b.reallocationCap !== "number" || !(b.reallocationCap > 0 && b.reallocationCap <= REALLOCATION_CAP)) fail(400, "loosens-protocol-bound", `reallocationCap must be in (0, ${REALLOCATION_CAP}]`);
-      tightening.reallocationCap = b.reallocationCap;
+      capBps = Math.floor(b.reallocationCap * BPS);
+      if (capBps < 1) fail(400, "invalid-body", `reallocationCap must be at least ${1 / BPS}`);
     }
     if (b.slotCeiling !== undefined) {
       if (typeof b.slotCeiling !== "number" || !(b.slotCeiling >= 1 && b.slotCeiling <= SLOT_CEILING)) fail(400, "loosens-protocol-bound", `slotCeiling must be in [1, ${SLOT_CEILING}]`);
-      tightening.slotCeiling = b.slotCeiling;
+      slotCeilingBps = Math.floor(b.slotCeiling * BPS);
     }
     if (b.capitalFloor !== undefined) {
-      const floor = capitalFloorBaseUnits(this.deps.settings.settlementDecimals);
-      if (typeof b.capitalFloor !== "string" || !/^[1-9]\d{0,38}$/.test(b.capitalFloor) || BigInt(b.capitalFloor) < floor) fail(400, "loosens-protocol-bound", `capitalFloor must be at least ${floor} base units`);
-      tightening.capitalFloor = b.capitalFloor;
+      if (typeof b.capitalFloor !== "string" || !/^[1-9]\d{0,38}$/.test(b.capitalFloor) || BigInt(b.capitalFloor) < protocolFloor) fail(400, "loosens-protocol-bound", `capitalFloor must be at least ${protocolFloor} base units`);
+      capitalFloor = BigInt(b.capitalFloor);
     }
+    const contract = this.deps.settings.reallocationContract;
+    if (!contract) fail(503, "reallocation-contract-not-configured");
 
     const user = await callerUser(this.deps, principal);
     const owner = user.ownerWallet;
     if (!owner) fail(403, "no-owner-wallet");
-    const registryIds: string[] = [];
+    const accounts: Address[] = [];
     for (const id of agentIds) {
-      const { agent } = await ownedAgent(this.deps, principal, id);
-      // The policy names agents by identity registry ID, which exists only once the registry does (section 9).
-      if (agent.registryId === null) fail(409, "agent-not-registered", id);
-      registryIds.push(agent.registryId);
+      await ownedAgent(this.deps, principal, id);
+      // The contract keys agents by smart account address (section 16.5); an agent without one cannot be named.
+      const wallet = await this.deps.walletStore.get(id);
+      if (!wallet) fail(409, "agent-has-no-account", id);
+      accounts.push(wallet.account);
     }
 
     const sequence = ((await this.deps.policies.latest(owner))?.sequence ?? -1) + 1;
-    const document: ReallocationPolicyV1 = { schemaVersion: 1, owner, sequence, agents: registryIds, ...tightening };
-    const normalized = normalizeReallocationPolicy(document);
-    const policyHash = hashReallocationPolicy(document);
-    const typedData = policyTypedData(this.deps.settings.chainId, owner, sequence, policyHash);
+    const policy: ReallocationPolicyV1 = { owner, agents: accounts, capBps, slotCeilingBps, capitalFloor, nonce: BigInt(sequence) };
+    const policyHash = hashReallocationPolicy(policy);
+    const typedData = policyTypedData(this.deps.settings.chainId, contract, policy);
+    // What is recorded: the signed fields, base units as decimal strings, and the agent IDs they name, in order.
+    const normalized = {
+      contract,
+      owner: policy.owner,
+      agents: [...policy.agents],
+      agentIds,
+      capBps,
+      slotCeilingBps,
+      capitalFloor: capitalFloor.toString(),
+      nonce: sequence.toString(),
+    };
 
     const operation = await this.deps.relay.start({
       userId: user.id,
@@ -108,7 +127,7 @@ export class PolicyController {
         const appended = await this.deps.policies.append({ owner, sequence, document: normalized, policyHash, signature, createdAt: this.deps.now() });
         if (!appended) throw new Error(`policy sequence ${sequence} was recorded concurrently; propose again`);
         if (!this.deps.policyWriter) return { sequence, policyHash, signature, committed: null, reason: "reallocation-contract-not-configured" };
-        const { txHash } = await this.deps.policyWriter.commitPolicy(buildPolicyCommitment(document, signature));
+        const { txHash } = await this.deps.policyWriter.commitPolicy(buildPolicyCommitment(policy, signature));
         return { sequence, policyHash, signature, committed: { txHash }, reason: null };
       },
     });
