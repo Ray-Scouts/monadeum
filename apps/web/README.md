@@ -25,10 +25,26 @@ The deployment's reallocation switch (`MONADEUM_REALLOCATION_ENABLED`, `ARCHITEC
 
 ## Sign-in and sessions
 
+In `api` mode the web app is login-first: nobody sees any part of the app before signing in.
+
+| Route | Session unknown | Signed out | Signed in |
+|---|---|---|---|
+| `/login` | The sign-in page, shown at once | The sign-in page | Redirect to `next`, else `/population` |
+| `/` | Neutral "Checking your session" state | Redirect to `/login` | Redirect to `/population` |
+| App screens (`/population`, `/agents/:id`, ...) | Neutral "Checking your session" state: no navigation, no data | Redirect to `/login?next=<path>` | Navigation and screen |
+
+- **`/login`** is a full-screen page with no navigation and no data: the product name, one sentence on what it is, the testnet note, and the two sign-in paths below. It does not wait for Privy's SDK: the buttons render immediately (the page is prerendered), and the email and Google button stays disabled until Privy reports ready. If Privy's SDK fails to load (for example a rejected app ID), the page says so and the wallet path keeps working.
+- **`next`** is accepted only as a same-origin relative path (`src/components/api/navigation.ts`, `safeNext`): an absolute or protocol-relative URL, a backslash, a control character, a path that normalizes to `//host`, or `/login` itself falls back to `/population`, so the parameter cannot be used as an open redirect.
+- **The landing page** (`src/app/_landing`) renders only in `sample` mode. In `api` mode `/` renders nothing but the redirect, so no sample agents, moves, or figures are shown.
+- **The session** is mounted once in the root layout (`ApiRoot`), so it survives navigation between `/login` and the app. Privy loads beside it through `next/dynamic` and reports its state upward; until it does, the session check runs against a not-ready placeholder.
+- **This is UX gating, not access control.** Every API endpoint that serves data requires a session and answers `401` without one, and the API decides authorization from its own records (`THREAT-MODEL.md` trust boundary 10); the redirects only decide what the browser shows.
+
+In `sample` mode none of this applies: there is no session, `/` is the landing page, the app screens render directly with the sample wallet chip, and `/login` redirects to `/population`.
+
 - **Primary path, email or Google through Privy.** After Privy's login, the client sends the access token and the identity token to `POST /auth/privy/sign-in`, then sends the access token as `Authorization: Bearer` on every request, with `credentials: "omit"` so a leftover wallet session cookie can never make a request carry both credentials (the API refuses that as `ambiguous-credentials`).
 - **Secondary path, below an "advanced" divider: an external browser wallet.** The client asks the API for a one-time EIP-4361 message, has the wallet sign exactly that text, and posts the signature to `POST /auth/wallet/verify`, which sets the `HttpOnly` session cookie. Later requests use `credentials: "include"`; the browser attaches the cookie and its own `Origin`, which the API checks on state-changing requests. The page never reads the cookie.
-- **Session check timeout.** If neither the API nor Privy confirms or refuses a session within 10 seconds, the page shows the sign-in options with an error instead of loading indefinitely.
-- **Sign out** ends the Privy session with Privy's SDK and calls `POST /auth/sign-out`, which clears the wallet session cookie.
+- **Session check timeout.** If neither the API nor Privy confirms or refuses a session within 10 seconds, the app screens redirect to `/login`, which shows the sign-in options with an error instead of loading indefinitely.
+- **Sign out** ends the Privy session with Privy's SDK and calls `POST /auth/sign-out`, which clears the wallet session cookie, then returns to `/login` without a `next`.
 - **Deployment constraint.** The cookie is `SameSite=Strict` and `Secure`, so the web app and the API must be same-site (for example `app.example.com` and `api.example.com`, or `localhost` on two ports in development), and the web origin must equal the API's `AUTH_SIWE_URI`, the only origin its CORS policy allows.
 
 A session identifies the user and authorizes nothing (`THREAT-MODEL.md` trust boundary 10). Every button here captures intent; the API re-derives ownership and re-validates every value.
@@ -47,7 +63,7 @@ Deployment and revocation are relayed by the API to the owner's wallet (`apps/ap
 
 ## Tests
 
-`bun run test` builds the libraries the screens import, type-checks, runs `bun test src`, and runs `next build` (sample mode). Data-layer tests (`src/data/api/api.test.ts`) drive the API client against a mocked `fetch` and check credentials, errors, the stop states, the explainer states, and that typed data and messages signed through the EIP-1193 call verify against the API's own definitions. Component tests (`src/components/api/components.test.tsx`) render the sign-in, stop, signature, and read views from API-shaped props. The sample-source tests are unchanged.
+`bun run test` builds the libraries the screens import, type-checks, runs `bun test src`, and runs `next build` (sample mode). Data-layer tests (`src/data/api/api.test.ts`) drive the API client against a mocked `fetch` and check credentials, errors, the stop states, the explainer states, and that typed data and messages signed through the EIP-1193 call verify against the API's own definitions. Component tests (`src/components/api/components.test.tsx`) render the sign-in, stop, signature, and read views from API-shaped props. Gating tests (`src/components/api/gate.test.tsx`) cover the redirect decisions (signed out to `/login` with `next`, `/` to `/population` when signed in, open-redirect `next` values refused), that the navigation rail is not rendered before a session is confirmed, that the landing does not render in `api` mode, and that `sample` mode is unchanged. The redirects themselves run in effects, which a static render does not execute, so they are tested on the decision functions the components call. The sample-source tests are unchanged.
 
 `scripts/smoke-api.ts` is an opt-in run against a live API process on in-memory stores, using the external wallet path with a throwaway key:
 
@@ -63,5 +79,6 @@ SMOKE_API_URL=http://127.0.0.1:3901 SMOKE_ORIGIN=http://localhost:3000 bun scrip
 ## Not verified yet
 
 - No run against a live Privy app: the Privy path (login, identity token, embedded wallet provider, `switchChain`) follows the SDK's type definitions and the issue #19 spike, and has not been exercised against the API's sign-in endpoint with real tokens.
+- The login gate was checked in a browser against an `api` build with no reachable API and a rejected Privy app ID (redirect to `/login?next=`, `/` to `/login`, the API and Privy errors shown, the wallet button enabled). The signed-in redirects (from `/login` to `next`, from `/` to `/population`) and sign-out returning to `/login` are covered by the decision tests only, not by a browser run with a live session.
 - No owner-signed operation has been signed by a real wallet through this page: the running API has no WalletsModule, so deployment and stop answer 503. The signing path is covered by tests with a local key standing in for the wallet.
 - MetaMask-style wallets require `types.EIP712Domain` and an active chain matching the typed data's `chainId`; the page adds the former and asks the wallet to switch to Monad testnet, but no specific wallet has been tried.

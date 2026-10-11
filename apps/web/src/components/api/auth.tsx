@@ -32,7 +32,8 @@ export interface PrivyBridge {
 
 export type AuthState =
   | { status: "loading" }
-  | { status: "signed-out"; error: string | null }
+  /** `byUser` marks a sign-out the user asked for, which returns to a plain sign-in page. */
+  | { status: "signed-out"; error: string | null; byUser?: boolean }
   | { status: "signed-in"; via: "privy" | "wallet"; user: ApiUser; session: SessionClient };
 
 export interface Auth {
@@ -40,6 +41,8 @@ export interface Auth {
   client: ApiClient | null;
   /** Null when no Privy app ID is configured: the social path is then unavailable and the sign-in screen says so. */
   privy: PrivyBridge | null;
+  /** Set when an app ID is configured but Privy's SDK failed; `privy` is then null and the social path unavailable. */
+  privyError: string | null;
   busy: boolean;
   signInWithPrivy(): void;
   signInWithWallet(): Promise<void>;
@@ -48,7 +51,22 @@ export interface Auth {
   ownerWallet(): Promise<{ provider: Eip1193; address: string }>;
 }
 
-const AuthContext = createContext<Auth | null>(null);
+/**
+ * Stands in for Privy while its SDK is still loading, when an app ID is configured: not ready, not authenticated. The
+ * sign-in page renders against it at once and enables the email and Google button when the real bridge arrives.
+ */
+export const PENDING_PRIVY: PrivyBridge = {
+  ready: false,
+  authenticated: false,
+  identityToken: null,
+  login: () => undefined,
+  logout: async () => undefined,
+  getAccessToken: async () => null,
+  providerFor: async () => null,
+};
+
+/** Exported for component tests, which render screens against a fixed session state. */
+export const AuthContext = createContext<Auth | null>(null);
 
 export function useAuth(): Auth {
   const auth = useContext(AuthContext);
@@ -80,13 +98,15 @@ const describe = (error: unknown) => {
   return error instanceof Error ? error.message : "Sign-in failed.";
 };
 
-export function AuthProvider({ privy, children }: { privy: PrivyBridge | null; children: ReactNode }) {
+export function AuthProvider({ privy, privyError = null, children }: { privy: PrivyBridge | null; privyError?: string | null; children: ReactNode }) {
   const client = useMemo(() => (WEB_CONFIG.apiUrl ? createApiClient(WEB_CONFIG.apiUrl) : null), []);
   const [state, setState] = useState<AuthState>({ status: "loading" });
   const [busy, setBusy] = useState(false);
   // The Privy bridge object changes on every render; the effect below reads the latest through this ref.
   const privyRef = useRef(privy);
   privyRef.current = privy;
+  // While signing out, a session check started by Privy's own logout must not overwrite the final signed-out state.
+  const signingOut = useRef(false);
 
   const privyCredential: Credential = useMemo(
     () => ({ via: "privy", accessToken: async () => (privyRef.current ? privyRef.current.getAccessToken() : null) }),
@@ -105,7 +125,7 @@ export function AuthProvider({ privy, children }: { privy: PrivyBridge | null; c
       return;
     }
     let cancelled = false;
-    const done = (next: AuthState) => !cancelled && setState(next);
+    const done = (next: AuthState) => !cancelled && !signingOut.current && setState(next);
     (async () => {
       if (privyAuthenticated) {
         const session = client.as(privyCredential);
@@ -177,6 +197,7 @@ export function AuthProvider({ privy, children }: { privy: PrivyBridge | null; c
 
   const signOut = useCallback(async () => {
     setBusy(true);
+    signingOut.current = true;
     try {
       // Both are ended: a Privy session can outlive a failed API sign-in, and a wallet cookie can outlive a Privy one.
       if (privyRef.current?.authenticated) await privyRef.current.logout();
@@ -184,10 +205,11 @@ export function AuthProvider({ privy, children }: { privy: PrivyBridge | null; c
     } catch {
       // Signing out locally still proceeds; the wallet session expires on its own.
     } finally {
-      setState({ status: "signed-out", error: null });
+      signingOut.current = false;
+      setState({ status: "signed-out", error: null, byUser: true });
       setBusy(false);
     }
-  }, [client, state]);
+  }, [client]);
 
   const ownerWallet = useCallback(async () => {
     if (state.status !== "signed-in") throw new Error("Sign in first.");
@@ -207,6 +229,6 @@ export function AuthProvider({ privy, children }: { privy: PrivyBridge | null; c
     return { provider, address };
   }, [state]);
 
-  const value: Auth = { state, client, privy, busy, signInWithPrivy, signInWithWallet, signOut, ownerWallet };
+  const value: Auth = { state, client, privy, privyError, busy, signInWithPrivy, signInWithWallet, signOut, ownerWallet };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
