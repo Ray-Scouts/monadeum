@@ -217,7 +217,7 @@ describe("population dashboard", () => {
       principal: "10000000",
       capital: "9000000",
       tradeCount: 4,
-      fitnessPercentile: 8,
+      fitnessPercentile: 100 / 12,
       lowWindows: 2,
       zeroDownsideFlag: true,
       capitalHistory: [
@@ -230,6 +230,7 @@ describe("population dashboard", () => {
     expect(html).toContain("9 USDC");
     expect(html).toContain("Principal 10 USDC");
     expect(html).toContain("P8");
+    expect(html).not.toContain("8.33");
     expect(html).toContain("2 low windows in a row");
     expect(html).toContain("Flagged");
     expect(raw).toContain("Capital after evaluations 3 to 4, now 9 USDC");

@@ -386,7 +386,7 @@ export function AgentFacts({ agent, settlement, actions }: { agent: ApiAgent; se
         />
         <Kpi
           label="Fitness"
-          value={fitness === null ? PENDING : `P${fitness}`}
+          value={fitness === null ? PENDING : `P${Math.round(fitness)}`}
           detail={
             fitness === null
               ? "Not ranked yet"

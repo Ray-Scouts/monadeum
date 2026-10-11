@@ -46,7 +46,7 @@ export function FitnessBar({ percentile }: { percentile: number | null }) {
         <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${percentile}%`, background: low ? "var(--bad)" : "var(--accent)" }} />
         <span className="absolute -inset-y-[3px] w-px bg-faint" style={{ left: `${MEDIAN_MARK}%` }} />
       </div>
-      <span className="w-[26px] text-right font-mono tabular">{percentile}</span>
+      <span className="w-[26px] text-right font-mono tabular">{Math.round(percentile)}</span>
       {low && <span className="sr-only">, in the bottom tenth of its niche</span>}
     </div>
   );

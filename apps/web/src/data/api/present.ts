@@ -152,7 +152,7 @@ export function explainAgent(agent: ApiAgent, owner: OwnerResponse | null): Expl
   lines.push(
     agent.fitnessPercentile == null
       ? "Not ranked here: the API does not serve evaluation results yet, so there is no rank, starvation count, or distance to the capital floor to show."
-      : `Fitness percentile in its niche: ${agent.fitnessPercentile}.`,
+      : `Fitness percentile in its niche: ${Math.round(agent.fitnessPercentile)}.`,
   );
   return { headline, lines };
 }
