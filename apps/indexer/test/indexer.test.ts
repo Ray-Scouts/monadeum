@@ -82,6 +82,21 @@ test("indexes the spend policy, the deployment, and the session key lifecycle of
   assert.deepEqual((await store.cursor())?.number, 5n);
 });
 
+test("indexes traded-asset marks: a token marked, its approve allowed, then unmarked", async () => {
+  const WETH = "0xee8c0e9f1bffb4eb878d8f15f368a02a35481242" as Address;
+  const chain = new MockChain().mine(3, [
+    deploymentBlock(ACCOUNT),
+    [policy("TradedAssetSet", { account: ACCOUNT, token: WETH, traded: true }), policy("CallAllowed", { account: ACCOUNT, target: WETH, selector: "0x095ea7b3", allowed: true })],
+    [],
+  ]);
+  const { store, indexer } = setup(chain);
+  await drain(indexer);
+  const view = await accountView(store, ACCOUNT);
+  assert.deepEqual(view.tradedAssets, [WETH]);
+  assert.deepEqual(view.allowed.map((a) => a.target), [USDC, WETH]);
+  assert.deepEqual((await store.events({ account: ACCOUNT })).filter((e) => e.kind === "spend.traded-asset-set").map((e) => e.data), [{ token: WETH, traded: true }]);
+});
+
 test("a session key is live between installation and revocation", async () => {
   const chain = new MockChain().mine(2, [deploymentBlock(ACCOUNT), [kernel(ACCOUNT, "PermissionInstalled", { permission: "0xdeadbeef", nonce: 1 })]]);
   const { store, indexer } = setup(chain);

@@ -20,6 +20,8 @@ export interface AccountView {
   deployment: { factory: Address; paymaster: Address; transactionHash: Hex; blockNumber: bigint } | null;
   limits: { perTxCap: bigint; dailyCap: bigint } | null;
   allowed: { target: Address; selector: Hex }[];
+  /** Tokens the owner marked as traded assets (`setTradedAsset`): recipient-checked, uncounted, never recipients. */
+  tradedAssets: Address[];
   /**
    * The most recent `Spent` event. `windowTotal` is the rolling 24-hour total at that event, not now: the window keeps
    * moving without events, so the current total is read from the contract (`windowTotal`) when it matters.
@@ -37,6 +39,7 @@ export function projectAccount(account: Address, rows: readonly ChainEvent[]): A
     deployment: null,
     limits: null,
     allowed: [],
+    tradedAssets: [],
     lastSpent: null,
     totalSpent: 0n,
     invalidatedNonce: null,
@@ -44,6 +47,7 @@ export function projectAccount(account: Address, rows: readonly ChainEvent[]): A
   };
   const allowed = new Map<string, { target: Address; selector: Hex }>();
   const permissions = new Map<string, SessionPermissionView>();
+  const traded = new Set<string>();
   for (const row of rows) {
     if (row.account !== view.account) continue;
     const d = row.data;
@@ -60,6 +64,10 @@ export function projectAccount(account: Address, rows: readonly ChainEvent[]): A
         else allowed.delete(key);
         break;
       }
+      case "spend.traded-asset-set":
+        if (d.traded) traded.add(d.token as string);
+        else traded.delete(d.token as string);
+        break;
       case "spend.spent":
         view.lastSpent = { amount: BigInt(d.amount as string), windowTotal: BigInt(d.windowTotal as string), blockNumber: row.blockNumber };
         view.totalSpent += BigInt(d.amount as string);
@@ -84,6 +92,7 @@ export function projectAccount(account: Address, rows: readonly ChainEvent[]): A
     }
   }
   view.allowed = [...allowed.values()];
+  view.tradedAssets = [...traded].map((t) => t as Address);
   view.permissions = [...permissions.values()].map((p) => ({
     ...p,
     live: !p.uninstalled && (view.invalidatedNonce === null || p.installedNonce >= view.invalidatedNonce),
