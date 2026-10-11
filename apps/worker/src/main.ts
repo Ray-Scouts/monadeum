@@ -12,6 +12,7 @@ import { loadConsumerConfig, WorkerConfigError } from "./config.js";
 import { BullJobQueue, QUEUE_NAME, startConsumer } from "./consumer/bullmq.js";
 import { UnconfiguredTickRunner, WorkerJobHandlers, type TickRunner } from "./consumer/handlers.js";
 import { RedisAgentLocks } from "./consumer/locks.js";
+import { PrincipalSync } from "./principal.js";
 import { WORKER_STORES, memoryWorkerStores, postgresWorkerStores, type WorkerStores } from "./stores.js";
 
 export { AgentWorker } from "./worker.js";
@@ -40,6 +41,8 @@ export type { JobQueue } from "./consumer/queue.js";
 export { MemoryAgentLocks, RedisAgentLocks } from "./consumer/locks.js";
 export type { AgentLocks } from "./consumer/locks.js";
 export { BullJobQueue, QUEUE_NAME, startConsumer } from "./consumer/bullmq.js";
+export { PrincipalSync } from "./principal.js";
+export type { PrincipalSyncResult } from "./principal.js";
 
 /**
  * The worker's Nest context. The modules that need no deployment configuration are provided here, and the module
@@ -119,6 +122,9 @@ export async function runWorker(options: WorkerRunOptions) {
   if (production && !options.runner) {
     throw new WorkerConfigError("MONADEUM_ENV is production and no tick runner is configured: trading, x402, and wallets are not wired in this process");
   }
+  if (production && config && !config.principal) {
+    throw new WorkerConfigError("MONADEUM_ENV is production and WORKER_SETTLEMENT_ASSET_ADDRESS is not set: no agent principal could ever be recomputed");
+  }
   const booted = await bootWorker(options);
   if (!config) {
     log("REDIS_URL is not set: no consumer runs; set it to run ticks");
@@ -130,17 +136,24 @@ export async function runWorker(options: WorkerRunOptions) {
   try {
     const runner = options.runner ? options.runner(booted.stores) : new UnconfiguredTickRunner(log);
     if (!options.runner) log("no tick runner is configured: every tick and evaluation job is skipped, nothing is sent");
+    const locks = new RedisAgentLocks(connection, `${config.prefix}:agent-lock:`);
+    const principal = config.principal
+      ? new PrincipalSync({ agents: booted.stores.agents, readModel: booted.stores.readModel, settlementAsset: config.principal.settlementAsset, locks, lockTtlMs: config.settings.lockTtlMs })
+      : undefined;
+    if (!principal) log("WORKER_SETTLEMENT_ASSET_ADDRESS is not set: principals are not recomputed, so no agent becomes funded");
     const handlers = new WorkerJobHandlers({
       agents: booted.stores.agents,
       runner,
       queue,
-      locks: new RedisAgentLocks(connection, `${config.prefix}:agent-lock:`),
+      locks,
       settings: config.settings,
       clock: options.clock ?? (() => new Date()),
+      principal,
       log,
     });
     log((await handlers.sync()).detail);
     await queue.scheduleSync(config.syncIntervalMs);
+    if (config.principal) await queue.schedulePrincipal(config.principal.intervalMs);
     const consumer = startConsumer(connection, handlers, { concurrency: config.concurrency, prefix: config.prefix, log });
     log(`consumer running on ${booted.stores.durable ? "Postgres" : "in-memory"} stores, concurrency ${config.concurrency}`);
     return {

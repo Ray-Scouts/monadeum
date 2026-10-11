@@ -62,6 +62,7 @@ test("job IDs are derived from the tick key and are valid BullMQ custom IDs", ()
 
 test("a malformed job is rejected, not guessed at", () => {
   assert.deepEqual(parseJob("tick", { agentId: "a", tick: 3 }), { kind: "tick", agentId: "a", tick: 3 });
+  assert.deepEqual(parseJob("principal", {}), { kind: "principal" });
   for (const [name, data] of [["tick", { agentId: "a" }], ["tick", { agentId: "", tick: 1 }], ["tick", { agentId: "a", tick: 1.5 }], ["evaluate", { tick: -20 }], ["trigger", {}], ["other", {}]] as const) {
     assert.throws(() => parseJob(name, data), /malformed/, `${name} ${JSON.stringify(data)}`);
   }
@@ -164,14 +165,20 @@ test("consumer configuration: REDIS_URL turns it on, the tick interval has no de
   assert.deepEqual(loadConsumerConfig({ REDIS_URL: "redis://localhost:6379", WORKER_TICK_INTERVAL_MS: "60000" }), {
     redisUrl: "redis://localhost:6379", prefix: "monadeum", concurrency: 1, syncIntervalMs: 60_000,
     settings: { tickIntervalMs: 60_000, evaluationDelayMs: 30_000, lockTtlMs: 600_000, lockRetryMs: 1_000 },
+    principal: null,
   });
   const base = { REDIS_URL: "redis://localhost:6379", WORKER_TICK_INTERVAL_MS: "60000" };
+  assert.deepEqual(loadConsumerConfig({ ...base, WORKER_SETTLEMENT_ASSET_ADDRESS: "0x754704Bc059F8C67012fEd69BC8A327a5aafb603" })?.principal, {
+    settlementAsset: "0x754704bc059f8c67012fed69bc8a327a5aafb603", intervalMs: 60_000,
+  });
   for (const env of [
     { ...base, REDIS_URL: "http://localhost" },
     { ...base, WORKER_TICK_INTERVAL_MS: "999" },
     { ...base, WORKER_CONCURRENCY: "0" },
     { ...base, WORKER_EVALUATION_DELAY_MS: "60000" },
     { ...base, WORKER_REDIS_PREFIX: "a:b" },
+    { ...base, WORKER_SETTLEMENT_ASSET_ADDRESS: "0x12" },
+    { ...base, WORKER_SETTLEMENT_ASSET_ADDRESS: "0x754704bc059f8c67012fed69bc8a327a5aafb603", WORKER_PRINCIPAL_INTERVAL_MS: "999" },
   ]) {
     assert.throws(() => loadConsumerConfig(env), WorkerConfigError, JSON.stringify(env));
   }
@@ -181,6 +188,11 @@ test("production refuses to run without REDIS_URL or without a configured tick r
   const prod = { MONADEUM_ENV: "production", DATABASE_URL: "postgres://unused" };
   await assert.rejects(runWorker({ env: prod }), /REDIS_URL is not set/);
   await assert.rejects(runWorker({ env: { ...prod, REDIS_URL: "redis://localhost:6379", WORKER_TICK_INTERVAL_MS: "60000" } }), /no tick runner is configured/);
+  const runner = () => ({ tick: async () => null, evaluate: async () => null });
+  await assert.rejects(
+    runWorker({ env: { ...prod, REDIS_URL: "redis://localhost:6379", WORKER_TICK_INTERVAL_MS: "60000" }, runner }),
+    /WORKER_SETTLEMENT_ASSET_ADDRESS is not set/,
+  );
   const logs: string[] = [];
   assert.equal(await runWorker({ env: {}, log: (m) => logs.push(m) }), null);
   assert.match(logs.join("\n"), /REDIS_URL is not set: no consumer runs/);
