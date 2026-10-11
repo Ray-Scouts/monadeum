@@ -175,6 +175,16 @@ export function databaseRules(name: string, db: Database): void {
         await assert.rejects(as(db, "monadeum_worker", sql), DENIED, sql);
       }
       await as(db, "monadeum_reader", "SELECT * FROM agent_settlement_transfers");
+      // 0010: the indexer records the settlement asset once; the worker and readers only read it; nobody changes it.
+      const asset = `0x${"ab".repeat(20)}` as Hex;
+      await new PgReadModelStore(asRole(db, "monadeum_indexer")).recordSettlementAsset(asset);
+      assert.equal(await worker.settlementAsset(), asset);
+      await as(db, "monadeum_reader", "SELECT * FROM indexer_settings");
+      for (const role of ["monadeum_indexer", "monadeum_worker", "monadeum_reader"]) {
+        await assert.rejects(as(db, role, `UPDATE indexer_settings SET settlement_asset = '0x${"cd".repeat(20)}'`), DENIED, role);
+        await assert.rejects(as(db, role, "DELETE FROM indexer_settings"), DENIED, role);
+      }
+      await assert.rejects(as(db, "monadeum_worker", `INSERT INTO indexer_settings (id, settlement_asset) VALUES (1, '${asset}')`), DENIED);
       await assert.rejects(as(db, "monadeum_indexer", "SELECT * FROM worker_agents"), DENIED);
     });
 

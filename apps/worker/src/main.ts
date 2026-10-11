@@ -12,7 +12,7 @@ import { loadConsumerConfig, WorkerConfigError } from "./config.js";
 import { BullJobQueue, QUEUE_NAME, startConsumer } from "./consumer/bullmq.js";
 import { UnconfiguredTickRunner, WorkerJobHandlers, type TickRunner } from "./consumer/handlers.js";
 import { RedisAgentLocks } from "./consumer/locks.js";
-import { PrincipalSync } from "./principal.js";
+import { PrincipalSync, checkSettlementAsset } from "./principal.js";
 import { WORKER_STORES, memoryWorkerStores, postgresWorkerStores, type WorkerStores } from "./stores.js";
 
 export { AgentWorker } from "./worker.js";
@@ -41,7 +41,7 @@ export type { JobQueue } from "./consumer/queue.js";
 export { MemoryAgentLocks, RedisAgentLocks } from "./consumer/locks.js";
 export type { AgentLocks } from "./consumer/locks.js";
 export { BullJobQueue, QUEUE_NAME, startConsumer } from "./consumer/bullmq.js";
-export { PrincipalSync } from "./principal.js";
+export { PrincipalSync, checkSettlementAsset } from "./principal.js";
 export type { PrincipalSyncResult } from "./principal.js";
 
 /**
@@ -130,6 +130,14 @@ export async function runWorker(options: WorkerRunOptions) {
     log("REDIS_URL is not set: no consumer runs; set it to run ticks");
     await booted.close();
     return null;
+  }
+  if (config.principal) {
+    try {
+      log(await checkSettlementAsset(booted.stores.readModel, config.principal.settlementAsset));
+    } catch (error) {
+      await booted.close();
+      throw error;
+    }
   }
   const connection = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
   const queue = new BullJobQueue(new Queue(QUEUE_NAME, { connection, prefix: config.prefix }));

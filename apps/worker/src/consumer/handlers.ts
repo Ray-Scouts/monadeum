@@ -85,6 +85,8 @@ export class WorkerJobHandlers {
   async principal(): Promise<JobOutcome> {
     if (!this.deps.principal) return { kind: "done", detail: "principal sync is not configured: no principal changes" };
     const r = await this.deps.principal.run();
+    if (r.reason === "settlement-asset-mismatch") return { kind: "done", detail: "principal: the indexer records another settlement asset; nothing written" };
+    if (r.reason === "settlement-asset-unrecorded") return { kind: "done", detail: "principal: the indexer has not recorded its settlement asset yet; nothing written" };
     if (r.asOf === null) return { kind: "done", detail: "principal: the read-model has no finalized bound yet; nothing written" };
     const changed = r.updated.map((u) => `${u.agentId}=${u.principal}`).join(", ") || "none";
     return { kind: "done", detail: `principal through block ${r.asOf}: changed ${changed}; skipped ${r.skipped.length}` };

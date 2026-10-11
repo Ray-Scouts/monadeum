@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import type { AgentRecord, AgentRegistry, AgentState, DebitRecord, DebitStore } from "@monadeum/agent-registry";
 import type { ChallengeStore, SessionStore, UserRecord, UserStore, WalletChallenge } from "@monadeum/auth";
 import type { TickRecord, TickStore } from "@monadeum/tick";
-import type { BlockHash, ChainEvent, ReadModelStore, SyncBatch } from "@monadeum/read-model";
+import { SettlementAssetMismatchError, type BlockHash, type ChainEvent, type ReadModelStore, type SyncBatch } from "@monadeum/read-model";
 import type { TradeRecord, TradeStore } from "@monadeum/trading";
 import type { AgentWalletRecord, AgentWalletStore, SponsorshipLedger, TickOperationRecord } from "@monadeum/wallets";
 import type { PaymentLog, PaymentLogEntry } from "@monadeum/x402";
@@ -187,6 +187,16 @@ export function conformance(name: string, harness: Harness): void {
       const fresh = (await harness.fresh()).readModel;
       await fresh.apply(batch(10, []));
       assert.equal(await fresh.finalizedThrough(), null);
+    });
+
+    it("records the settlement asset once, lowercase, and refuses a different one", async () => {
+      const { readModel } = await harness.fresh();
+      assert.equal(await readModel.settlementAsset(), null);
+      await readModel.recordSettlementAsset(mixed(addr(700)));
+      await readModel.recordSettlementAsset(addr(700));
+      assert.equal(await readModel.settlementAsset(), addr(700));
+      await assert.rejects(readModel.recordSettlementAsset(addr(701)), SettlementAssetMismatchError);
+      assert.equal(await readModel.settlementAsset(), addr(700));
     });
 
     it("prunes block hashes below the window but keeps the cursor block", async () => {

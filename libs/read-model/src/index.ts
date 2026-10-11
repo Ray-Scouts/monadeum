@@ -74,10 +74,28 @@ export interface ReadModelStore {
    * act only on finalized data, such as the worker's principal recomputation, read this bound and nothing above it.
    */
   finalizedThrough(): Promise<bigint | null>;
+  /** The settlement-asset contract the indexer recorded at start, lowercase, or null before it first started. */
+  settlementAsset(): Promise<Address | null>;
+  /**
+   * Records the settlement-asset contract this read-model's funding rows come from. Idempotent for the same address;
+   * throws when a different one is already recorded, because the stored rows would then mix two tokens.
+   */
+  recordSettlementAsset(asset: Address): Promise<void>;
 }
 
-/** The read side a consumer of the read-model needs. Granted to the worker role for its principal job (libs/db 0009). */
-export type ReadModelReader = Pick<ReadModelStore, "events" | "finalizedThrough">;
+/**
+ * The read side a consumer of the read-model needs. Granted to the worker role for its principal job (libs/db 0009
+ * and 0010).
+ */
+export type ReadModelReader = Pick<ReadModelStore, "events" | "finalizedThrough" | "settlementAsset">;
+
+/** Thrown by `recordSettlementAsset` when the read-model already records a different settlement asset. */
+export class SettlementAssetMismatchError extends Error {
+  constructor(recorded: Address, requested: Address) {
+    super(`the read-model records settlement asset ${recorded}, not ${requested}; rebuild it before changing the asset`);
+    this.name = "SettlementAssetMismatchError";
+  }
+}
 
 /** For tests and local development. Not durable: a restart starts from the configured start block. */
 export class InMemoryReadModelStore implements ReadModelStore {
@@ -86,6 +104,7 @@ export class InMemoryReadModelStore implements ReadModelStore {
   private tracked = new Map<Address, TrackedAccount>();
   private head: BlockHash | null = null;
   private finalized = false;
+  private asset: Address | null = null;
 
   async cursor(): Promise<BlockHash | null> {
     return this.head;
@@ -124,6 +143,16 @@ export class InMemoryReadModelStore implements ReadModelStore {
 
   async finalizedThrough(): Promise<bigint | null> {
     return this.head && this.finalized ? this.head.number : null;
+  }
+
+  async settlementAsset(): Promise<Address | null> {
+    return this.asset;
+  }
+
+  async recordSettlementAsset(asset: Address): Promise<void> {
+    const lower = asset.toLowerCase() as Address;
+    if (this.asset !== null && this.asset !== lower) throw new SettlementAssetMismatchError(this.asset, lower);
+    this.asset = lower;
   }
 }
 
