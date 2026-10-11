@@ -13,6 +13,7 @@ import {
   buildScope,
   callsInScope,
   isRevokedOnChain,
+  isSessionAcceptedOnChain,
   tradedAssetsOf,
   type OwnerSigner,
   type SponsorshipBudget,
@@ -175,6 +176,55 @@ test("a session key is issued only for a deployed account, held only in the vaul
   const again = await service.issueSessionKey({ agentId: "agent-1", owner });
   assert.deepEqual(again, { ok: true, keyAddress: issued.keyAddress, permissionId: issued.permissionId, issued: false });
   assert.equal(await vault.get("agent-1"), key);
+});
+
+test("an issued key is accepted on chain before its first use, installed after it, and refused once revoked", async () => {
+  const { service, owner } = await deployed();
+  assert.equal(await service.sessionStatus("agent-1"), null);
+  const issued = await service.issueSessionKey({ agentId: "agent-1", owner });
+  assert.equal(issued.ok, true);
+  const before = (await service.sessionStatus("agent-1"))!;
+  assert.equal(before.status, "active");
+  assert.equal(before.keyHeld, true);
+  assert.equal(before.state.installed, false, "enable mode: nothing is installed until the first session-key operation");
+  assert.equal(before.state.currentNonce, before.enableNonce);
+  assert.equal(before.acceptedOnChain, true);
+  assert.equal((await service.execute({ agentId: "agent-1", calls: [swap] })).ok, true);
+  const used = (await service.sessionStatus("agent-1"))!;
+  assert.equal(used.state.installed, true);
+  assert.equal(used.acceptedOnChain, true);
+  assert.equal((await service.revokeSessionKey({ agentId: "agent-1", owner })).ok, true);
+  const after = (await service.sessionStatus("agent-1"))!;
+  assert.equal(after.status, "revoked");
+  assert.equal(after.keyHeld, false);
+  assert.equal(after.acceptedOnChain, false);
+});
+
+test("issuance records nothing when the chain would not accept the approval or the account has no code", async () => {
+  const { service, chain, vault, store, owner, account } = await deployed();
+  const approve = chain.approveSession.bind(chain);
+  // The Kernel nonce moves between the owner's signature and the read-back.
+  chain.approveSession = async (input) => {
+    const approval = await approve(input);
+    chain.acct(account).currentNonce++;
+    return approval;
+  };
+  const r = await service.issueSessionKey({ agentId: "agent-1", owner });
+  assert.equal(!r.ok && r.reason, "rejected");
+  assert.equal(await vault.get("agent-1"), null);
+  assert.equal((await store.get("agent-1"))!.session, null);
+  chain.approveSession = approve;
+  chain.acct(account).deployed = false;
+  assert.equal((await service.issueSessionKey({ agentId: "agent-1", owner })).ok, false);
+  chain.acct(account).deployed = true;
+  assert.equal((await service.issueSessionKey({ agentId: "agent-1", owner })).ok, true);
+});
+
+test("a session is accepted on chain only while its permission or its enable signature is live", () => {
+  assert.equal(isSessionAcceptedOnChain({ installed: false, validatorNonce: 0, currentNonce: 3, validNonceFrom: 3 }, 3), true);
+  assert.equal(isSessionAcceptedOnChain({ installed: false, validatorNonce: 0, currentNonce: 4, validNonceFrom: 3 }, 3), false, "the nonce moved past the signature");
+  assert.equal(isSessionAcceptedOnChain({ installed: true, validatorNonce: 3, currentNonce: 4, validNonceFrom: 3 }, 3), true);
+  assert.equal(isSessionAcceptedOnChain({ installed: true, validatorNonce: 3, currentNonce: 5, validNonceFrom: 5 }, 3), false, "installed below validNonceFrom");
 });
 
 test("only the account owner can issue or revoke", async () => {

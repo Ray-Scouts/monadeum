@@ -215,7 +215,7 @@ export type SignatureRequest =
   | { id: string; expiresAt: number; kind: "message"; message: MessagePayload }
   | { id: string; expiresAt: number; kind: "typed-data"; typedData: TypedDataPayload };
 
-export type OperationKind = "deploy" | "revoke" | "policy";
+export type OperationKind = "deploy" | "revoke" | "policy" | "activate";
 export type OperationStatus = "awaiting-signature" | "running" | "succeeded" | "failed";
 
 export interface Operation {
@@ -248,6 +248,26 @@ export interface StopLocal {
 export type StopResponse =
   | { status: "held"; hold: HoldView }
   | { status: "stopping" | "stopped" | "failed"; local: StopLocal[]; operation: Operation };
+
+/** `GET /agents/:id/session`, and the `session` of a finished activation: read from chain and WalletsModule. */
+export interface SessionView {
+  status: SessionStatus;
+  keyAddress: string;
+  permissionId: string;
+  issuedAt: number;
+  /** The platform's vault holds the key, so the worker can sign with it. */
+  keyHeld: boolean;
+  state: { installed: boolean; validatorNonce: number; currentNonce: number; validNonceFrom: number };
+  enableNonce: number;
+  /** The account would accept an operation signed by this key now. */
+  acceptedOnChain: boolean;
+}
+
+/** The `result` of a finished `activate` operation. */
+export interface ActivateResult {
+  result: { ok: true; keyAddress: string; permissionId: string; issued: boolean } | { ok: false; reason: string; detail?: string };
+  session: SessionView | null;
+}
 
 /** `GET /agents/:id/revocation`: read from chain and WalletsModule; anyone can check the chain fields. */
 export interface RevocationStatus {

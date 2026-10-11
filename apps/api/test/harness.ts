@@ -9,7 +9,7 @@ import { buildScope, MemorySessionKeyVault, WalletsService, type OwnerSigner } f
 import { FakeChain } from "@monadeum/wallets/testing";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { Test } from "@nestjs/testing";
-import { getAddress, keccak256, toHex, verifyMessage, type Address, type Hex, type LocalAccount } from "viem";
+import { getAddress, keccak256, toHex, verifyMessage, verifyTypedData, type Address, type Hex, type LocalAccount } from "viem";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { ApiModule, buildDependencies, configureApp, memoryStores, postgresStores, roleScoped, type ApiDependencies, type ApiSettings, type ApiStores } from "../src/index.js";
 
@@ -75,6 +75,24 @@ export class SigningFakeChain extends FakeChain {
     if (!(await verifyMessage({ address: input.owner.address, message: { raw: hash }, signature }))) throw new Error("AA24 signature error");
     this.ownerSignatures++;
     return super.prepareOwnerOperation(input);
+  }
+
+  /**
+   * Session approval as Kernel v3.1 asks for it: the owner signs EIP-712 typed data in the account's domain, bound to
+   * the account's current nonce. Refused unless the signature recovers to the owner.
+   */
+  override async approveSession(input: Parameters<FakeChain["approveSession"]>[0]) {
+    const approval = await super.approveSession(input);
+    const typedData = {
+      domain: { name: "Kernel", version: "0.3.1", chainId: 10143, verifyingContract: input.account },
+      types: { Enable: [{ name: "validationId", type: "bytes21" }, { name: "nonce", type: "uint32" }, { name: "hook", type: "address" }, { name: "validatorData", type: "bytes" }, { name: "hookData", type: "bytes" }, { name: "selectorData", type: "bytes" }] },
+      primaryType: "Enable" as const,
+      message: { validationId: `0x02${input.sessionKeyAddress.slice(2)}` as Hex, nonce: approval.enableNonce, hook: "0x00000000000000000000000000000000000000f0" as Address, validatorData: "0x" as Hex, hookData: "0x00" as Hex, selectorData: "0x" as Hex },
+    };
+    const signature = await (input.owner.signer as LocalAccount).signTypedData(typedData);
+    if (!(await verifyTypedData({ ...typedData, address: input.owner.address, signature }))) throw new Error("enable signature does not recover to the owner");
+    this.ownerSignatures++;
+    return { ...approval, enableSignature: signature };
   }
 }
 
@@ -221,7 +239,7 @@ export async function createAgent(app: NestFastifyApplication, auth: Credential,
   return { agentId: res.body.agent.id as string, account: op.result.account as Address };
 }
 
-/** Issues the agent's session key with the owner's own signer, as the onboarding flow will; not an API endpoint yet. */
+/** Issues the agent's session key directly with the owner's own signer, for tests about other flows; the API path is `POST /agents/:id/activate`. */
 export async function issueKey(booted: Booted, agentId: string, owner: PrivateKeyAccount) {
   const signer: OwnerSigner = { address: owner.address, signer: owner };
   const issued = await booted.deps.wallets!.issueSessionKey({ agentId, owner: signer });

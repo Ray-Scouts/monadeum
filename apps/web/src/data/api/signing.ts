@@ -73,6 +73,8 @@ const KIND_SUMMARY: Record<Operation["kind"], (names: string) => string> = {
   revoke: (names) =>
     `Revoke ${names}'s session key on chain: remove its permission from the agent's account so the key cannot sign for it again. The agent's balance stays in its account.`,
   policy: (names) => `Sign a reallocation policy covering ${names}. It allows capital to move only between these agents of yours, within the protocol bounds.`,
+  activate: (names) =>
+    `Activate ${names}: approve a session key that can make only the allowlisted calls from the agent's account, within the spending limits set on chain. You can revoke it at any time with "Stop this agent".`,
 };
 
 const listNames = (names: string[]) => (names.length <= 1 ? (names[0] ?? "this agent") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
@@ -98,6 +100,12 @@ export function explain(operation: Operation, name: (agentId: string) => string 
     const domain = typeof td.domain.name === "string" ? td.domain.name : "an unnamed domain";
     details.push(`Your wallet will show structured data of type ${td.primaryType} from ${domain}${td.domain.chainId !== undefined ? ` on chain ${String(td.domain.chainId)}` : ""}.`);
     if (operation.kind === "policy") details.push("The policy is recorded when you sign. It is not committed on chain until the reallocation contract is deployed.");
+    if (operation.kind === "activate") {
+      details.push(
+        "This is Kernel's enable approval for the agent's account: it names the session key's permission, with the call allowlist and the account's spend policy attached to it. It sends no transaction and costs no gas.",
+        "The permission is written to the account by the agent's first operation. Until then the approval is valid only while the account's nonce stays where it is now.",
+      );
+    }
   }
   if (request) details.push(`The request expires at ${new Date(request.expiresAt).toLocaleTimeString()}; after that the operation fails and you can start it again.`);
   return { summary, details, caution };

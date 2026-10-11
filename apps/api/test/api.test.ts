@@ -362,6 +362,119 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
     });
   });
 
+  describe(`${backend}: activate this agent`, () => {
+    let b: Booted;
+    const owner = newWallet();
+    const stranger = newWallet();
+    let auth: { bearer: string };
+    let strangerAuth: { cookie: string };
+    before(async () => {
+      b = await boot(backend);
+      auth = { bearer: (await privySignIn(b.app, "did:privy:erin", owner)).bearer };
+      strangerAuth = { cookie: (await walletSignIn(b.app, stranger)).cookie };
+    });
+    after(() => b.close());
+
+    it("refuses another user's agent exactly like a missing one", async () => {
+      const { agentId } = await createAgent(b.app, auth, owner, "theirs");
+      const res = await call(b.app, "POST", `/agents/${agentId}/activate`, { auth: strangerAuth });
+      assert.equal(res.status, 404);
+      assert.equal(res.body.error, "not-found");
+      assert.equal((await call(b.app, "GET", `/agents/${agentId}/session`, { auth: strangerAuth })).status, 404);
+      assert.equal((await b.stores.walletStore.get(agentId))!.session, null);
+    });
+
+    it("refuses an agent whose account is not deployed", async () => {
+      const created = await call(b.app, "POST", "/agents", { auth, body: { name: "undeployed", perTxCap: "10", dailyCap: "20" } });
+      assert.equal(created.status, 202);
+      const res = await call(b.app, "POST", `/agents/${created.body.agent.id}/activate`, { auth });
+      assert.equal(res.status, 409);
+      assert.equal(res.body.error, "not-deployed");
+    });
+
+    it("issues the key through the owner's EIP-712 signature, verifies it on chain, then refuses a second activation, and stop works", async () => {
+      const { agentId } = await createAgent(b.app, auth, owner, "activated");
+      assert.equal((await call(b.app, "GET", `/agents/${agentId}/session`, { auth })).body.error, "no-session");
+      const res = await call(b.app, "POST", `/agents/${agentId}/activate`, { auth });
+      assert.equal(res.status, 202);
+      const op = res.body.operation;
+      assert.equal(op.kind, "activate");
+      assert.equal(op.status, "awaiting-signature");
+      assert.equal(op.owner, owner.address);
+      assert.equal(op.signatureRequest.kind, "typed-data");
+      assert.equal(op.signatureRequest.typedData.primaryType, "Enable");
+      // Nothing is kept or recorded until the owner signs.
+      assert.equal(await b.vault.get(agentId), null);
+      assert.equal((await b.stores.walletStore.get(agentId))!.session, null);
+
+      // A signature from another wallet is refused and the request stays open.
+      const wrong = await call(b.app, "POST", `/operations/${op.id}/signature`, { auth, body: { requestId: op.signatureRequest.id, signature: await signRequest(stranger, op.signatureRequest) } });
+      assert.equal(wrong.status, 400);
+      assert.equal(wrong.body.error, "bad-signature");
+
+      const done = await signThrough(b.app, auth, op, owner);
+      assert.equal(done.status, "succeeded");
+      assert.equal(done.result.result.ok, true);
+      assert.equal(done.result.result.issued, true);
+      assert.equal(done.result.session.status, "active");
+      assert.equal(done.result.session.acceptedOnChain, true);
+      assert.equal(done.result.session.state.currentNonce, done.result.session.enableNonce);
+      assert.ok(await b.vault.get(agentId), "the key is in the vault the worker reads");
+
+      const view = (await call(b.app, "GET", `/agents/${agentId}`, { auth })).body.agent;
+      assert.equal(view.session.status, "active");
+      assert.equal(view.session.keyAddress, done.result.result.keyAddress);
+      const session = await call(b.app, "GET", `/agents/${agentId}/session`, { auth });
+      assert.equal(session.status, 200);
+      assert.equal(session.body.acceptedOnChain, true);
+      assert.equal(session.body.keyHeld, true);
+
+      const again = await call(b.app, "POST", `/agents/${agentId}/activate`, { auth });
+      assert.equal(again.status, 409);
+      assert.equal(again.body.error, "already-active");
+
+      // The stop is now available and completes end to end.
+      const stop = await call(b.app, "POST", `/agents/${agentId}/stop`, { auth });
+      assert.equal(stop.status, 200);
+      const stopped = await signThrough(b.app, auth, stop.body.operation, owner);
+      assert.equal(stopped.status, "succeeded");
+      assert.equal(stopped.result[0].result.ok, true);
+      assert.equal(stopped.result[0].status.revoked, true);
+      assert.equal(await b.vault.get(agentId), null);
+      const afterStop = (await call(b.app, "GET", `/agents/${agentId}/session`, { auth })).body;
+      assert.equal(afterStop.status, "revoked");
+      assert.equal(afterStop.acceptedOnChain, false);
+
+      // A stopped agent can be given a new key; the old one stays dead.
+      const rotated = await signThrough(b.app, auth, (await call(b.app, "POST", `/agents/${agentId}/activate`, { auth })).body.operation, owner);
+      assert.equal(rotated.result.result.ok, true);
+      assert.notEqual(rotated.result.result.keyAddress, done.result.result.keyAddress);
+      assert.equal(rotated.result.session.acceptedOnChain, true);
+    });
+
+    it("refuses while a revocation is unverified", async () => {
+      const { agentId } = await createAgent(b.app, auth, owner, "revoking");
+      await issueKey(b, agentId, owner);
+      const stop = await call(b.app, "POST", `/agents/${agentId}/stop`, { auth });
+      assert.equal(stop.body.operation.status, "awaiting-signature");
+      const res = await call(b.app, "POST", `/agents/${agentId}/activate`, { auth });
+      assert.equal(res.status, 409);
+      assert.equal(res.body.error, "revocation-pending");
+    });
+
+    it("answers 503 when no WalletsModule is configured", async () => {
+      const bare = await boot(backend, { wallets: false });
+      try {
+        const { cookie } = await walletSignIn(bare.app, owner);
+        const res = await call(bare.app, "POST", "/agents/anything/activate", { auth: { cookie } });
+        assert.equal(res.status, 503);
+        assert.equal(res.body.error, "wallets-unavailable");
+      } finally {
+        await bare.close();
+      }
+    });
+  });
+
   describe(`${backend}: owner-signed reallocation policy`, () => {
     let b: Booted;
     const owner = newWallet();

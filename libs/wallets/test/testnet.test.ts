@@ -46,8 +46,14 @@ test("testnet: deploy, issue, execute, revoke, and replay on Monad testnet", { s
   const router = config.chain.scope.find((c) => c.label === "kuru-router")!.target;
   // A zero-amount approval to the router: in scope, counted as 0 against the caps.
   const call = { to: settlement, value: 0n, data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [router, 0n] }) };
+  const issuedState = (await service.sessionStatus("testnet-agent"))!;
+  assert.equal(issuedState.acceptedOnChain, true, "the account accepts the enable approval before the first operation");
+  assert.equal(issuedState.state.installed, false);
   const used = await service.execute({ agentId: "testnet-agent", calls: [call] });
   assert.equal(used.ok, true, JSON.stringify(used));
+  const usedState = (await service.sessionStatus("testnet-agent"))!;
+  assert.equal(usedState.state.installed, true, "the first session-key operation installed the permission");
+  assert.equal(usedState.acceptedOnChain, true);
 
   const record = (await store.get("testnet-agent"))!;
   const key = (await vault.get("testnet-agent"))!;

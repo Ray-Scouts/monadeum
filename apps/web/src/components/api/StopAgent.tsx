@@ -162,13 +162,19 @@ export function StopAgent({ agent, onChanged }: { agent: ApiAgent; onChanged(): 
   const onChangedRef = useRef(onChanged);
   onChangedRef.current = onChanged;
 
+  // A new key (the owner activated the agent, or activated it again after a stop) starts a new stop.
+  const keyAddress = agent.session?.keyAddress ?? null;
+  useEffect(() => {
+    setView((v) => (v.state === "stopped" || v.state === "no-session" ? { state: "idle" } : v));
+  }, [keyAddress]);
+
   const readRevocation = useCallback(() => {
     if (!session) return;
     session
       .revocation(agent.id)
       .then((status) => setRevocation({ status }))
       .catch((e: unknown) => setRevocation({ unavailable: revocationText(e) }));
-  }, [session, agent.id]);
+  }, [session, agent.id, keyAddress]);
 
   useEffect(readRevocation, [readRevocation]);
 

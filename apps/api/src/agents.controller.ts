@@ -243,6 +243,49 @@ export class AgentsController {
     });
   }
 
+  /**
+   * "Activate this agent": issues its session key (ARCHITECTURE.md sections 6 and 10, WalletsModule). Only the owner
+   * of a deployed agent can call it. WalletsModule generates the key, holds it in memory only, and asks the owner's
+   * wallet, through the relay, to sign Kernel v3.1's EIP-712 enable data for a permission validator scoped to the
+   * call allowlist with the spend policy as policy and hook. The response carries that signature request; the owner
+   * posts the signature to `POST /operations/:id/signature`. WalletsModule then reads the account's permission state
+   * back from chain and keeps the key, in the vault, only if the chain accepts the approval. The result carries that
+   * state. Refused while a key is active or its revocation is unverified; a revoked key can be replaced.
+   */
+  @Post("agents/:id/activate")
+  @HttpCode(202)
+  async activate(@Param("id") id: string, @Caller() principal: Principal) {
+    const wallets = this.wallets();
+    const { user, owner, agent, wallet, worker } = await ownedAgent(this.deps, principal, id);
+    if (wallet?.deployment.status !== "deployed") fail(409, "not-deployed", "the agent's account is not deployed; deploy it first");
+    if (worker?.status === "retired") fail(409, "agent-retired", "a retired agent is not given a new session key");
+    if (wallet.session?.status === "active") fail(409, "already-active", "the agent already has an active session key");
+    if (wallet.session?.status === "revoking") fail(409, "revocation-pending", "the previous key's revocation is not yet verified on chain; finish the stop first");
+    const operation = await this.deps.relay.start({
+      userId: user.id,
+      kind: "activate",
+      agentIds: [agent.agentId],
+      owner,
+      work: async (signer) => {
+        await this.authorizeSigner(principal, signer);
+        const result = await wallets.issueSessionKey({ agentId: agent.agentId, owner: signer });
+        const session = result.ok ? await wallets.sessionStatus(agent.agentId).catch(() => null) : null;
+        return { result, session };
+      },
+    });
+    return { operation };
+  }
+
+  /** The session key as WalletsModule and the chain see it, including whether the account accepts it now. */
+  @Get("agents/:id/session")
+  async session(@Param("id") id: string, @Caller() principal: Principal) {
+    const wallets = this.wallets();
+    await ownedAgent(this.deps, principal, id);
+    const status = await wallets.sessionStatus(id);
+    if (!status) fail(404, "no-session");
+    return jsonSafe({ agentId: id, ...status });
+  }
+
   /** AuthModule's check that the relaying signer's address is the caller's owner wallet. */
   private async authorizeSigner(principal: Principal, signer: OwnerSigner) {
     const checked = await this.deps.auth.ownerSignerFor(principal, signer);

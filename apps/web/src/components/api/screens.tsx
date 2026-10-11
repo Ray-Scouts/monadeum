@@ -12,6 +12,7 @@ import { WEB_CONFIG } from "@/data/config";
 import { useSession } from "./auth";
 import { ErrorNote, errorText } from "./ErrorNote";
 import { OperationSigner } from "./OperationSigner";
+import { ActivateAgent } from "./ActivateAgent";
 import { StopAgent } from "./StopAgent";
 import { useApiData } from "./useApiData";
 import { AgentFacts, AgentNotServed, ApiX402Split, CapitalFlowView, CapitalHistoryCard, ExplainerCard, PopulationView, SpendsTable } from "./views";
@@ -153,7 +154,16 @@ export function ApiAgent({ id }: { id: string }) {
     <>
       {back}
       <ErrorNote error={error} />
-      <AgentFacts agent={agent} settlement={settlement} actions={<StopAgent agent={agent} onChanged={reload} />} />
+      <AgentFacts
+        agent={agent}
+        settlement={settlement}
+        actions={
+          <>
+            {agent.deployment === "deployed" && agent.session?.status !== "revoking" && <ActivateAgent agent={agent} onChanged={reload} />}
+            <StopAgent agent={agent} onChanged={reload} />
+          </>
+        }
+      />
       {agent.deployment !== "deployed" && <Redeploy agentId={agent.id} name={agent.name} onDone={reload} />}
       <div className="grid gap-4 min-[900px]:grid-cols-2">
         <CapitalHistoryCard agent={agent} settlement={settlement} />
