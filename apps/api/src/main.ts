@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { PrivyTokenVerifier, type PrivyVerifier } from "@monadeum/auth";
 import { openDatabase, type Connect } from "@monadeum/db";
+import { loadWalletsRuntime, type WalletsRuntimeOptions } from "@monadeum/wallets";
 import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { ApiModule, configureApp } from "./app.module.js";
@@ -14,6 +15,8 @@ export interface ApiBootOptions {
   connect?: Connect;
   /** Overrides Privy token verification, for tests. */
   privy?: PrivyVerifier;
+  /** Overrides WalletsModule's chain adapter and the vaults' scrypt parameters, for tests. */
+  wallets?: WalletsRuntimeOptions;
   log?: (message: string) => void;
 }
 
@@ -23,19 +26,29 @@ export interface ApiBootOptions {
  * applies) the migrations and runs on the Postgres stores, under `monadeum_api` and `monadeum_reader`; without it, it
  * runs on in-memory stores and says state is not durable, which it refuses to do with MONADEUM_ENV=production.
  *
- * WalletsModule is not constructed here: it needs a session key vault backed by a secrets manager, shared with the
- * worker, and none exists yet (SECURITY.md section 11). Until it does, agent deployment and the stop endpoint answer
- * 503 in a running process; they are exercised in the tests against WalletsModule's test chain.
+ * WalletsModule is constructed when `WALLETS_CHAIN_ID` is set (`loadWalletsRuntime`), over the API's own wallet store
+ * and sponsorship ledger and the session key vault it shares with the worker, so a revocation here destroys the key the
+ * worker holds. The only vault implemented is the local encrypted file vault, for testnet and local development; it
+ * refuses MONADEUM_ENV=production (SECURITY.md section 11). Without `WALLETS_CHAIN_ID`, agent deployment and the stop
+ * endpoint answer 503.
  */
 export async function bootApi(options: ApiBootOptions) {
   const config = loadApiConfig(options.env);
-  const database = await openDatabase(config.database, { connect: options.connect, log: options.log });
+  const wallets = await loadWalletsRuntime(options.env, options.wallets);
+  let database;
+  try {
+    database = await openDatabase(config.database, { connect: options.connect, log: options.log });
+  } catch (error) {
+    wallets?.close();
+    throw error;
+  }
   try {
     const deps = buildDependencies({
       stores: database ? postgresStores(database.db) : memoryStores(),
       privy: options.privy ?? new PrivyTokenVerifier(config.auth.privy.appId, config.auth.privy.verificationKey),
       authSettings: config.auth.settings,
       settings: config.settings,
+      wallets: wallets ? (stores) => wallets.build(stores.walletStore, stores.ledger) : null,
     });
     const adapter = new FastifyAdapter({ trustProxy: config.trustProxy, bodyLimit: 64 * 1024 });
     const app = configureApp(await NestFactory.create<NestFastifyApplication>(ApiModule.forRoot(deps), adapter, { logger: ["error", "warn"] }), deps);
@@ -47,10 +60,12 @@ export async function bootApi(options: ApiBootOptions) {
       close: async () => {
         await app.close();
         await database?.close();
+        wallets?.close();
       },
     };
   } catch (error) {
     await database?.close();
+    wallets?.close();
     throw error;
   }
 }
@@ -60,7 +75,7 @@ async function main() {
   const booted = await bootApi({ env: process.env, log });
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => void booted.close());
   await booted.app.listen(booted.config.port, booted.config.host);
-  log(`api listening on ${booted.config.host}:${booted.config.port} on ${booted.durable ? "Postgres" : "in-memory"} stores; wallet operations unavailable`);
+  log(`api listening on ${booted.config.host}:${booted.config.port} on ${booted.durable ? "Postgres" : "in-memory"} stores; wallet operations ${booted.deps.wallets ? "configured" : "unavailable (WALLETS_CHAIN_ID is not set)"}`);
 }
 
 const entry = process.argv[1] ?? "";

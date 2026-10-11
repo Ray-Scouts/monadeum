@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { DatabaseConfigError, migrate, pgliteDatabase, type Connect } from "@monadeum/db";
 import { REALLOCATION_PRODUCTION_ACK, ReallocationSwitchError } from "@monadeum/reallocation/switch";
+import { FakeChain } from "@monadeum/wallets/testing";
 import { bootApi, loadApiConfig } from "../src/index.js";
 import { FakePrivy, newWallet } from "./harness.js";
 
@@ -91,4 +95,89 @@ test("the reallocation switch is off unless set, and production refuses it on wi
   await assert.rejects(bootApi({ env: prod, privy: new FakePrivy(), connect }), /refusing to start without MONADEUM_REALLOCATION_PRODUCTION_ACK/);
   assert.equal(connected, false, "refused before the database is opened");
   assert.equal(loadApiConfig({ ...prod, MONADEUM_REALLOCATION_PRODUCTION_ACK: REALLOCATION_PRODUCTION_ACK }).settings.reallocation.enabled, true);
+});
+
+// WalletsModule over the local encrypted vault (testnet and local development only).
+
+const walletsEnv = (root: string) => ({
+  WALLETS_CHAIN_ID: "10143",
+  WALLETS_BUNDLER_URL: "https://bundler.example",
+  WALLETS_PAYMASTER_URL: "https://paymaster.example",
+  WALLETS_SETTLEMENT_ASSET: "0x00000000000000000000000000000000000000a1",
+  WALLETS_KURU_ROUTER: "0x00000000000000000000000000000000000000b1",
+  WALLETS_KURU_ROUTER_SELECTORS: "0x12345678",
+  WALLETS_REALLOCATION_CONTRACT: "0x00000000000000000000000000000000000000c1",
+  WALLETS_REALLOCATION_SELECTORS: "0x9abcdef0",
+  WALLETS_SPONSORED_OPERATIONS: "10",
+  WALLETS_SPONSORED_GAS_WEI: "100000",
+  WALLETS_SPEND_POLICY_ADDRESS: "0x00000000000000000000000000000000000000f0",
+  WALLETS_SESSION_VAULT_DIR: path.join(root, "session"),
+  WALLETS_SESSION_VAULT_PASSPHRASE: "a testnet passphrase, not a real one",
+});
+const cheap = { N: 2 ** 10, r: 8, p: 1 };
+
+test("without WALLETS_CHAIN_ID wallet operations stay unavailable, and /health says so", async () => {
+  const booted = await bootApi({ env, privy: new FakePrivy() });
+  try {
+    await ready(booted);
+    assert.equal(booted.deps.wallets, null);
+    const health = await booted.app.inject({ method: "GET", url: "/health" });
+    assert.equal(health.statusCode, 200);
+    assert.deepEqual(JSON.parse(health.body), { status: "ok", wallets: "unavailable" });
+  } finally {
+    await booted.close();
+  }
+});
+
+test("with WALLETS_* and a file vault, agent creation no longer answers 503 and the vault directory is created with mode 0700", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "monadeum-api-vault-"));
+  const booted = await bootApi({ env: { ...env, ...walletsEnv(root) }, privy: new FakePrivy(), wallets: { chain: new FakeChain(), scrypt: cheap } });
+  try {
+    await ready(booted);
+    assert.ok(booted.deps.wallets);
+    assert.deepEqual(JSON.parse((await booted.app.inject({ method: "GET", url: "/health" })).body), { status: "ok", wallets: "configured" });
+    const account = newWallet();
+    const challenge = await booted.app.inject({ method: "POST", url: "/auth/wallet/challenge", payload: { address: account.address } });
+    const { nonce, message } = JSON.parse(challenge.body);
+    const verified = await booted.app.inject({
+      method: "POST",
+      url: "/auth/wallet/verify",
+      headers: { origin: "https://app.example.test" },
+      payload: { nonce, signature: await account.signMessage({ message }) },
+    });
+    const cookie = /monadeum_session=[^;]+/.exec(String(verified.headers["set-cookie"]))![0];
+    const created = await booted.app.inject({
+      method: "POST",
+      url: "/agents",
+      headers: { cookie, origin: "https://app.example.test" },
+      payload: { name: "first", perTxCap: "1000", dailyCap: "5000" },
+    });
+    assert.notEqual(created.statusCode, 503, created.body);
+    assert.ok(created.statusCode < 300, created.body);
+    assert.equal((await stat(path.join(root, "session"))).mode & 0o777, 0o700);
+    assert.ok((await readdir(path.join(root, "session"))).includes("vault.json"));
+  } finally {
+    await booted.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("WALLETS_CHAIN_ID without a vault, or a file vault with MONADEUM_ENV=production, refuses to start", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "monadeum-api-vault-"));
+  try {
+    const { WALLETS_SESSION_VAULT_DIR: _dir, WALLETS_SESSION_VAULT_PASSPHRASE: _pw, ...noVault } = walletsEnv(root);
+    await assert.rejects(bootApi({ env: { ...env, ...noVault }, privy: new FakePrivy(), wallets: { chain: new FakeChain() } }), /no session key vault/);
+    let connected = false;
+    const connect: Connect = () => {
+      connected = true;
+      throw new Error("must not connect");
+    };
+    await assert.rejects(
+      bootApi({ env: { ...env, ...walletsEnv(root), MONADEUM_ENV: "production", DATABASE_URL: "postgres://test" }, privy: new FakePrivy(), connect, wallets: { chain: new FakeChain(), scrypt: cheap } }),
+      /testnet and local development only/,
+    );
+    assert.equal(connected, false, "refused before the database is opened");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

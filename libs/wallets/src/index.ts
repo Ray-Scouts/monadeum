@@ -27,6 +27,10 @@ export type { Call, ScopeTargets } from "./scope.js";
 export { ZeroDevChain, entryPoint, kernelVersion, maxOperationCost, permissionValidationId, sessionPolicies, spendPolicyAbi, spendPolicyHook } from "./zerodev.js";
 export type { SpendPolicyConfig, ZeroDevChainConfig } from "./zerodev.js";
 export { WalletsConfigError, loadWalletsConfig } from "./config.js";
+export { DEFAULT_SCRYPT, FileSessionKeyVault, FileVaultError, MIN_PASSPHRASE_LENGTH, loadFileVaults } from "./file-vault.js";
+export type { FileVaultOptions, FileVaults, ScryptParams, VaultPurpose } from "./file-vault.js";
+export { loadWalletsRuntime } from "./runtime.js";
+export type { WalletsRuntime, WalletsRuntimeOptions } from "./runtime.js";
 export type { WalletsConfig, X402WalletConfig } from "./config.js";
 export {
   X402Error,

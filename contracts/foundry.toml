@@ -9,6 +9,8 @@ evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
 bytecode_hash = "none"
+# script/DeployTestnet.s.sol writes deployments/monad-testnet.latest.json and nothing else.
+fs_permissions = [{ access = "read-write", path = "./deployments" }]
 
 [profile.default.fuzz]
 runs = 1000

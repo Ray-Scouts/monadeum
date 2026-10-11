@@ -1,0 +1,249 @@
+# Monadeum on one VPS, Monad testnet only. See deploy/README.md for the runbook.
+#
+#   docker compose --env-file deploy/.env.testnet -f deploy/docker-compose.yml up -d --build
+#
+# Every value comes from deploy/.env.testnet (copied from deploy/.env.testnet.example). Each service receives only the
+# variables it reads, so no process sees another process's database password. Postgres and Redis sit on an internal
+# network with no published port; only web (3000) and api (3001) are published, on BIND_ADDRESS (127.0.0.1 by default)
+# for a TLS reverse proxy in front of them (the optional `proxy` profile runs Caddy for that).
+
+name: monadeum
+
+x-server: &server
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+    target: server
+  image: monadeum-server:testnet
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+x-wallets-env: &wallets-env
+  WALLETS_CHAIN_ID: "10143"
+  WALLETS_RPC_URL: ${MONAD_RPC_URL:?set MONAD_RPC_URL}
+  WALLETS_BUNDLER_URL: ${WALLETS_BUNDLER_URL:?set WALLETS_BUNDLER_URL}
+  WALLETS_PAYMASTER_URL: ${WALLETS_PAYMASTER_URL:-}
+  WALLETS_SPEND_POLICY_ADDRESS: ${SPEND_POLICY_ADDRESS:?set SPEND_POLICY_ADDRESS}
+  WALLETS_SETTLEMENT_ASSET: ${SETTLEMENT_ASSET:?set SETTLEMENT_ASSET}
+  WALLETS_KURU_ROUTER: ${WALLETS_KURU_ROUTER:?set WALLETS_KURU_ROUTER}
+  WALLETS_KURU_ROUTER_SELECTORS: ${WALLETS_KURU_ROUTER_SELECTORS:?set WALLETS_KURU_ROUTER_SELECTORS}
+  WALLETS_REALLOCATION_CONTRACT: ${REALLOCATION_CONTRACT:?set REALLOCATION_CONTRACT}
+  WALLETS_REALLOCATION_SELECTORS: ${WALLETS_REALLOCATION_SELECTORS:?set WALLETS_REALLOCATION_SELECTORS}
+  WALLETS_TRADED_ASSETS: ${WALLETS_TRADED_ASSETS:-}
+  WALLETS_SPONSORED_OPERATIONS: ${WALLETS_SPONSORED_OPERATIONS:?set WALLETS_SPONSORED_OPERATIONS}
+  WALLETS_SPONSORED_GAS_WEI: ${WALLETS_SPONSORED_GAS_WEI:?set WALLETS_SPONSORED_GAS_WEI}
+  WALLETS_X402_VALIDATOR_ADDRESS: ${WALLETS_X402_VALIDATOR_ADDRESS:-}
+  WALLETS_X402_PAYEES: ${WALLETS_X402_PAYEES:-}
+  WALLETS_X402_MAX_VALUE: ${WALLETS_X402_MAX_VALUE:-50000}
+  WALLETS_X402_PAYMENTS_PER_EPOCH: ${WALLETS_X402_PAYMENTS_PER_EPOCH:-4}
+  WALLETS_X402_MAX_VALIDITY: ${WALLETS_X402_MAX_VALIDITY:-300}
+  # The local encrypted vaults (testnet only), on the shared `vault` volume, one directory each.
+  WALLETS_SESSION_VAULT_DIR: /var/lib/monadeum/vault/session
+  WALLETS_SESSION_VAULT_PASSPHRASE_FILE: /run/secrets/session_vault_passphrase
+  WALLETS_X402_VAULT_DIR: /var/lib/monadeum/vault/x402
+  WALLETS_X402_VAULT_PASSPHRASE_FILE: /run/secrets/x402_vault_passphrase
+
+x-common-env: &common-env
+  # Testnet runs as development: the file vault and the worker's unwired tick runner both refuse production by design.
+  MONADEUM_ENV: development
+  DATABASE_MIGRATIONS: verify
+  MONADEUM_REALLOCATION_ENABLED: ${MONADEUM_REALLOCATION_ENABLED:-false}
+
+services:
+  postgres:
+    image: postgres:17.6-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?set POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRES_DB: monadeum
+      # Read once, by postgres/init/01-owner.sh, on the first start of an empty data directory.
+      DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD:?set DB_OWNER_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d monadeum"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  redis:
+    image: redis:8.2.2-bookworm
+    restart: unless-stopped
+    # AOF persistence for the BullMQ queue, and noeviction, which BullMQ requires. Redis is reachable only on the
+    # internal network; the password is defence in depth.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    volumes:
+      - redisdata:/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  # One-shot: applies the migrations as the owning role, then creates or updates the three login roles as members of
+  # the group roles the migrations created. Every other service waits for it to exit 0, then verifies the schema.
+  migrate:
+    <<: *server
+    restart: "no"
+    command: ["node", "libs/db/dist/src/migrate-main.js"]
+    environment:
+      DATABASE_URL: postgres://monadeum_owner:${DB_OWNER_PASSWORD}@postgres:5432/monadeum
+      DB_API_PASSWORD: ${DB_API_PASSWORD:?set DB_API_PASSWORD}
+      DB_WORKER_PASSWORD: ${DB_WORKER_PASSWORD:?set DB_WORKER_PASSWORD}
+      DB_INDEXER_PASSWORD: ${DB_INDEXER_PASSWORD:?set DB_INDEXER_PASSWORD}
+    networks: [backend]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *server
+    command: ["node", "apps/api/dist/src/main.js"]
+    environment:
+      <<: [*common-env, *wallets-env]
+      DATABASE_URL: postgres://monadeum_api_login:${DB_API_PASSWORD}@postgres:5432/monadeum
+      API_HOST: 0.0.0.0
+      API_PORT: "3001"
+      API_TRUST_PROXY: ${API_TRUST_PROXY:-true}
+      API_MAX_PER_TX_CAP: ${API_MAX_PER_TX_CAP:?set API_MAX_PER_TX_CAP}
+      API_MAX_DAILY_CAP: ${API_MAX_DAILY_CAP:?set API_MAX_DAILY_CAP}
+      API_AGENT_PAIR: ${API_AGENT_PAIR:?set API_AGENT_PAIR}
+      API_POPULATION_CAP: ${API_POPULATION_CAP:-50}
+      API_SETTLEMENT_DECIMALS: ${SETTLEMENT_DECIMALS:-6}
+      API_REALLOCATION_CONTRACT: ${REALLOCATION_CONTRACT}
+      AUTH_PRIVY_APP_ID: ${PRIVY_APP_ID:?set PRIVY_APP_ID}
+      AUTH_PRIVY_VERIFICATION_KEY: ${PRIVY_VERIFICATION_KEY:?set PRIVY_VERIFICATION_KEY}
+      AUTH_CHAIN_ID: "10143"
+      AUTH_SIWE_DOMAIN: ${WEB_DOMAIN:?set WEB_DOMAIN}
+      AUTH_SIWE_URI: https://${WEB_DOMAIN}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:3001:3001"
+    volumes:
+      - vault:/var/lib/monadeum/vault
+    secrets: [session_vault_passphrase, x402_vault_passphrase]
+    networks: [backend, egress]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  worker:
+    <<: *server
+    command: ["node", "apps/worker/dist/src/main.js"]
+    environment:
+      <<: [*common-env, *wallets-env]
+      DATABASE_URL: postgres://monadeum_worker_login:${DB_WORKER_PASSWORD}@postgres:5432/monadeum
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      WORKER_TICK_INTERVAL_MS: ${WORKER_TICK_INTERVAL_MS:?set WORKER_TICK_INTERVAL_MS}
+      WORKER_SETTLEMENT_ASSET_ADDRESS: ${SETTLEMENT_ASSET}
+      WORKER_X402_PAYER_ENABLED: ${WORKER_X402_PAYER_ENABLED:-false}
+      WORKER_X402_CHAIN_ID: "10143"
+    volumes:
+      - vault:/var/lib/monadeum/vault
+    secrets: [session_vault_passphrase, x402_vault_passphrase]
+    networks: [backend, egress]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    # No healthcheck: the worker serves no port. It exits on a fatal error and `restart` brings it back.
+
+  indexer:
+    <<: *server
+    command: ["node", "apps/indexer/dist/src/main.js"]
+    environment:
+      MONADEUM_ENV: development
+      DATABASE_MIGRATIONS: verify
+      DATABASE_URL: postgres://monadeum_indexer_login:${DB_INDEXER_PASSWORD}@postgres:5432/monadeum
+      INDEXER_CHAIN_ID: "10143"
+      INDEXER_RPC_URL: ${MONAD_RPC_URL}
+      INDEXER_START_BLOCK: ${INDEXER_START_BLOCK:?set INDEXER_START_BLOCK}
+      INDEXER_SPEND_POLICY_ADDRESS: ${SPEND_POLICY_ADDRESS}
+      INDEXER_SETTLEMENT_ASSET_ADDRESS: ${SETTLEMENT_ASSET}
+    networks: [backend, egress]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    # No healthcheck: the indexer serves no port. It exits on a fatal error (a deep reorg included) and restarts.
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
+      args:
+        NEXT_PUBLIC_MONADEUM_DATA_SOURCE: api
+        NEXT_PUBLIC_MONADEUM_API_URL: https://${API_DOMAIN:?set API_DOMAIN}
+        NEXT_PUBLIC_PRIVY_APP_ID: ${PRIVY_APP_ID}
+        NEXT_PUBLIC_MONADEUM_SETTLEMENT_SYMBOL: USDC
+        NEXT_PUBLIC_MONADEUM_SETTLEMENT_DECIMALS: ${SETTLEMENT_DECIMALS:-6}
+    image: monadeum-web:testnet
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:3000:3000"
+    networks: [egress]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then((r) => process.exit(r.status < 500 ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+
+  # Optional TLS reverse proxy: `--profile proxy`. Caddy obtains certificates for WEB_DOMAIN and API_DOMAIN itself.
+  proxy:
+    image: caddy:2.10.2
+    profiles: [proxy]
+    restart: unless-stopped
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [egress]
+    depends_on:
+      web: { condition: service_started }
+      api: { condition: service_started }
+
+secrets:
+  session_vault_passphrase:
+    file: ./secrets/session_vault_passphrase
+  x402_vault_passphrase:
+    file: ./secrets/x402_vault_passphrase
+
+volumes:
+  pgdata:
+  redisdata:
+  vault:
+  caddy_data:
+  caddy_config:
+
+networks:
+  # No route out: Postgres and Redis are reachable only from the services attached to it.
+  backend:
+    internal: true
+  egress:

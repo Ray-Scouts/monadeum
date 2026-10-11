@@ -1,2 +1,6 @@
 out/
 cache/
+# Foundry broadcast and dry-run records, and the generated deployment output. The committed record of a deployment is
+# deployments/monad-testnet.json.
+broadcast/
+deployments/*.latest.json

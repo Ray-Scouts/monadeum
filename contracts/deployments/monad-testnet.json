@@ -1,0 +1,30 @@
+{
+  "chainId": 10143,
+  "status": "not deployed",
+  "note": "The committed record of the Monad testnet deployment. contracts/script/deploy-testnet.sh writes deployments/monad-testnet.latest.json (not committed) on every run; after a broadcast, copy its contracts, deployer, and the inclusion block of the first deployment here, set status to deployed, and commit. Addresses are public.",
+  "deployer": "0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3",
+  "inputs": {
+    "settlementAsset": "0x534b2f3A21130d7a60830c2Df862319e593943A3",
+    "settlementDecimals": 6,
+    "reallocationOperator": "0x9671dB7Ab4Afa09fe76402Ce127896b166029897",
+    "reallocationAdmin": "0x9671dB7Ab4Afa09fe76402Ce127896b166029897",
+    "minEvaluationInterval": 36000
+  },
+  "contracts": {
+    "AgentSpendPolicy": null,
+    "AgentReallocation": null,
+    "X402PaymentValidator": null
+  },
+  "deploymentBlock": null,
+  "safe": {
+    "address": "0x9671dB7Ab4Afa09fe76402Ce127896b166029897",
+    "version": "1.4.1+L2",
+    "threshold": 2,
+    "owners": [
+      "0x921791B37eaD3d7cd24C8207238edA4Af70cbC84",
+      "0xce4Ac95C8f5D4F102Bc97B22165F772625BDe684",
+      "0x61358B4aC51b5E763e0fb8ba5fED0bDf69a34031"
+    ],
+    "checked": "2026-10-11, getThreshold, getOwners, and VERSION on chain, and the Safe transaction service"
+  }
+}
