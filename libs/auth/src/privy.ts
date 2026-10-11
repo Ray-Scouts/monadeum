@@ -84,6 +84,11 @@ export class PrivyTokenVerifier implements PrivyVerifier {
       embeddedWallets.push(getAddress(account.address));
     }
     if (unrecognized.size > 0) console.warn(`privy identity token: unrecognized embedded wallet client types: ${[...unrecognized].join(", ")}`);
+    if (embeddedWallets.length === 0) {
+      // Shapes only, never addresses: enough to see why no embedded wallet was found.
+      const shapes = rawLinkedAccounts(token).map((a) => `${String(a.type)}/${String(a.chain_type ?? "-")}/${String(a.wallet_client_type ?? "-")}`);
+      console.warn(`privy identity token: no embedded Ethereum wallet; linked accounts: [${shapes.join(", ")}]`);
+    }
     return { privyUserId: user.id, isGuest: user.is_guest, embeddedWallets };
   }
 }
