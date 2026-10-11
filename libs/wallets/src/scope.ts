@@ -3,7 +3,8 @@ import { getAddress, isAddress, isAddressEqual, isHex, toFunctionSelector, type 
 
 // The session key scope is the call allowlist of SECURITY.md section 1 and ARCHITECTURE.md section 16.3: Kuru's
 // router, the owner-scoped reallocation contract, `transfer` and `approve` on the settlement asset, and `approve` on
-// each traded asset (the ERC-20 base a close sells), nothing else. The x402 facilitator is not a call target (16.3, x402 signature path), so it is not in scope.
+// each traded asset (the ERC-20 base a close sells), nothing else. The x402 facilitator is not a call target (16.3,
+// x402 signature path), so it is not in scope.
 // The reallocation entry carries the allowlist label "reallocation" (ARCHITECTURE.md sections 16.1 and 16.5). Its only
 // selector in production is AgentReallocation's `reallocate`, so the session key cannot reach the contract's owner or
 // operator functions.
