@@ -1,4 +1,4 @@
-import type { BlockHash, ChainEvent, EventFilter, ReadModelStore, SyncBatch } from "@monadeum/read-model";
+import { SettlementAssetMismatchError, type BlockHash, type ChainEvent, type EventFilter, type ReadModelStore, type SyncBatch } from "@monadeum/read-model";
 import type { Address, Hex } from "viem";
 import type { Database } from "./database.js";
 
@@ -102,6 +102,19 @@ export class PgReadModelStore implements ReadModelStore {
   async finalizedThrough(): Promise<bigint | null> {
     const { rows } = await this.db.query<{ n: string }>("SELECT block_number::text AS n FROM indexer_cursor WHERE id = 1 AND finalized");
     return rows[0] ? BigInt(rows[0].n) : null;
+  }
+
+  async settlementAsset(): Promise<Address | null> {
+    const { rows } = await this.db.query<{ asset: string }>("SELECT settlement_asset AS asset FROM indexer_settings WHERE id = 1");
+    return rows[0] ? (rows[0].asset as Address) : null;
+  }
+
+  /** Inserts the row once (migration 0010); a later call with another address throws and changes nothing. */
+  async recordSettlementAsset(asset: Address): Promise<void> {
+    const lower = asset.toLowerCase() as Address;
+    await this.db.query("INSERT INTO indexer_settings (id, settlement_asset) VALUES (1, $1) ON CONFLICT (id) DO NOTHING", [lower]);
+    const recorded = await this.settlementAsset();
+    if (recorded !== lower) throw new SettlementAssetMismatchError(recorded ?? ("none" as Address), lower);
   }
 
   async events(filter: EventFilter = {}): Promise<ChainEvent[]> {

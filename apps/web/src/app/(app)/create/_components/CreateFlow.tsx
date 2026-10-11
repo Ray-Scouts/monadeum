@@ -6,6 +6,7 @@ import { riskBand } from "@monadeum/fitness/math";
 import { PROTOCOL } from "monadeum-simulation/protocol";
 import { Card, Identicon, SampleBadge } from "@/components/ui";
 import { Icon, type IconName } from "@/components/Icon";
+import { FUNDING_RULE } from "@/data/funding";
 import { usd } from "@/lib/format";
 import { AMOUNT_PRESETS, parseAmount, PRESETS, type Draft, type Model } from "./draft";
 import { identicon, NICHE_COUNT, Preview } from "./Preview";
@@ -373,6 +374,9 @@ export function CreateFlow({ pairs }: { pairs: readonly string[] }) {
                 <b>No MON needed.</b> The platform sponsors gas to create the agent account and its first trades, up to a budget.
               </span>
             </div>
+            <p role="note" className="mt-3 rounded-[14px] border border-warn bg-warn-wash px-4 py-3.5 text-sm text-warn">
+              <b>What counts as funding.</b> {FUNDING_RULE}
+            </p>
           </>
         )}
 

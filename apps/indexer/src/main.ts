@@ -32,6 +32,14 @@ export async function bootIndexer(options: IndexerBootOptions) {
   const config = loadIndexerConfig(options.env);
   const database = await openDatabase(loadDatabaseSettings(options.env), { connect: options.connect, log: options.log });
   const store = database ? new PgReadModelStore(database.db) : new InMemoryReadModelStore();
+  // Records the settlement asset the funding rows come from, so the worker can check its own against it (libs/db
+  // 0010). A read-model that records a different asset refuses: its rows would mix two tokens.
+  try {
+    await store.recordSettlementAsset(config.settlementAsset);
+  } catch (error) {
+    await database?.close();
+    throw error;
+  }
   const built = createIndexer(config, options.chain, store);
   return {
     ...built,

@@ -178,6 +178,8 @@ describe("create in api mode", () => {
     expect(html).toContain("Trades WETH/USDC");
     expect(html).toContain("Genome hash 0xfeed");
     expect(html).toContain("will not trade until it is funded");
+    expect(html).toContain("Only USDC sent from your owner wallet");
+    expect(html).toContain("only once that account is deployed");
     expect(html).toContain("Per-transaction cap (USDC)");
     expect(html).toContain("population cap");
     expect(html).not.toMatch(/riskTolerance|entryThreshold/);

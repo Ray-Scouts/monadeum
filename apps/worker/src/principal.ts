@@ -1,6 +1,7 @@
 import type { AgentStore } from "@monadeum/agent-registry";
 import { principalFrom, type ReadModelReader } from "@monadeum/read-model";
 import type { Address } from "viem";
+import { WorkerConfigError } from "./config.js";
 import type { AgentLocks } from "./consumer/locks.js";
 
 export interface PrincipalSyncResult {
@@ -10,12 +11,31 @@ export interface PrincipalSyncResult {
   updated: { agentId: string; principal: bigint }[];
   /** Agents left for the next run: locked, or already computed through a later block. */
   skipped: string[];
+  /** Why nothing was computed, when nothing was. */
+  reason?: "not-finalized" | "settlement-asset-unrecorded" | "settlement-asset-mismatch";
+}
+
+/**
+ * The startup check: the settlement asset this worker counts must be the one the indexer recorded (libs/db 0010).
+ * Throws on a mismatch, because then no row would ever count and no agent would ever be funded, silently. When the
+ * indexer has not recorded one yet, it returns a message instead; the principal job then writes nothing until it has.
+ */
+export async function checkSettlementAsset(readModel: Pick<ReadModelReader, "settlementAsset">, configured: Address): Promise<string> {
+  const recorded = await readModel.settlementAsset();
+  const mine = configured.toLowerCase();
+  if (recorded === null) return `the indexer has not recorded a settlement asset yet: principals wait until it records ${mine}`;
+  if (recorded.toLowerCase() !== mine) {
+    throw new WorkerConfigError(`WORKER_SETTLEMENT_ASSET_ADDRESS is ${mine} but the indexer records ${recorded}: no funding transfer would ever count`);
+  }
+  return `settlement asset ${mine} matches the indexer's`;
 }
 
 /**
  * Recomputes every agent's principal from the read-model and writes it to the agent record (EVOLUTION.md section 1.1,
  * ARCHITECTURE.md section 6.1). Run by the worker's repeatable `principal` job.
  *
+ * - The right token only: it does nothing unless the read-model records the same settlement asset it is configured
+ *   with (`checkSettlementAsset`).
  * - Finalized data only: it reads the read-model's finalized bound and nothing above it, and does nothing when the
  *   read-model has no finalized bound (empty, or ever filled under the indexer's confirmations rule).
  * - Recomputed, never incremented: the value is `principalFrom` over every row of the account up to that bound, so a
@@ -43,9 +63,13 @@ export class PrincipalSync {
 
   async run(): Promise<PrincipalSyncResult> {
     const { agents, readModel, settlementAsset, locks, lockTtlMs } = this.deps;
+    // Checked on every run, not only at start: the indexer may record its asset after the worker started.
+    const recorded = await readModel.settlementAsset();
+    if (recorded === null) return { asOf: null, updated: [], skipped: [], reason: "settlement-asset-unrecorded" };
+    if (recorded.toLowerCase() !== settlementAsset.toLowerCase()) return { asOf: null, updated: [], skipped: [], reason: "settlement-asset-mismatch" };
     const asOf = await readModel.finalizedThrough();
+    if (asOf === null) return { asOf: null, updated: [], skipped: [], reason: "not-finalized" };
     const result: PrincipalSyncResult = { asOf, updated: [], skipped: [] };
-    if (asOf === null) return result;
     for (const { agentId } of await agents.list()) {
       const release = await locks.acquire([agentId], lockTtlMs);
       if (!release) {

@@ -57,5 +57,7 @@ describe("agent creation", () => {
     expect(lines).toContain("Buys no paid information");
     expect(lines).not.toMatch(/riskTolerance|executionFrequency|entryThreshold/);
     expect(FUNDING_NOTE).toMatch(/will not trade until it is funded/);
+    expect(FUNDING_NOTE).toContain("Only USDC sent from your owner wallet");
+    expect(FUNDING_NOTE).toContain("only once that account is deployed");
   });
 });

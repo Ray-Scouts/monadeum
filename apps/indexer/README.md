@@ -31,7 +31,7 @@ The read path described in `ARCHITECTURE.md` sections 1, 9 and 10: a separately 
 | `INDEXER_RPC_URL` | no | Monad RPC, http(s). Defaults to viem's Monad testnet RPC. |
 | `INDEXER_START_BLOCK` | yes | First block indexed when the store has no cursor: the spend policy's deployment block. |
 | `INDEXER_SPEND_POLICY_ADDRESS` | yes | Deployed `AgentSpendPolicy`. |
-| `INDEXER_SETTLEMENT_ASSET_ADDRESS` | yes | The USDC contract whose transfers to and from followed accounts are indexed. The worker's `WORKER_SETTLEMENT_ASSET_ADDRESS` must name the same contract. |
+| `INDEXER_SETTLEMENT_ASSET_ADDRESS` | yes | The USDC contract whose transfers to and from followed accounts are indexed. The worker's `WORKER_SETTLEMENT_ASSET_ADDRESS` must name the same contract. The indexer records it in the read-model at start (`indexer_settings`, `libs/db` migration 0010), the worker refuses to start on a mismatch, and the indexer refuses to start over a read-model that records a different one. |
 | `INDEXER_ENTRY_POINT_ADDRESS` | no | Defaults to the EntryPoint v0.7 address from viem. |
 | `INDEXER_KERNEL_FACTORY_ADDRESS` | no | Factory an account must be deployed through to be followed. Defaults to Kernel v3.1's meta factory from `@zerodev/sdk` 5.5.10's address map (`0xd703...42d5`), the factory `createKernelAccount` names by default, as WalletsModule uses it. |
 | `INDEXER_SYNC_TO` | no | `finalized` (default) or `confirmations`. Only a read-model filled entirely under `finalized` reports a finalized bound, so under `confirmations` the worker never changes a principal. |

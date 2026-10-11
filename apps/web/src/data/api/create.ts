@@ -1,5 +1,6 @@
 import { parseUnits } from "viem";
 import type { WebConfig } from "../config";
+import { FUNDING_RULE } from "../funding";
 import { ApiError } from "./client";
 import type { ApiGenome, CreateAgentInput, GenomePresetView } from "./types";
 
@@ -30,8 +31,7 @@ export function genomeSummary(genome: ApiGenome): string[] {
   return strategySummary(genome, genome.assetUniverse.join(", "));
 }
 
-export const FUNDING_NOTE =
-  "The agent will not trade until it is funded. Funding is not built yet: a new agent starts with a principal of 0, and the worker does not tick or evaluate an unfunded agent.";
+export const FUNDING_NOTE = `The agent will not trade until it is funded: a new agent starts with a principal of 0, and the worker does not tick or evaluate an unfunded agent. ${FUNDING_RULE} The in-app allocation step is not built yet.`;
 
 export const PRESET_CAVEAT = "A preset is a starting configuration, not a tested edge: no strategy is known to be profitable.";
 

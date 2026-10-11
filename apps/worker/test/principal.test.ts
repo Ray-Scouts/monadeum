@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import type { AgentRecord } from "@monadeum/agent-registry";
-import { PgAgentStore, PgReadModelStore, migrate, pgliteDatabase, type Database, type Transaction } from "@monadeum/db";
+import { PgAgentStore, PgReadModelStore, migrate, pgliteDatabase, type Connect, type Database, type Transaction } from "@monadeum/db";
 import {
   ACCOUNT_DEPLOYED,
   InMemoryReadModelStore,
@@ -16,7 +16,9 @@ import type { Address, Hex } from "viem";
 import { WorkerJobHandlers } from "../src/consumer/handlers.js";
 import { MemoryAgentLocks } from "../src/consumer/locks.js";
 import { MemoryJobQueue } from "../src/consumer/queue.js";
-import { PrincipalSync } from "../src/principal.js";
+import { PrincipalSync, checkSettlementAsset } from "../src/principal.js";
+import { WorkerConfigError } from "../src/config.js";
+import { runWorker } from "../src/main.js";
 import { UNIT, world } from "./harness.js";
 
 // The principal job (EVOLUTION.md section 1.1): it recomputes each agent's principal from the finalized funding rows
@@ -65,10 +67,11 @@ const db = pgliteDatabase(pg);
 await migrate(db);
 after(() => pg.close());
 
-async function fresh() {
-  await db.query("TRUNCATE chain_events, indexer_blocks, indexer_cursor, indexer_tracked_accounts, worker_agent_states, worker_agents");
+async function fresh(recordAsset: Address | null = USDC) {
+  await db.query("TRUNCATE chain_events, indexer_blocks, indexer_cursor, indexer_tracked_accounts, indexer_settings, worker_agent_states, worker_agents");
   await new PgAgentStore(asRole(db, "monadeum_api")).add(record("1"));
   const indexer = new PgReadModelStore(asRole(db, "monadeum_indexer"));
+  if (recordAsset) await indexer.recordSettlementAsset(recordAsset);
   const agents = new PgAgentStore(asRole(db, "monadeum_worker"));
   const locks = new MemoryAgentLocks();
   const sync = new PrincipalSync({ agents, readModel: new PgReadModelStore(asRole(db, "monadeum_worker")), settlementAsset: USDC, locks, lockTtlMs: 60_000 });
@@ -105,7 +108,7 @@ test("writes nothing without a finalized bound, and never a value computed throu
   const { indexer, agents, sync } = await fresh();
   // Rows read under the confirmations rule are not finalized data.
   await indexer.apply(batch(10, [deployed(5), transferIn(6, OWNER, 50n * UNIT)], false));
-  assert.deepEqual(await sync.run(), { asOf: null, updated: [], skipped: [] });
+  assert.deepEqual(await sync.run(), { asOf: null, updated: [], skipped: [], reason: "not-finalized" });
   assert.equal((await agents.get("1"))!.principal, 0n);
 
   // A record computed through block 100 is not overwritten from a read-model whose finalized bound is 20.
@@ -132,6 +135,7 @@ test("end to end: an unfunded agent does not trade; a finalized owner deposit, t
   await w.stores.agents.update({ ...created, principal: 0n });
   const { worker } = await w.boot();
   const readModel = new InMemoryReadModelStore();
+  await readModel.recordSettlementAsset(M.quote);
   const locks = new MemoryAgentLocks();
   const handlers = new WorkerJobHandlers({
     agents: w.stores.agents, runner: worker, queue: new MemoryJobQueue(), locks,
@@ -162,4 +166,36 @@ test("end to end: an unfunded agent does not trade; a finalized owner deposit, t
   const tick = await w.stores.ticks.get("1:2");
   assert.ok(tick, "a funded agent ticks");
   assert.ok(w.sessionOps().length > 0, "and trades");
+});
+
+test("the job writes nothing until the indexer records the settlement asset, and nothing when it records another", async () => {
+  const unrecorded = await fresh(null);
+  await unrecorded.indexer.apply(batch(10, [deployed(5), transferIn(6, OWNER, 50n * UNIT)]));
+  assert.deepEqual(await unrecorded.sync.run(), { asOf: null, updated: [], skipped: [], reason: "settlement-asset-unrecorded" });
+  await unrecorded.indexer.recordSettlementAsset(USDC);
+  assert.deepEqual((await unrecorded.sync.run()).updated, [{ agentId: "1", principal: 50n * UNIT }]);
+
+  const other = await fresh("0x5555555555555555555555555555555555555555");
+  await other.indexer.apply(batch(10, [deployed(5), transferIn(6, OWNER, 50n * UNIT)]));
+  assert.deepEqual(await other.sync.run(), { asOf: null, updated: [], skipped: [], reason: "settlement-asset-mismatch" });
+  assert.equal((await other.agents.get("1"))!.principal, 0n);
+});
+
+test("the startup check passes on a match, waits on no record, and refuses a mismatch", async () => {
+  const readModel = new InMemoryReadModelStore();
+  assert.match(await checkSettlementAsset(readModel, USDC), /has not recorded a settlement asset yet/);
+  await readModel.recordSettlementAsset(USDC);
+  assert.match(await checkSettlementAsset(readModel, "0x754704Bc059F8C67012fEd69BC8A327a5aafb603"), /matches/);
+  await assert.rejects(checkSettlementAsset(readModel, STRANGER), WorkerConfigError);
+});
+
+test("runWorker refuses to start when its settlement asset differs from the one the indexer recorded", async () => {
+  await fresh();
+  const connect: Connect = () => ({ db: asRole(db, "monadeum_worker"), close: async () => {} });
+  const env = {
+    DATABASE_URL: "postgres://test", REDIS_URL: "redis://localhost:6379", WORKER_TICK_INTERVAL_MS: "60000",
+    WORKER_SETTLEMENT_ASSET_ADDRESS: "0x5555555555555555555555555555555555555555",
+  };
+  // Refused after booting the stores and before any Redis connection is opened.
+  await assert.rejects(runWorker({ env, connect }), /indexer records 0x754704bc059f8c67012fed69bc8a327a5aafb603/);
 });

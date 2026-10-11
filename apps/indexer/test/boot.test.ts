@@ -7,6 +7,7 @@ import { entryPoint07Address } from "viem/account-abstraction";
 import { entryPointEvents, spendPolicyEvents } from "../src/handlers/abi.js";
 import { bootIndexer } from "../src/main.js";
 import { InMemoryReadModelStore } from "../src/store.js";
+import { SettlementAssetMismatchError } from "@monadeum/read-model";
 import { MockChain, type LogSpec } from "./mock-chain.js";
 
 const POLICY = "0x1111111111111111111111111111111111111111" as Address;
@@ -63,7 +64,14 @@ test("with DATABASE_URL, the indexer writes Postgres and a restarted indexer res
     assert.deepEqual(await second.store.trackedAccounts(), [ACCOUNT]);
     assert.deepEqual(await second.indexer.syncOnce(), { status: "indexed", from: 8n, to: 9n, events: 0, caughtUp: true });
     assert.equal((await second.store.events()).length, 2);
+    assert.equal(await second.store.settlementAsset(), env.INDEXER_SETTLEMENT_ASSET_ADDRESS);
     await second.close();
+
+    // The same read-model under another settlement asset would mix two tokens' rows: the indexer refuses to start.
+    await assert.rejects(
+      bootIndexer({ env: { ...env, DATABASE_URL: "postgres://test", INDEXER_SETTLEMENT_ASSET_ADDRESS: "0x5555555555555555555555555555555555555555" }, chain, connect: onto(pg) }),
+      SettlementAssetMismatchError,
+    );
   } finally {
     await pg.close();
   }

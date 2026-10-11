@@ -17,7 +17,7 @@ import type { Harness } from "./conformance.js";
 export const STORE_TABLES = [
   "wallet_accounts", "wallet_tick_operations", "wallet_sponsorship", "auth_user_wallets", "auth_users",
   "auth_challenges", "auth_sessions", "trade_records", "x402_payments", "tick_records",
-  "indexer_cursor", "indexer_blocks", "indexer_tracked_accounts", "chain_events",
+  "indexer_cursor", "indexer_blocks", "indexer_tracked_accounts", "chain_events", "indexer_settings",
   "worker_agent_states", "worker_agents", "reallocation_debits",
 ];
 
