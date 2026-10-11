@@ -1,6 +1,7 @@
 import type { AgentStore } from "@monadeum/agent-registry";
 import { EVALUATION_CADENCE } from "@monadeum/reallocation";
 import type { PrincipalSync } from "../principal.js";
+import type { X402Reconciler } from "../x402.js";
 import { tickAt, type WorkerJob } from "./jobs.js";
 import type { AgentLocks } from "./locks.js";
 import type { JobQueue } from "./queue.js";
@@ -42,6 +43,8 @@ export class WorkerJobHandlers {
       clock: () => Date;
       /** Recomputes principals from funding transfers. Without it the `principal` job does nothing and says so. */
       principal?: PrincipalSync;
+      /** Matches x402 settlements to the payment log. Without it the `x402-reconcile` job does nothing and says so. */
+      x402Reconciler?: Pick<X402Reconciler, "run">;
       log?: (message: string) => void;
     },
   ) {}
@@ -52,6 +55,8 @@ export class WorkerJobHandlers {
         return this.sync();
       case "principal":
         return this.principal();
+      case "x402-reconcile":
+        return this.x402Reconcile();
       case "trigger":
         return this.trigger(job.agentId);
       case "tick":
@@ -90,6 +95,23 @@ export class WorkerJobHandlers {
     if (r.asOf === null) return { kind: "done", detail: "principal: the read-model has no finalized bound yet; nothing written" };
     const changed = r.updated.map((u) => `${u.agentId}=${u.principal}`).join(", ") || "none";
     return { kind: "done", detail: `principal through block ${r.asOf}: changed ${changed}; skipped ${r.skipped.length}` };
+  }
+
+  /**
+   * Matches recent x402 settlements to the payment log. Each alert is logged as one line starting with `ALERT` and
+   * its type, `x402-settlement-unmatched` or `x402-settlement-mismatch`, for monitoring to pick up (SECURITY.md
+   * section 12). Reconciliation is read-only and idempotent, so a repeated run repeats its alerts and changes nothing.
+   */
+  async x402Reconcile(): Promise<JobOutcome> {
+    if (!this.deps.x402Reconciler) return { kind: "done", detail: "x402 reconciliation is not configured: nothing checked" };
+    const r = await this.deps.x402Reconciler.run();
+    if (r.skipped) return { kind: "done", detail: `x402 reconciliation skipped: ${r.skipped}` };
+    for (const alert of r.alerts) {
+      const s = alert.settlement;
+      const why = alert.type === "x402-settlement-mismatch" ? ` payment ${alert.paymentKey}: ${alert.reason}` : "";
+      this.deps.log?.(`ALERT ${alert.type} authorizer ${s.authorizer} nonce ${s.nonce} tx ${s.transactionHash}${why}`);
+    }
+    return { kind: "done", detail: `x402 reconciliation: ${r.checked} settlements checked, ${r.alerts.length} alerts` };
   }
 
   async trigger(agentId: string): Promise<JobOutcome> {

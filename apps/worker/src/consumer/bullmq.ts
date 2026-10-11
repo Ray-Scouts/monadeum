@@ -8,6 +8,7 @@ import type { JobQueue } from "./queue.js";
 export const QUEUE_NAME = "monadeum-worker";
 const SYNC_SCHEDULE = "sync";
 const PRINCIPAL_SCHEDULE = "principal";
+const X402_RECONCILE_SCHEDULE = "x402-reconcile";
 
 const DAY = 24 * 60 * 60;
 /**
@@ -51,7 +52,7 @@ export class BullJobQueue implements JobQueue {
       const schedulers = await this.queue.getJobSchedulers(start, start + page - 1, true);
       for (const s of schedulers) {
         const agentId = (s.template?.data as { agentId?: unknown } | undefined)?.agentId;
-        if (s.key !== SYNC_SCHEDULE && s.key !== PRINCIPAL_SCHEDULE && typeof agentId === "string" && s.key === scheduleId(agentId)) out.push(agentId);
+        if (s.key !== SYNC_SCHEDULE && s.key !== PRINCIPAL_SCHEDULE && s.key !== X402_RECONCILE_SCHEDULE && typeof agentId === "string" && s.key === scheduleId(agentId)) out.push(agentId);
       }
       if (schedulers.length < page) return out.sort();
     }
@@ -65,6 +66,11 @@ export class BullJobQueue implements JobQueue {
   /** The repeatable job that recomputes principals from finalized funding transfers. */
   async schedulePrincipal(everyMs: number): Promise<void> {
     await this.queue.upsertJobScheduler(PRINCIPAL_SCHEDULE, { every: everyMs }, { name: "principal", data: {}, opts: TRIGGER_KEEP });
+  }
+
+  /** The repeatable job that reconciles x402 settlements with the payment log. */
+  async scheduleX402Reconcile(everyMs: number): Promise<void> {
+    await this.queue.upsertJobScheduler(X402_RECONCILE_SCHEDULE, { every: everyMs }, { name: "x402-reconcile", data: {}, opts: TRIGGER_KEEP });
   }
 }
 
