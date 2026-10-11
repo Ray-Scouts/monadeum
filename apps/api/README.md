@@ -19,7 +19,8 @@ Every response is JSON. An error is `{ "error": "<reason>", "detail"?: "..." }` 
 | `GET /owners/me` | session | The caller as an owner, in the web's `Owner` shape. |
 | `GET /agents`, `GET /agents/:id` | session, owner | The caller's agents: registry, WalletsModule record, and the read-model's view of each account. |
 | `GET /capital-flow` | session | The caller's capital flow. Reallocations are not indexed yet, so the list is empty and `reallocationsIndexed` is false. |
-| `POST /agents` | session | Creates an agent and starts its owner-signed deployment. |
+| `GET /genome/presets` | session | The genome presets an agent can be created from, the configured pair, and the hash each would commit. |
+| `POST /agents` | session | Creates an agent from a genome preset and starts its owner-signed deployment. |
 | `POST /agents/:id/deploy` | session, owner | Retries deployment. |
 | `POST /agents/:id/stop` | session, owner | "Stop this agent" (issue #44): revokes the session key, subject to the bulk recovery hold. |
 | `GET /agents/:id/revocation` | session, owner | Revocation status read from chain. |
@@ -31,7 +32,7 @@ Every response is JSON. An error is `{ "error": "<reason>", "detail"?: "..." }` 
 
 - Two credentials: a Privy access token as `Authorization: Bearer`, verified locally per request, or the external wallet session cookie (`HttpOnly`, `Secure`, `SameSite=Strict`). A request carrying both is refused (`ambiguous-credentials`).
 - A state-changing request authenticated by the cookie must carry the web app's origin as `Origin` (`origin-not-allowed` otherwise), and so must `POST /auth/wallet/verify`, which sets the cookie. CORS allows only that origin.
-- A session identifies the caller and authorizes nothing (`THREAT-MODEL.md` boundary 10). Every per-agent handler reads the agent's owner from the API's registry, never from the request, and AuthModule compares it with the caller's one owner wallet. Another user's agent answers `404 not-found`, like a missing one, so its existence is not disclosed. WalletsModule's record and the worker's agent registry (`@monadeum/agent-registry`, `worker_agents`), where they exist, must name the same owner, or the request fails closed with `409 ownership-mismatch`. The API does not create worker agents yet: that record needs a genome, which the creation flow does not collect, so the API reads `worker_agents` and holds no `INSERT` on it.
+- A session identifies the caller and authorizes nothing (`THREAT-MODEL.md` boundary 10). Every per-agent handler reads the agent's owner from the API's registry, never from the request, and AuthModule compares it with the caller's one owner wallet. Another user's agent answers `404 not-found`, like a missing one, so its existence is not disclosed. WalletsModule's record and the worker's agent registry (`@monadeum/agent-registry`, `worker_agents`), where they exist, must name the same owner, or the request fails closed with `409 ownership-mismatch`.
 - Rate limiting: `@nestjs/throttler` 6.7.1, one named throttler `auth`, in-process storage, applied per client IP and per endpoint to every sign-in, challenge, and link endpoint. Proposed default: 10 requests per 60 seconds.
 
 ### Owner-signed operations
@@ -46,6 +47,17 @@ A request not answered within `API_SIGNATURE_TIMEOUT_SECONDS` fails the operatio
 
 The user operation hash is a 32-byte digest, so the wallet shows the owner a hash rather than the calls it authorizes. The operation names its kind and agents, but the client cannot recompute the hash from them; see Not verified yet.
 
+### Agent creation and the genome
+
+`POST /agents` takes `{ name, perTxCap, dailyCap, preset? }`. The owner is the caller's owner wallet. The genome is never read from the request: any other field, such as `riskTolerance`, `genome`, `genomeHash`, `principal`, or `owner`, is refused with `400 unknown-field`, and a preset that is not defined is `400 unknown-preset`. Without `preset` the default, `conservative`, applies; it is the only preset for the MVP, and `EVOLUTION.md` section 1.1 gives the reasoning for every value. The API:
+
+1. builds the genome from the preset (`@monadeum/strategy/presets`) and `API_AGENT_PAIR`, normalizes it, and hashes it with `@monadeum/commitment` (`ARCHITECTURE.md` section 16.4);
+2. takes the next account index and asks WalletsModule for the counterfactual account address;
+3. in one transaction, refuses at `API_POPULATION_CAP` Active agents (`409 population-cap`), then inserts the `api_agents` row and the `worker_agents` row: the worker's genome fields, the full normalized genome document, its hash, principal 0, and status `active`;
+4. starts the owner-signed deployment as below.
+
+Both rows are written or neither. Without a session key vault the request answers `503 wallets-unavailable` before anything is written. Principal is 0 until funding is recomputed from indexed owner transfers (`EVOLUTION.md` section 1.1); neither the funding flow nor that recomputation is built, and until then the worker does not tick or evaluate the agent. The agent view serves the committed genome (`genome`, with `hash` and `preset`; `informationBudget` in base units as a decimal string), `principal` in base units as a decimal string, and the worker's `status`.
+
 ### Stop this agent
 
 `POST /agents/:id/stop` revokes the agent's session key through `WalletsService.revokeSessionKey`. The revocation is immediate off chain: the key is destroyed in the session key vault and the record marked before the owner is asked to sign, so the first response already shows `local[].session: "revoking"`. The on-chain step (uninstall the permission validator, invalidate the Kernel nonce) completes when the owner signs; the operation's result carries WalletsModule's `RevokeResult` (`onChain: "verified"` and the user operation hash) and `revocationStatus` read back from chain: `installed`, `validatorNonce`, `currentNonce`, `validNonceFrom`, and `enableNonce`, which anyone can check against the account. The stop that would make a fourth distinct agent stopped by the same owner wallet within 60 minutes is held (`202`, `status: "held"`), and released through the confirm and release endpoints after the 15 minute delay, as `SECURITY.md` section 9 specifies.
@@ -56,11 +68,11 @@ The user operation hash is a 32-byte digest, so the wallet shows the owner a has
 
 ### Read endpoints and the web
 
-The agent view carries the field names of `Agent` in `apps/web/src/data/types.ts`. Fields no service produces yet (`status`, `principal`, `capital`, `tradeCount`, `fitnessPercentile`, `lowWindows`, `zeroDownsideFlag`, `retirement`, `genome`, `capitalHistory`) are `null`, not invented; the API's own fields (`deployment`, `session`, `limits`, `chain`) are what it can source today. Switching the web's `PopulationSource` to the API is the follow-up for issue #42; this package does not touch `apps/web`.
+The agent view carries the field names of `Agent` in `apps/web/src/data/types.ts`. `status`, `principal`, and `genome` come from the worker's record, in the units above, which differ from the web's sample types (base-unit strings, not dollars). Fields no service produces yet (`capital`, `tradeCount`, `fitnessPercentile`, `lowWindows`, `zeroDownsideFlag`, `retirement`, `capitalHistory`) are `null`, not invented; the API's own fields (`deployment`, `session`, `limits`, `chain`) are what it can source today. Switching the web's `PopulationSource` to the API is the follow-up for issue #42; this package does not touch `apps/web`.
 
 ## Storage
 
-The database rules are the worker's and the indexer's: `bootApi` reads `DATABASE_URL`, `DATABASE_MIGRATIONS`, and `MONADEUM_ENV` with `loadDatabaseSettings` and opens the database with `openDatabase` from `@monadeum/db`. With `DATABASE_URL` set, every store is on Postgres, including the API's own tables from migration `0007_api.sql`: the agent registry, the recovery log and holds, and the signed policies. The migrations are verified at start (`verify`, the default) or applied (`apply`, for an owner connection only). Every statement runs inside a transaction under `SET LOCAL ROLE`: the stores as `monadeum_api`, the read-model as `monadeum_reader`, which can only read it. The login role therefore needs membership in both group roles, and nothing else; it does not own the tables. Without `DATABASE_URL` the API runs on in-memory stores and logs that state is not durable; with `MONADEUM_ENV=production` it refuses to start instead.
+The database rules are the worker's and the indexer's: `bootApi` reads `DATABASE_URL`, `DATABASE_MIGRATIONS`, and `MONADEUM_ENV` with `loadDatabaseSettings` and opens the database with `openDatabase` from `@monadeum/db`. With `DATABASE_URL` set, every store is on Postgres, including the API's own tables from migration `0007_api.sql`: the agent registry, the recovery log and holds, and the signed policies, and the worker's `worker_agents`, where migration `0008_api_agent_creation.sql` lets the API insert and nothing more. The migrations are verified at start (`verify`, the default) or applied (`apply`, for an owner connection only). Every statement runs inside a transaction under `SET LOCAL ROLE`: the stores as `monadeum_api`, the read-model as `monadeum_reader`, which can only read it. The login role therefore needs membership in both group roles, and nothing else; it does not own the tables. Without `DATABASE_URL` the API runs on in-memory stores and logs that state is not durable; with `MONADEUM_ENV=production` it refuses to start instead.
 
 `main.ts` does not construct WalletsModule: it needs a session key vault backed by a secrets manager and shared with the worker, so that a revocation here destroys the key the worker holds, and none exists (`SECURITY.md` section 11). Until then deployment and stop answer `503 wallets-unavailable` in a running process.
 
@@ -72,6 +84,8 @@ AuthModule's variables (`libs/auth/README.md`) are required: `AUTH_PRIVY_APP_ID`
 |---|---|---|
 | `API_MAX_PER_TX_CAP` | yes | Highest per-transaction cap an owner may request for a new agent, settlement-asset base units. |
 | `API_MAX_DAILY_CAP` | yes | Highest daily cap, base units. At least `API_MAX_PER_TX_CAP`. |
+| `API_AGENT_PAIR` | yes | The trading pair every new agent's genome names, such as `WETH/USDC`. It must be in the risk policy's `allowedPairs` and be the worker's market, or every trade is refused. No default. |
+| `API_POPULATION_CAP` | no | Agent creation is refused at this many Active agents. Default 50, the proposed testnet cap of `EVOLUTION.md` section 4. |
 | `DATABASE_URL` | no | Postgres connection string. Unset: in-memory stores. Keep it in the secrets store, never in a file. |
 | `DATABASE_MIGRATIONS` | no | `verify` (default) or `apply`, as in `libs/db/README.md`. |
 | `MONADEUM_ENV` | no | `development` (default) or `production`, which refuses to start without `DATABASE_URL`. |
@@ -88,7 +102,7 @@ The allowed origin is the origin of `AUTH_SIWE_URI`.
 
 ## Tests
 
-`bun run --filter @monadeum/api test` runs offline. `test/api.test.ts` boots the application with `@nestjs/testing` and the Fastify adapter and drives it through HTTP injection, once on the in-memory stores and once on PGlite with every statement under the API's two roles, so a missing grant fails the suite. WalletsModule runs on its test chain from `@monadeum/wallets/testing`, extended so every owner operation requires an owner signature that recovers to the owner, which is what makes the relay testable. Privy tokens are verified by a stand-in; AuthModule's own tests cover the real `@privy-io/node` verification. `test/roles.test.ts` checks that the grants of migration 0007 are no wider than stated.
+`bun run --filter @monadeum/api test` runs offline. `test/api.test.ts` boots the application with `@nestjs/testing` and the Fastify adapter and drives it through HTTP injection, once on the in-memory stores and once on PGlite with every statement under the API's two roles, so a missing grant fails the suite. WalletsModule runs on its test chain from `@monadeum/wallets/testing`, extended so every owner operation requires an owner signature that recovers to the owner, which is what makes the relay testable. Privy tokens are verified by a stand-in; AuthModule's own tests cover the real `@privy-io/node` verification. `test/creation.test.ts` creates agents end to end and checks, on PGlite under the real roles, that the worker loads the record as `monadeum_worker`, that the genome hash verifies, that a client cannot inject genome fields or create an agent for another owner wallet, that an ownership mismatch stays refused, that both records are written or neither, and that the population cap holds. `test/roles.test.ts` checks that the grants of migrations 0007 and 0008 are no wider than stated.
 
 ## Not verified yet
 

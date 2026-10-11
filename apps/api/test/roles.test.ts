@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { migrate, pgliteDatabase, type Database } from "@monadeum/db";
 import { ApiConfigError, loadApiConfig } from "../src/index.js";
 
-// The grants of migration 0007, checked statement by statement as the two roles the API runs under. The e2e suite
+// The grants of migrations 0007 and 0008, checked statement by statement as the two roles the API runs under. The e2e suite
 // shows the grants are sufficient; this shows they are no wider than stated.
 
 const DENIED = (error: unknown) => (error as { code?: string }).code === "42501";
@@ -53,11 +53,13 @@ describe("migration 0007 grants", () => {
     await assert.rejects(as(db, "monadeum_worker", "SELECT * FROM api_agents"), DENIED);
   });
 
-  it("monadeum_api only reads the worker's agent registry: it creates, changes, and deletes no worker agent", async () => {
+  it("monadeum_api reads and creates worker agents (0008), and changes or deletes none", async () => {
     await as(db, "monadeum_api", "SELECT * FROM worker_agents");
+    await as(db, "monadeum_api", "INSERT INTO worker_agents (agent_id, owner, status, body) VALUES ('a', '0x0000000000000000000000000000000000000001', 'active', '{}')");
     for (const sql of [
-      "INSERT INTO worker_agents (agent_id, owner, status, body) VALUES ('a', '0x0000000000000000000000000000000000000001', 'active', '{}')",
       "UPDATE worker_agents SET status = 'retired'",
+      "UPDATE worker_agents SET body = body",
+      "TRUNCATE worker_agents",
       "DELETE FROM worker_agents",
       "SELECT * FROM worker_agent_states",
       "SELECT * FROM reallocation_debits",
@@ -101,6 +103,7 @@ describe("configuration", () => {
     AUTH_SIWE_URI: "https://app.example.test",
     API_MAX_PER_TX_CAP: "1000000",
     API_MAX_DAILY_CAP: "5000000",
+    API_AGENT_PAIR: "WETH/USDC",
   };
 
   it("derives the allowed origin from AuthModule's sign-in URI and applies the proposed defaults", () => {

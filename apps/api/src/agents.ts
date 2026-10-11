@@ -1,3 +1,4 @@
+import type { AgentRecord as WorkerAgentRecord } from "@monadeum/agent-registry";
 import type { Principal, UserRecord } from "@monadeum/auth";
 import { projectAccount, type AccountView, type ChainEvent } from "@monadeum/indexer";
 import type { AgentWalletRecord } from "@monadeum/wallets";
@@ -22,6 +23,8 @@ export interface OwnedAgent {
   owner: Address;
   agent: AgentRecord;
   wallet: AgentWalletRecord | undefined;
+  /** The worker's record: the genome the agent trades under, its principal, and its status. */
+  worker: WorkerAgentRecord | undefined;
 }
 
 /**
@@ -46,29 +49,50 @@ export async function ownedAgent(deps: ApiDependencies, principal: Principal, ag
   // The worker's registry is the record the agent trades under; once it exists it must name the same owner.
   const worker = await deps.workerAgents.get(agentId);
   if (worker && !isAddressEqual(worker.owner, agent.owner)) fail(409, "ownership-mismatch");
-  return { user, owner: own.owner, agent, wallet };
+  return { user, owner: own.owner, agent, wallet, worker };
+}
+
+/**
+ * The committed genome as the API serves it: the normalized document `hash` commits to, with base-unit amounts as
+ * decimal strings, and the preset it was built from.
+ */
+export interface GenomeView {
+  strategyType: "trading";
+  assetUniverse: string[];
+  riskTolerance: number;
+  executionFrequency: number;
+  timeHorizon: number;
+  entryThreshold: number;
+  exitThreshold: number;
+  informationSources: string[];
+  informationBudget: string;
+  modelConfiguration: string;
+  hash: string;
+  preset: string | null;
 }
 
 /**
  * One agent as the API serves it. The first group of fields carries the names of `Agent` in
  * `apps/web/src/data/types.ts`, so the web's data source can switch to the API field by field; a field no service
- * produces yet is null rather than invented. The second group is what the API can actually source today: its own
- * registry, WalletsModule's record, and the indexer's read-model of the account.
+ * produces yet is null rather than invented. `status`, `principal`, and `genome` come from the worker's record, which
+ * agent creation writes: `principal` is in settlement-asset base units as a decimal string, not the web's dollars. The
+ * second group is what the API can actually source today: its own registry, WalletsModule's record, and the indexer's
+ * read-model of the account.
  */
 export interface AgentView {
   id: string;
   name: string;
   ownerId: string;
   address: string | null;
-  status: null;
-  principal: null;
+  status: "active" | "retired" | null;
+  principal: string | null;
   capital: null;
   tradeCount: null;
   fitnessPercentile: null;
   lowWindows: null;
   zeroDownsideFlag: null;
   retirement: null;
-  genome: null;
+  genome: GenomeView | null;
   capitalHistory: null;
 
   owner: Address;
@@ -83,21 +107,40 @@ export interface AgentView {
   chain: unknown;
 }
 
-export function agentView(user: UserRecord, agent: AgentRecord, wallet: AgentWalletRecord | undefined, chain: AccountView | null): AgentView {
+function genomeView(agent: AgentRecord, worker: WorkerAgentRecord | undefined): GenomeView | null {
+  const doc = worker?.genomeDocument;
+  if (!worker || !doc) return null;
+  return {
+    strategyType: doc.strategyType,
+    assetUniverse: [...doc.assetUniverse],
+    riskTolerance: doc.riskTolerance,
+    executionFrequency: doc.executionFrequency,
+    timeHorizon: doc.timeHorizon,
+    entryThreshold: doc.entryThreshold,
+    exitThreshold: doc.exitThreshold,
+    informationSources: [...doc.informationSources],
+    informationBudget: doc.informationBudget.toString(),
+    modelConfiguration: doc.modelConfiguration,
+    hash: worker.genomeHash,
+    preset: agent.preset,
+  };
+}
+
+export function agentView(user: UserRecord, agent: AgentRecord, wallet: AgentWalletRecord | undefined, chain: AccountView | null, worker: WorkerAgentRecord | undefined): AgentView {
   return {
     id: agent.agentId,
     name: agent.name,
     ownerId: user.id,
     address: wallet?.account ?? null,
-    status: null,
-    principal: null,
+    status: worker?.status ?? null,
+    principal: worker ? worker.principal.toString() : null,
     capital: null,
     tradeCount: null,
     fitnessPercentile: null,
     lowWindows: null,
     zeroDownsideFlag: null,
     retirement: null,
-    genome: null,
+    genome: genomeView(agent, worker),
     capitalHistory: null,
     owner: getAddress(agent.owner),
     index: agent.index.toString(),

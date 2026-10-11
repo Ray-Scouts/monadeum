@@ -7,7 +7,7 @@ import type { AgentWalletStore, WalletsService } from "@monadeum/wallets";
 import { HttpException } from "@nestjs/common";
 import type { ApiSettings } from "./config.js";
 import type { SignatureRelay } from "./relay.js";
-import type { AgentRegistry, PolicyLedger, RecoveryLog } from "./stores.js";
+import type { AgentCreation, AgentRegistry, PolicyLedger, RecoveryLog } from "./stores.js";
 
 /** Nest injection token for `ApiDependencies`. */
 export const API_DEPENDENCIES = "API_DEPENDENCIES";
@@ -23,9 +23,11 @@ export interface ApiDependencies {
   wallets: WalletsService | null;
   /** WalletsModule's store, read for an agent's account address and session status. */
   walletStore: AgentWalletStore;
-  /** The worker's agent registry, read only, to refuse a request when it names a different owner than the API's record. */
+  /** The worker's agent registry: read to serve an agent's genome and principal, and to refuse a request when it names a different owner than the API's record. */
   workerAgents: AgentStore;
   agents: AgentRegistry;
+  /** Agent creation's write: the API's record and the worker's agent record together (migration 0008). */
+  creation: AgentCreation;
   recovery: RecoveryLog;
   policies: PolicyLedger;
   /** Commits a signed reallocation policy on chain. Null until the reallocation contract (issue #31) is deployed. */

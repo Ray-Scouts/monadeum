@@ -15,6 +15,7 @@ const env = {
   AUTH_SIWE_URI: "https://app.example.test",
   API_MAX_PER_TX_CAP: "1000000",
   API_MAX_DAILY_CAP: "5000000",
+  API_AGENT_PAIR: "WETH/USDC",
 };
 
 /** Hands out one PGlite instance as if it were the server DATABASE_URL names. */

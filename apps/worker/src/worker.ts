@@ -49,6 +49,9 @@ export interface EvaluationResult {
 
 const units = (amount: bigint, decimals: number) => Number(amount) / 10 ** decimals;
 
+/** Active, with principal above 0. Agent creation writes principal 0; funding raises it (EVOLUTION.md section 1.1). */
+const funded = (agent: AgentRecord) => agent.status === "active" && agent.principal > 0n;
+
 /**
  * The agent worker loop over the real modules (ARCHITECTURE.md sections 4, 5, 11): StrategyService decides,
  * X402Client buys information within the RiskModule's caps, TradingService builds the plan, RiskService checks the
@@ -61,10 +64,10 @@ const units = (amount: bigint, decimals: number) => Number(amount) / 10 ** decim
 export class AgentWorker {
   constructor(private readonly deps: WorkerDependencies) {}
 
-  /** Runs one tick for one agent. A retired agent does not tick. */
+  /** Runs one tick for one agent. A retired agent does not tick, nor does an unfunded one (EVOLUTION.md section 1.1). */
   async tick(agentId: string, tick: number): Promise<TickResult | null> {
     const agent = await this.deps.agents.get(agentId);
-    if (!agent || agent.status !== "active") return null;
+    if (!agent || !funded(agent)) return null;
     return runTick(this.deps.ticks, agentId, tick, this.ports(agent));
   }
 
@@ -89,7 +92,8 @@ export class AgentWorker {
     const sequence = tick / EVALUATION_CADENCE;
     const decimals = await chain.decimals();
     const all = await agents.list();
-    const active = all.filter((a) => a.status === "active");
+    // An unfunded agent is not ranked, not a source or sink, and not retired for being below the capital floor.
+    const active = all.filter(funded);
     const states = new Map(await Promise.all(active.map(async (a) => [a.agentId, await agents.state(a.agentId)] as const)));
 
     const window = (values: number[]) => values.slice(-fitness.trailingWindow);

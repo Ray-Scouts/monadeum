@@ -20,12 +20,15 @@ import { API_ROLE, READER_ROLE, roleScoped } from "./database.js";
 import { defaultClock, type ApiDependencies } from "./dependencies.js";
 import { SignatureRelay } from "./relay.js";
 import {
+  MemoryAgentCreation,
   MemoryAgentRegistry,
   MemoryPolicyLedger,
   MemoryRecoveryLog,
+  PgAgentCreation,
   PgAgentRegistry,
   PgPolicyLedger,
   PgRecoveryLog,
+  type AgentCreation,
   type AgentRegistry,
   type PolicyLedger,
   type RecoveryLog,
@@ -37,10 +40,11 @@ export interface ApiStores {
   challenges: ChallengeStore;
   sessions: SessionStore;
   walletStore: AgentWalletStore;
-  /** The worker's agent registry; the API only reads it. */
+  /** The worker's agent registry; the API reads it and writes it only through `creation`. */
   workerAgents: AgentStore;
   ledger: SponsorshipLedger;
   agents: AgentRegistry;
+  creation: AgentCreation;
   recovery: RecoveryLog;
   policies: PolicyLedger;
   readModel: ReadModelStore;
@@ -48,14 +52,17 @@ export interface ApiStores {
 
 /** In-memory stores, for tests and local development only. Nothing survives a restart. */
 export function memoryStores(): ApiStores {
+  const workerAgents = new MemoryAgentStore();
+  const agents = new MemoryAgentRegistry();
   return {
     users: new MemoryUserStore(),
     challenges: new MemoryChallengeStore(),
     sessions: new MemorySessionStore(),
     walletStore: new MemoryAgentWalletStore(),
-    workerAgents: new MemoryAgentStore(),
+    workerAgents,
     ledger: new MemorySponsorshipLedger(),
-    agents: new MemoryAgentRegistry(),
+    agents,
+    creation: new MemoryAgentCreation(agents, workerAgents),
     recovery: new MemoryRecoveryLog(),
     policies: new MemoryPolicyLedger(),
     readModel: new InMemoryReadModelStore(),
@@ -77,6 +84,7 @@ export function postgresStores(db: Database): ApiStores {
     workerAgents: new PgAgentStore(api),
     ledger: new PgSponsorshipLedger(api),
     agents: new PgAgentRegistry(api),
+    creation: new PgAgentCreation(api),
     recovery: new PgRecoveryLog(api),
     policies: new PgPolicyLedger(api),
     readModel: new PgReadModelStore(roleScoped(db, READER_ROLE)),
@@ -106,6 +114,7 @@ export function buildDependencies(input: BuildInput): ApiDependencies {
     walletStore: stores.walletStore,
     workerAgents: stores.workerAgents,
     agents: stores.agents,
+    creation: stores.creation,
     recovery: stores.recovery,
     policies: stores.policies,
     policyWriter: input.policyWriter ?? null,

@@ -118,6 +118,14 @@ export class WalletsService {
   }
 
   /**
+   * The counterfactual address of the owner's account at `index`, the one `deploy` deploys. Computed without
+   * deploying anything, so agent creation can record the account before the owner signs the deployment.
+   */
+  accountAddress(owner: Address, index: bigint): Promise<Address> {
+    return this.chain.accountAddress(owner, index);
+  }
+
+  /**
    * Deploys the agent's account and configures its spend policy in one owner-signed operation. Idempotent: a
    * repeated call for the same agent returns the existing account and sends nothing, and a call made while an
    * earlier operation is pending waits for that operation instead of sending a second one.

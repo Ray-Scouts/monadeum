@@ -1,5 +1,6 @@
 import { loadAuthConfig, type AuthConfig } from "@monadeum/auth";
 import { loadDatabaseSettings, type DatabaseSettings } from "@monadeum/db";
+import { PAIR } from "./genome.js";
 
 // Environment variables of the API process, documented in apps/api/README.md. None of them is a private key: the API
 // never holds an owner key or a session key, and the Privy verification key AuthModule reads is a public key.
@@ -29,6 +30,13 @@ export interface ApiSettings {
   maxDailyCap: bigint;
   /** Settlement-asset decimals, used to express the protocol capital floor in base units. */
   settlementDecimals: number;
+  /**
+   * The trading pair every new agent's genome names (EVOLUTION.md section 1.1). It must be in the risk policy's
+   * `allowedPairs` and be the market the worker trades, or every trade is refused.
+   */
+  agentPair: string;
+  /** Agent creation is refused once this many Active agents exist (EVOLUTION.md section 4). */
+  populationCap: number;
 }
 
 export interface ApiConfig {
@@ -47,6 +55,8 @@ export const DEFAULT_AUTH_RATE_LIMIT = 10;
 export const DEFAULT_AUTH_RATE_WINDOW_SECONDS = 60;
 export const DEFAULT_SIGNATURE_TIMEOUT_SECONDS = 300;
 export const DEFAULT_OPERATION_WAIT_SECONDS = 20;
+/** EVOLUTION.md section 4: the proposed testnet population cap, revisited before any mainnet population exceeds it. */
+export const DEFAULT_POPULATION_CAP = 50;
 
 type Env = Record<string, string | undefined>;
 
@@ -73,6 +83,10 @@ export function loadApiConfig(env: Env = process.env): ApiConfig {
   const maxPerTxCap = baseUnits(env, "API_MAX_PER_TX_CAP");
   const maxDailyCap = baseUnits(env, "API_MAX_DAILY_CAP");
   if (maxPerTxCap > maxDailyCap) throw new ApiConfigError("API_MAX_PER_TX_CAP must not exceed API_MAX_DAILY_CAP");
+  // No default: the pair is the deployment's market, and a wrong one would be committed into every new genome.
+  const agentPair = env.API_AGENT_PAIR?.trim();
+  if (!agentPair) throw new ApiConfigError("API_AGENT_PAIR is not set");
+  if (!PAIR.test(agentPair)) throw new ApiConfigError("API_AGENT_PAIR must be a pair such as WETH/USDC");
   const trust = env.API_TRUST_PROXY?.trim() || "false";
   if (trust !== "true" && trust !== "false") throw new ApiConfigError("API_TRUST_PROXY must be true or false");
   return {
@@ -92,6 +106,8 @@ export function loadApiConfig(env: Env = process.env): ApiConfig {
       maxPerTxCap,
       maxDailyCap,
       settlementDecimals: integer(env, "API_SETTLEMENT_DECIMALS", 6, 0, 36),
+      agentPair,
+      populationCap: integer(env, "API_POPULATION_CAP", DEFAULT_POPULATION_CAP, 1, 1_000_000),
     },
   };
 }

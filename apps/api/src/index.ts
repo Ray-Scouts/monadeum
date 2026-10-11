@@ -5,6 +5,8 @@ export { ApiConfigError, loadApiConfig } from "./config.js";
 export type { ApiConfig, ApiSettings } from "./config.js";
 export { API_ROLE, READER_ROLE, roleScoped } from "./database.js";
 export { API_DEPENDENCIES } from "./dependencies.js";
+export { PAIR, buildGenome, workerGenome } from "./genome.js";
+export type { BuiltGenome } from "./genome.js";
 export type { ApiDependencies } from "./dependencies.js";
 export { SignatureRelay } from "./relay.js";
 export type { OperationView, SigningRequest } from "./relay.js";

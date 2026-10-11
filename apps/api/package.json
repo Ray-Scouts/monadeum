@@ -17,6 +17,7 @@
     "@monadeum/indexer": "workspace:*",
     "@monadeum/reallocation": "workspace:*",
     "@monadeum/recovery": "workspace:*",
+    "@monadeum/strategy": "workspace:*",
     "@monadeum/wallets": "workspace:*",
     "@nestjs/common": "^11.1.6",
     "@nestjs/core": "^11.1.6",

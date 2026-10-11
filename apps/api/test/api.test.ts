@@ -227,14 +227,13 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
     });
 
     it("fails closed when the worker's agent registry names a different owner", async () => {
-      const { agentId: id, account: acct } = await createAgent(b.app, aliceAuth, alice, "contested");
-      const record = {
-        agentId: id, owner: mallory.address, account: acct, genomeHash: `0x${"11".repeat(32)}` as `0x${string}`,
-        genome: { riskTolerance: 0.5, executionFrequency: 1, informationBudget: 0n, informationSources: [], pair: "MON/USDC", assetUniverse: ["MON"] },
-        principal: 0n, status: "active" as const,
-      };
-      // Seeded as agent creation would write it, through the owning connection on Postgres.
-      await (b.db ? new PgAgentStore(b.db) : (b.stores.workerAgents as MemoryAgentStore)).add(record);
+      const { agentId: id } = await createAgent(b.app, aliceAuth, alice, "contested");
+      // Creation wrote the worker's record with alice as owner; rewrite it to name mallory, through the owning
+      // connection on Postgres (the API's role cannot update it).
+      const store = b.db ? new PgAgentStore(b.db) : (b.stores.workerAgents as MemoryAgentStore);
+      const written = (await store.get(id))!;
+      assert.equal(written.owner, alice.address.toLowerCase());
+      await store.update({ ...written, owner: mallory.address });
       for (const [method, url] of [["GET", `/agents/${id}`], ["POST", `/agents/${id}/stop`]] as const) {
         const res = await call(b.app, method, url, { auth: aliceAuth });
         assert.equal(res.status, 409, url);
@@ -375,7 +374,7 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
     after(() => b.close());
 
     const register = async (agentId: string, registryId: string | null, by = userOwner) => {
-      assert.ok(await b.deps.agents.create({ agentId, owner: by, index: await b.deps.agents.nextIndex(by), name: agentId, limits: { perTxCap: 1n, dailyCap: 1n }, registryId, createdAt: Date.now() }));
+      assert.ok(await b.deps.agents.create({ agentId, owner: by, index: await b.deps.agents.nextIndex(by), name: agentId, preset: null, limits: { perTxCap: 1n, dailyCap: 1n }, registryId, createdAt: Date.now() }));
     };
 
     it("refuses agents without an identity registry ID, other users' agents, and bounds that loosen the protocol", async () => {
