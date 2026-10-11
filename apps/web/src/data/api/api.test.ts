@@ -229,12 +229,12 @@ describe("stop this agent", () => {
 describe("explainer states from the API", () => {
   const ON = { enabled: true, reason: null };
   const owner = (policy: OwnerResponse["policy"], reallocation: OwnerResponse["reallocation"] = ON): OwnerResponse => ({ id: "u1", name: null, rootWallet: "0x1", reallocation, policy });
-  const policy = { agentIds: ["7", "8"], reallocationCap: null, slotCeiling: null, signedAtEvaluation: null, sequence: 2, policyHash: "0x" };
+  const policy = { agentIds: ["ag1", "ag2"], reallocationCap: null, slotCeiling: null, signedAtEvaluation: null, sequence: 2, policyHash: "0x" };
   const OFF = { enabled: false, reason: REALLOCATION_OFF_REASON };
 
   test("switch off: every agent reads as off with the study reason, and no policy step is suggested", () => {
     for (const o of [owner(null, OFF), owner(policy, OFF), { id: "u1", name: null, rootWallet: "0x1", policy }, null]) {
-      const e = explainAgent(apiAgent({ registryId: "7" }), o);
+      const e = explainAgent(apiAgent({ id: "ag1" }), o);
       expect(e.headline).toBe("Reallocation is off");
       const text = e.lines.join(" ");
       expect(text).toMatch(/off for every agent on this deployment/);
@@ -262,9 +262,13 @@ describe("explainer states from the API", () => {
     expect(e.lines.join(" ")).toMatch(/does not serve evaluation results/);
   });
 
-  test("a policy names agents by registry ID; an agent without one is not covered", () => {
-    expect(explainAgent(apiAgent({ registryId: null }), owner(policy)).headline).toBe("Not covered by your policy");
-    const covered = explainAgent(apiAgent({ registryId: "7" }), owner(policy));
+  test("a policy names agents by agent ID, as the API records them, not by registry ID", () => {
+    expect(explainAgent(apiAgent({ id: "ag9" }), owner(policy)).headline).toBe("Not covered by your policy");
+    // Regression: an agent whose registry ID happens to equal a listed agent ID is still not covered.
+    expect(explainAgent(apiAgent({ id: "ag9", registryId: "ag1" }), owner(policy)).headline).toBe("Not covered by your policy");
+    // Covered by its agent ID, with or without a registry ID.
+    expect(explainAgent(apiAgent({ id: "ag1", registryId: null }), owner(policy)).headline).toBe("Covered by your policy");
+    const covered = explainAgent(apiAgent({ id: "ag1", registryId: "7" }), owner(policy));
     expect(covered.headline).toBe("Covered by your policy");
     expect(covered.lines.join(" ")).toMatch(/not indexed yet/);
     expect(covered.lines.join(" ")).toMatch(/below its own principal/);

@@ -76,13 +76,10 @@ export function explainAgent(agent: ApiAgent, owner: OwnerResponse | null): Expl
   } else if (!policy) {
     headline = "Reallocation is off for you";
     lines.push("You have not signed a reallocation policy, so capital never moves into or out of this agent through reallocation.");
-  } else if (agent.registryId === null || !policy.agentIds.includes(agent.registryId)) {
+  } else if (!policy.agentIds.includes(agent.id)) {
+    // The API records a policy's agents by agent ID (`document.agentIds`), not by identity registry ID.
     headline = "Not covered by your policy";
-    lines.push(
-      agent.registryId === null
-        ? "This agent has no identity registry ID yet, so no policy can name it, and reallocation never moves its capital."
-        : "Your signed policy does not name this agent, so reallocation never moves its capital.",
-    );
+    lines.push("Your signed policy does not name this agent, so reallocation never moves its capital.");
   } else {
     headline = "Covered by your policy";
     lines.push(
