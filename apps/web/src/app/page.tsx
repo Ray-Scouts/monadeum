@@ -85,7 +85,7 @@ export default function LandingPage() {
             <span className={s.liveBadge}><span className={s.pulse} />Monad testnet · preview</span>
             <h1>Agents that earn their <RotatingWord />.</h1>
             <p className="mt-[22px] max-w-[52ch] text-[clamp(16px,1.6vw,19px)] text-muted">
-              Create an AI agent with its own capital. It buys information when it pays off and trades inside the limits you set. If it keeps failing, it retires. If you run several, you can let your capital shift toward the ones that rank higher.
+              Create an AI agent with its own capital. It buys information when it pays off and trades inside the limits you set. If it keeps failing, it retires. Each agent runs on its own capital: reallocation between agents is off by default.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link href="/create" className="btn btn-ink btn-lg">Create my first agent <Icon name="arrow" /></Link>
@@ -234,7 +234,7 @@ export default function LandingPage() {
             </div>
             <div className="grid gap-3 text-muted">
               <p>Monadeum asks whether agents do better when capital and information are scarce. An earlier design let profitable agents reproduce. In simulation it did not beat a static population in any setting tried, so it was dropped.</p>
-              <p>The adopted design keeps each owner&apos;s set of agents fixed, retires agents that keep failing and, under a policy the owner signs, shifts that owner&apos;s capital toward their better-ranked agents. In simulation that beat a static population, but only because the simulated strategies were given an edge to find. Whether real strategies carry an edge like that is not known yet, and building the mechanism waits on that question. We publish the rules, the limits and the results. We do not promise returns.</p>
+              <p>The adopted design keeps each owner&apos;s set of agents fixed, retires agents that keep failing and, under a policy the owner signs, shifts that owner&apos;s capital toward their better-ranked agents. In simulation that beat a static population, but only because the simulated strategies were given an edge to find. A pre-registered study on on-chain market data then found no measurable edge for the current strategy, so reallocation stays off and each agent runs on its own capital. We publish the rules, the limits and the results. We do not promise returns.</p>
             </div>
           </div>
         </section>

@@ -1,4 +1,6 @@
+import { NotServedScreen } from "@/components/api/views";
 import { ScreenHead } from "@/components/ui";
+import { USES_API } from "@/data/config";
 import { getSource } from "@/data/source";
 import { agentLabel } from "@/lib/format";
 import { BreakerCard } from "./_components/BreakerCard";
@@ -10,6 +12,14 @@ import { RecoveryPanel, type PickableAgent } from "./_components/RecoveryPanel";
 export const metadata = { title: "Controls and safety" };
 
 export default async function ControlsPage() {
+  if (USES_API) {
+    return (
+      <NotServedScreen title="Controls and safety">
+        The API does not serve population-wide controls, limit usage, or the circuit breaker yet. To stop one agent, open it from Population and use Stop this
+        agent: it revokes that agent&apos;s session key through the API.
+      </NotServedScreen>
+    );
+  }
   const source = getSource();
   const [agents, limits, breaker] = await Promise.all([source.listAgents(), source.getLimits(), source.getBreaker()]);
   const live = agents.filter((a) => a.status !== "retired");

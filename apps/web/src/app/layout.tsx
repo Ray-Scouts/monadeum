@@ -9,7 +9,7 @@ const mono = Geist_Mono({ subsets: ["latin"], variable: "--nf-mono" });
 
 export const metadata: Metadata = {
   title: { template: "%s · Monadeum", default: "Monadeum" },
-  description: "Autonomous AI agents with their own capital on Monad. Agents that keep failing retire; under a policy an owner signs, capital shifts toward that owner's better-ranked agents.",
+  description: "Autonomous AI agents with their own capital on Monad. Agents that keep failing retire. Each agent runs on its own capital; reallocation between an owner's agents is off by default.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { PROTOCOL } from "monadeum-simulation/protocol";
+import { ApiPopulation } from "@/components/api/screens";
 import { Icon } from "@/components/Icon";
 import { Card, Kpi, SampleBadge, ScreenHead } from "@/components/ui";
+import { USES_API } from "@/data/config";
 import { outcomeShort } from "@/data/explain";
 import { IS_SAMPLE_DATA, getSource } from "@/data/source";
 import type { NepBreakdown } from "@/data/types";
@@ -13,6 +15,7 @@ import { X402Split } from "./_components/X402Split";
 const nepOf = (n: NepBreakdown) => n.realizedPnl - n.x402 - n.gas - n.fees - n.slippage;
 
 export default async function PopulationPage() {
+  if (USES_API) return <ApiPopulation />;
   const source = getSource();
   const [agents, owners, evaluations, range, spend] = await Promise.all([
     source.listAgents(),
