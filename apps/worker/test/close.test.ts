@@ -146,6 +146,7 @@ test("WETH/USDC: gas is costed at the MON book's mid, and with no usable MON pri
   assert.deepEqual(buy.order.monPrice, { price: 25n * 10n ** 15n, source: "kuru-mon-usdc-mid" });
   assert.notEqual(buy.order.monPrice!.price, buy.order.reference.price, "not the WETH price");
 
+  await worker.tick("1", 2); // inside the execution interval
   w.setMonPriceDown(true);
   const blocked = await worker.tick("1", 3);
   assert.deepEqual(blocked?.outcome?.kind === "failed" && [blocked.outcome.step, blocked.outcome.reason], ["plan", "gas-price"]);

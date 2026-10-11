@@ -2,7 +2,7 @@ import { MemoryAgentStore, MemoryDebitStore } from "@monadeum/agent-registry";
 import { MemoryChallengeStore, MemorySessionStore, MemoryUserStore } from "@monadeum/auth";
 import { InMemoryReadModelStore } from "@monadeum/read-model";
 import { MemoryTickStore } from "@monadeum/tick";
-import { MemoryTradeStore } from "@monadeum/trading";
+import { MemoryPositionStore, MemoryTradeStore } from "@monadeum/trading";
 import { MemoryAgentWalletStore, MemorySponsorshipLedger } from "@monadeum/wallets";
 import { MemoryPaymentLog } from "@monadeum/x402";
 import { conformance } from "./conformance.js";
@@ -21,6 +21,7 @@ conformance("memory", {
       readModel: new InMemoryReadModelStore(),
       agents: new MemoryAgentStore(),
       debits: new MemoryDebitStore(),
+      positions: new MemoryPositionStore(),
     };
   },
 });

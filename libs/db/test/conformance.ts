@@ -7,7 +7,7 @@ import type { AgentRecord, AgentRegistry, AgentState, DebitRecord, DebitStore } 
 import type { ChallengeStore, SessionStore, UserRecord, UserStore, WalletChallenge } from "@monadeum/auth";
 import type { TickRecord, TickStore } from "@monadeum/tick";
 import { SettlementAssetMismatchError, type BlockHash, type ChainEvent, type ReadModelStore, type SyncBatch } from "@monadeum/read-model";
-import type { TradeRecord, TradeStore } from "@monadeum/trading";
+import type { Position, PositionStore, TradeRecord, TradeStore } from "@monadeum/trading";
 import type { AgentWalletRecord, AgentWalletStore, SponsorshipLedger, TickOperationRecord } from "@monadeum/wallets";
 import type { PaymentLog, PaymentLogEntry } from "@monadeum/x402";
 import type { Address, Hex } from "viem";
@@ -24,6 +24,7 @@ export interface Stores {
   readModel: ReadModelStore;
   agents: AgentRegistry;
   debits: DebitStore;
+  positions: PositionStore;
 }
 
 /** `fresh` returns stores over empty storage. Called once per test. */
@@ -635,6 +636,38 @@ export function conformance(name: string, harness: Harness): void {
       const { debits } = await harness.fresh();
       const results = await Promise.all(Array.from({ length: 8 }, () => debits.claim(debitRecord("o:1:a"))));
       assert.equal(results.filter(Boolean).length, 1);
+    });
+  });
+
+  describe(`${name}: PositionStore`, () => {
+    const position = (agentId: string, overrides: Partial<Position> = {}): Position => ({
+      agentId, pair: "WETH/USDC", size: BIG, basis: 2_500_000_000n, realized: -12_345n, closing: null,
+      applied: { [`${agentId}:1`]: 0n, [`${agentId}:2`]: -12_345n }, ...overrides,
+    });
+
+    it("returns nothing for an agent that never traded, and a written position exactly", async () => {
+      const { positions } = await harness.fresh();
+      assert.equal(await positions.get("a"), undefined);
+      await positions.write(position("a"));
+      assert.deepEqual(await positions.get("a"), position("a"));
+      assert.equal(await positions.get("b"), undefined);
+    });
+
+    it("replaces a position whole on write, the close mark and the settled keys included", async () => {
+      const { positions } = await harness.fresh();
+      await positions.write(position("a", { closing: "a:3" }));
+      const closed = position("a", { size: 0n, basis: 0n, realized: 99_000n, closing: null, applied: { "a:3": 99_000n } });
+      await positions.write(closed);
+      assert.deepEqual(await positions.get("a"), closed);
+    });
+
+    it("returns a copy: changing what it returned changes nothing stored", async () => {
+      const { positions } = await harness.fresh();
+      await positions.write(position("a"));
+      const read = (await positions.get("a"))!;
+      read.size = 0n;
+      read.applied["a:9"] = 1n;
+      assert.deepEqual(await positions.get("a"), position("a"));
     });
   });
 }

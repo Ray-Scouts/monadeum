@@ -1,5 +1,5 @@
 import type { TickRecord, TickStore } from "@monadeum/tick";
-import type { TradeRecord, TradeStore } from "@monadeum/trading";
+import type { Position, PositionStore, TradeRecord, TradeStore } from "@monadeum/trading";
 import type { PaymentLog, PaymentLogEntry } from "@monadeum/x402";
 import type { Hex } from "viem";
 import { decode, encode } from "./codec.js";
@@ -103,6 +103,27 @@ export class PgTickStore implements TickStore {
       `INSERT INTO tick_records (key, agent_id, tick, status, body) VALUES ($1, $2, $3, $4, $5::jsonb)
        ON CONFLICT (key) DO UPDATE SET agent_id = EXCLUDED.agent_id, tick = EXCLUDED.tick, status = EXCLUDED.status, body = EXCLUDED.body`,
       [record.key, record.agentId, record.tick, record.status, encode(record)],
+    );
+  }
+}
+
+/**
+ * TradingModule's `PositionStore` on Postgres (migration 0011). One row per agent, replaced whole by `write`, which is
+ * durable when it resolves. Writes for one agent are serialized by the worker, as the interface states.
+ */
+export class PgPositionStore implements PositionStore {
+  constructor(private readonly db: Database) {}
+
+  async get(agentId: string): Promise<Position | undefined> {
+    const { rows } = await this.db.query<{ body: string }>("SELECT body::text AS body FROM trade_positions WHERE agent_id = $1", [agentId]);
+    return rows[0] ? decode<Position>(rows[0].body) : undefined;
+  }
+
+  async write(position: Position): Promise<void> {
+    await this.db.query(
+      `INSERT INTO trade_positions (agent_id, body) VALUES ($1, $2::jsonb)
+       ON CONFLICT (agent_id) DO UPDATE SET body = EXCLUDED.body`,
+      [position.agentId, encode(position)],
     );
   }
 }

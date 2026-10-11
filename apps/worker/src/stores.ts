@@ -5,6 +5,7 @@ import {
   PgDebitStore,
   PgPaymentLog,
   PgReadModelStore,
+  PgPositionStore,
   PgSponsorshipLedger,
   PgTickStore,
   PgTradeStore,
@@ -12,7 +13,7 @@ import {
 } from "@monadeum/db";
 import { InMemoryReadModelStore, type ReadModelReader } from "@monadeum/read-model";
 import { MemoryTickStore, type TickStore } from "@monadeum/tick";
-import { MemoryTradeStore, type TradeStore } from "@monadeum/trading";
+import { MemoryPositionStore, MemoryTradeStore, type PositionStore, type TradeStore } from "@monadeum/trading";
 import { MemoryAgentWalletStore, MemorySponsorshipLedger, type AgentWalletStore, type SponsorshipLedger } from "@monadeum/wallets";
 import { MemoryPaymentLog, type PaymentLog } from "@monadeum/x402";
 
@@ -21,7 +22,7 @@ export const WORKER_STORES = Symbol("WORKER_STORES");
 
 /**
  * The stores the worker reads and writes, as one bundle so the process picks Postgres or memory for all of them at
- * once, never a mix. Their Postgres tables are granted to `monadeum_worker` in libs/db migrations 0005 and 0006; on
+ * once, never a mix. Their Postgres tables are granted to `monadeum_worker` in libs/db migrations 0005, 0006, and 0011; on
  * `worker_agents` the worker may read and update (retire) but not insert, because agent creation is not the worker's.
  *
  * Not here: the owner reallocation policy source, which is still the in-memory `OwnerPolicies`, and the session key
@@ -34,6 +35,8 @@ export interface WorkerStores {
   debits: DebitStore;
   ticks: TickStore;
   trades: TradeStore;
+  /** TradingModule's per-agent positions (migration 0011). */
+  positions: PositionStore;
   payments: PaymentLog;
   wallets: AgentWalletStore;
   sponsorship: SponsorshipLedger;
@@ -52,6 +55,7 @@ export function memoryWorkerStores(): WorkerStores {
     debits: new MemoryDebitStore(),
     ticks: new MemoryTickStore(),
     trades: new MemoryTradeStore(),
+    positions: new MemoryPositionStore(),
     payments: new MemoryPaymentLog(),
     wallets: new MemoryAgentWalletStore(),
     sponsorship: new MemorySponsorshipLedger(),
@@ -66,6 +70,7 @@ export function postgresWorkerStores(db: Database): WorkerStores {
     debits: new PgDebitStore(db),
     ticks: new PgTickStore(db),
     trades: new PgTradeStore(db),
+    positions: new PgPositionStore(db),
     payments: new PgPaymentLog(db),
     wallets: new PgAgentWalletStore(db),
     sponsorship: new PgSponsorshipLedger(db),

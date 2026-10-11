@@ -13,6 +13,7 @@ import {
   PgDebitStore,
   PgPaymentLog,
   PgPolicyVersions,
+  PgPositionStore,
   PgReadModelStore,
   PgSponsorshipLedger,
   PgTickStore,
@@ -252,6 +253,18 @@ export function databaseRules(name: string, db: Database): void {
       for (const table of ["worker_agents", "worker_agent_states", "reallocation_debits"]) {
         await assert.rejects(as(db, "monadeum_worker", `DELETE FROM ${table}`), DENIED, table);
       }
+    });
+
+    it("the worker reads and writes positions, the reader only reads them, and nobody deletes them", async () => {
+      const position = { agentId: "p", pair: "WETH/USDC", size: 5n, basis: 7n, realized: 0n, closing: null, applied: { "p:1": 0n } };
+      const worker = new PgPositionStore(asRole(db, "monadeum_worker"));
+      await worker.write(position);
+      await worker.write({ ...position, closing: "p:2" });
+      assert.equal((await new PgPositionStore(asRole(db, "monadeum_reader")).get("p"))?.closing, "p:2");
+      await assert.rejects(new PgPositionStore(asRole(db, "monadeum_reader")).write(position), DENIED);
+      await assert.rejects(new PgPositionStore(asRole(db, "monadeum_indexer")).get("p"), DENIED);
+      await assert.rejects(as(db, "monadeum_worker", "DELETE FROM trade_positions"), DENIED);
+      await assert.rejects(as(db, "monadeum_worker", "TRUNCATE trade_positions"), DENIED);
     });
 
     it("no role deletes worker records, and no process role touches the auth tables", async () => {
