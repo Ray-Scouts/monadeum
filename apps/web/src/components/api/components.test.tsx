@@ -9,7 +9,8 @@ import { CreateFormView } from "./CreateAgent";
 import { SignatureRequestView } from "./OperationSigner";
 import { SignInPanel } from "./SignIn";
 import { StopPanel, type StopPanelProps } from "./StopAgent";
-import { CapitalFlowView, PopulationView } from "./views";
+import { agentNotServed } from "@/data/api/present";
+import { AgentFacts, CapitalFlowView, CapitalHistoryCard, PopulationView } from "./views";
 import { SampleReallocationNote } from "@/components/SampleReallocationNote";
 import { REALLOCATION_OFF_REASON } from "@monadeum/reallocation/switch";
 
@@ -134,6 +135,109 @@ describe("read views", () => {
     expect(html).toContain("Reallocation is off by default");
     expect(html).toContain("adds nothing measurable");
   });
+});
+
+describe("population dashboard", () => {
+  const today = { agents: 4, accounts: { tracked: 2, deployed: 1 }, liveSessionKeys: 1, totalSpent: "2500000", cursor: { blockNumber: "99", blockHash: "0x" } };
+  const genome = {
+    strategyType: "momentum",
+    assetUniverse: ["WETH", "USDC"],
+    riskTolerance: 0.12,
+    executionFrequency: 24,
+    timeHorizon: 24,
+    entryThreshold: 0.0002,
+    exitThreshold: 0,
+    informationSources: [],
+    informationBudget: "0",
+    modelConfiguration: "low",
+    hash: "0xabcdef0123",
+    preset: "balanced",
+  };
+
+  test("against today's API shape, the dashboard layout renders with every missing figure as pending", () => {
+    // An agent exactly as the API serves it before the new fields exist: the optional keys are absent, not null.
+    const { capital, tradeCount, fitnessPercentile, lowWindows, zeroDownsideFlag, retirement, capitalHistory, ...bare } = apiAgent();
+    void [capital, tradeCount, fitnessPercentile, lowWindows, zeroDownsideFlag, retirement, capitalHistory];
+    const html = text(renderToStaticMarkup(<PopulationView population={today} agents={[bare]} settlement={settlement} />));
+    expect(html).toContain("Your agents by niche");
+    expect(html).toContain("None of your live agents has a committed genome yet");
+    expect(html).toContain("x402 spend");
+    expect(html).toContain("Pending");
+    expect(html).toContain("Not ranked yet");
+    expect(html).toContain("Not served by the API yet, so not shown: capital, capital history, net earnings after costs, fitness, trades, x402 purchases, evaluation outcomes.");
+    expect(html).toContain("Indexed spends, all owners, to block 99");
+    expect(html).not.toMatch(/\$\d/);
+  });
+
+  test("with the new fields served, the figures fill in and the not-served list shrinks to what is still missing", () => {
+    const x402 = { purchases: 7, spent: "3000000", byProvider: [{ provider: "nansen", spent: "2000000" }, { provider: "defillama", spent: "1000000" }] };
+    const agent = apiAgent({
+      genome,
+      principal: "10000000",
+      capital: "12500000",
+      tradeCount: 31,
+      fitnessPercentile: 72,
+      lowWindows: 0,
+      capitalHistory: [
+        { evaluation: 1, capital: "10000000" },
+        { evaluation: 2, capital: "12500000" },
+      ],
+      x402: { purchases: 2, spent: "500000", byProvider: [{ provider: "nansen", spent: "500000" }] },
+    });
+    const population = { ...today, capital: "40000000", trades: 120, x402, lastEvaluation: { sequence: 9, at: Date.UTC(2026, 9, 1, 12, 0) } };
+    const raw = renderToStaticMarkup(<PopulationView population={population} agents={[agent]} settlement={settlement} />);
+    const html = text(raw);
+    expect(html).toContain("40 USDC");
+    expect(html).toContain("12.5 USDC");
+    expect(html).toContain("120");
+    expect(html).toContain("31");
+    expect(html).toContain("72");
+    expect(html).toContain("#9");
+    expect(html).toContain("2026-10-01 12:00 UTC");
+    expect(html).toContain("Nansen");
+    expect(html).toContain("DeFiLlama");
+    expect(html).toContain("7 purchases, 3 USDC in total");
+    expect(html).toContain("1 distinct niche across 1 live agent");
+    expect(raw).toContain("Capital after evaluations 1 to 2");
+    expect(html).not.toContain("Pending");
+    expect(html).toContain("Not served by the API yet, so not shown: net earnings after costs.");
+  });
+
+  test("the per-agent view shows the hero, the figures it has, and pending cards for the rest", () => {
+    const bare = text(renderToStaticMarkup(<><AgentFacts agent={apiAgent()} settlement={settlement} /><CapitalHistoryCard agent={apiAgent()} settlement={settlement} /></>));
+    expect(bare).toContain("alpha");
+    expect(bare).toContain("Session key active");
+    expect(bare).toContain("Not funded, not trading");
+    expect(bare).toContain("Pending");
+    expect(bare).toContain("Capital history");
+    expect(bare).toContain("Not served by the API yet.");
+
+    const served = apiAgent({
+      genome,
+      principal: "10000000",
+      capital: "9000000",
+      tradeCount: 4,
+      fitnessPercentile: 8,
+      lowWindows: 2,
+      zeroDownsideFlag: true,
+      capitalHistory: [
+        { evaluation: 3, capital: "10000000" },
+        { evaluation: 4, capital: "9000000" },
+      ],
+    });
+    const raw = renderToStaticMarkup(<><AgentFacts agent={served} settlement={settlement} /><CapitalHistoryCard agent={served} settlement={settlement} /></>);
+    const html = text(raw);
+    expect(html).toContain("9 USDC");
+    expect(html).toContain("Principal 10 USDC");
+    expect(html).toContain("P8");
+    expect(html).toContain("2 low windows in a row");
+    expect(html).toContain("Flagged");
+    expect(raw).toContain("Capital after evaluations 3 to 4, now 9 USDC");
+    expect(agentNotServed(served)).toEqual(["net earnings after costs", "x402 purchases"]);
+  });
+});
+
+describe("read views, continued", () => {
 
   test("capital flow with reallocation off shows it off for every agent and no policy state", () => {
     const owner = { id: "u1", name: null, rootWallet: "0x1", reallocation: { enabled: false, reason: REALLOCATION_OFF_REASON }, policy: { agentIds: ["a"], reallocationCap: null, slotCeiling: null, signedAtEvaluation: null, sequence: 3, policyHash: "0x" } };

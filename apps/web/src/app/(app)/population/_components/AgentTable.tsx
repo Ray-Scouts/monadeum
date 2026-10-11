@@ -36,6 +36,22 @@ function matches(filter: Filter, row: Row): boolean {
   return true;
 }
 
+/** Fitness percentile as a bar with the niche median marked, or "Not ranked yet" without one. */
+export function FitnessBar({ percentile }: { percentile: number | null }) {
+  if (percentile === null) return <span className="text-xs text-muted">Not ranked yet</span>;
+  const low = percentile < STARVATION_PERCENTILE;
+  return (
+    <div className="flex min-w-[120px] items-center gap-2" title="The center mark is the niche median">
+      <div className="relative h-1.5 flex-1 rounded-full bg-line-soft" aria-hidden="true">
+        <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${percentile}%`, background: low ? "var(--bad)" : "var(--accent)" }} />
+        <span className="absolute -inset-y-[3px] w-px bg-faint" style={{ left: `${MEDIAN_MARK}%` }} />
+      </div>
+      <span className="w-[26px] text-right font-mono tabular">{percentile}</span>
+      {low && <span className="sr-only">, in the bottom tenth of its niche</span>}
+    </div>
+  );
+}
+
 export function AgentTable({ rows: all, evaluations }: { rows: Row[]; evaluations: number }) {
   const [filter, setFilter] = useState<Filter>("all");
   const rows = all
@@ -98,21 +114,7 @@ export function AgentTable({ rows: all, evaluations }: { rows: Row[]; evaluation
                     <Sparkline values={a.capitalHistory} color={sparkColor} />
                   </td>
                   <td className="px-3 py-3 whitespace-nowrap">
-                    {a.fitnessPercentile === null ? (
-                      <span className="text-xs text-muted">Not ranked yet</span>
-                    ) : (
-                      <div className="flex min-w-[120px] items-center gap-2" title="The center mark is the niche median">
-                        <div className="relative h-1.5 flex-1 rounded-full bg-line-soft" aria-hidden="true">
-                          <span
-                            className="absolute inset-y-0 left-0 rounded-full"
-                            style={{ width: `${a.fitnessPercentile}%`, background: a.fitnessPercentile < STARVATION_PERCENTILE ? "var(--bad)" : "var(--accent)" }}
-                          />
-                          <span className="absolute -inset-y-[3px] w-px bg-faint" style={{ left: `${MEDIAN_MARK}%` }} />
-                        </div>
-                        <span className="w-[26px] text-right font-mono tabular">{a.fitnessPercentile}</span>
-                        {a.fitnessPercentile < STARVATION_PERCENTILE && <span className="sr-only">, in the bottom tenth of its niche</span>}
-                      </div>
-                    )}
+                    <FitnessBar percentile={a.fitnessPercentile} />
                   </td>
                   <td className="px-3 py-3 text-xs whitespace-nowrap text-muted">{last}</td>
                   <td className="px-3 py-3 font-mono whitespace-nowrap tabular">{a.tradeCount}</td>
