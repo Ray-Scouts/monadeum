@@ -12,6 +12,9 @@ export type {
   TickExecuteResult,
   TickStatus,
   WalletsSettings,
+  X402InstallResult,
+  X402SigningKey,
+  X402WalletSettings,
 } from "./wallets.service.js";
 export { MemorySponsorshipLedger, hasHeadroom } from "./budget.js";
 export type { SponsorshipBudget, SponsorshipLedger, SponsorshipUsage } from "./budget.js";
@@ -24,7 +27,7 @@ export type { Call, ScopeTargets } from "./scope.js";
 export { ZeroDevChain, entryPoint, kernelVersion, maxOperationCost, permissionValidationId, sessionPolicies, spendPolicyAbi, spendPolicyHook } from "./zerodev.js";
 export type { SpendPolicyConfig, ZeroDevChainConfig } from "./zerodev.js";
 export { WalletsConfigError, loadWalletsConfig } from "./config.js";
-export type { WalletsConfig } from "./config.js";
+export type { WalletsConfig, X402WalletConfig } from "./config.js";
 export {
   X402Error,
   X402_EPOCHS_PER_24H_BOUND,
@@ -39,5 +42,13 @@ export {
   x402MaxOutflowPer24h,
   x402Nonce,
   x402ValidatorInstallData,
+  KERNEL_MODULE_TYPE_VALIDATOR,
+  X402_PROPOSED_LIMITS,
+  decodeX402InstallData,
+  decodeX402ModuleCall,
+  validatorValidationId,
+  x402InstallCall,
+  x402UninstallCall,
+  x402ValidatorAbi,
 } from "./x402.js";
-export type { RawHashSigner, SettlementAssetDomain, X402Authorization, X402ValidatorConfig } from "./x402.js";
+export type { ModuleCall, RawHashSigner, SettlementAssetDomain, X402Authorization, X402ValidatorConfig } from "./x402.js";

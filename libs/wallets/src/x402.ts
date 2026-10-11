@@ -1,6 +1,11 @@
 import {
   concat,
+  decodeAbiParameters,
+  decodeFunctionData,
   encodeAbiParameters,
+  encodeFunctionData,
+  parseAbi,
+  slice,
   getAddress,
   hashTypedData,
   isAddress,
@@ -33,6 +38,14 @@ export const X402_VALID_AFTER_SKEW = 5n;
 const KERNEL_DOMAIN = { name: "Kernel", version: "0.3.1" } as const;
 
 export class X402Error extends Error {}
+
+/**
+ * PROPOSED defaults, pending the owner's decision (ARCHITECTURE.md section 16.3): not decided values. 0.05 USDC per
+ * payment (USDC has 6 decimals) and 4 payments per hour give a 24-hour worst case of 26 * 4 * 0.05 = 5.20 USDC per
+ * agent through the x402 path, on top of the spend policy's dailyCap. A 300 second validity window is ample for a
+ * facilitator round trip and well under the one-hour ceiling. Deployments override them through configuration.
+ */
+export const X402_PROPOSED_LIMITS = { maxValue: 50_000n, paymentsPerEpoch: 4, maxValidity: 300 } as const;
 
 export interface X402ValidatorConfig {
   /** The x402 key's address: a key separate from the trading session key. */
@@ -200,4 +213,87 @@ export async function signX402Authorization(input: {
     BigInt(input.slot),
   ]);
   return concat(["0x01", getAddress(input.validator), fields, signature]);
+}
+
+// Installing and uninstalling the validator on a Kernel v3.1 account. Both are owner calls the account makes to
+// itself, sent through the root validator in an owner-signed operation (ARCHITECTURE.md section 16.3).
+
+/** Kernel v3.1 module type of a validator (ERC-7579). */
+export const KERNEL_MODULE_TYPE_VALIDATOR = 1n;
+
+const kernelModuleAbi = parseAbi([
+  "function installModule(uint256 moduleType, address module, bytes initData)",
+  "function uninstallValidation(bytes21 vId, bytes deinitData, bytes hookDeinitData)",
+]);
+
+/** The parts of X402PaymentValidator the wallet layer reads. */
+export const x402ValidatorAbi = parseAbi([
+  "struct Config { address signer; uint128 maxValue; uint32 paymentsPerEpoch; uint32 maxValidity; bool live; }",
+  "function config(address account) view returns (Config)",
+  "function isPayee(address account, address payee) view returns (bool)",
+]);
+
+/** Kernel v3.1 validation ID of a validator module: 0x01 followed by its address. */
+export function validatorValidationId(validator: Address): Hex {
+  return concat(["0x01", getAddress(validator)]);
+}
+
+export interface ModuleCall {
+  to: Address;
+  value: bigint;
+  data: Hex;
+}
+
+/**
+ * The owner call that installs the validator: `installModule(1, validator, initData)` on the account, where
+ * `initData` is the hook address (zero, so Kernel records address(1), no hook) followed by
+ * `abi.encode(validatorData, hookData, selectorData)`, the layout Kernel v3.1's `installModule` decodes. No selector
+ * is granted: the validator never validates a user operation.
+ */
+export function x402InstallCall(account: Address, validator: Address, installData: Hex): ModuleCall {
+  const initData = concat([zeroAddress, encodeAbiParameters(parseAbiParameters("bytes, bytes, bytes"), [installData, "0x", "0x"])]);
+  return {
+    to: getAddress(account),
+    value: 0n,
+    data: encodeFunctionData({ abi: kernelModuleAbi, functionName: "installModule", args: [KERNEL_MODULE_TYPE_VALIDATOR, getAddress(validator), initData] }),
+  };
+}
+
+/** The owner call that uninstalls the validator. This is the x402 key's revocation: Kernel's ERC-1271 path ignores the nonce. */
+export function x402UninstallCall(account: Address, validator: Address): ModuleCall {
+  return {
+    to: getAddress(account),
+    value: 0n,
+    data: encodeFunctionData({ abi: kernelModuleAbi, functionName: "uninstallValidation", args: [validatorValidationId(validator) as `0x${string}`, "0x", "0x"] }),
+  };
+}
+
+/** Decodes a call built by `x402InstallCall` or `x402UninstallCall`; null for anything else. Used by test doubles. */
+export function decodeX402ModuleCall(data: Hex):
+  | { kind: "install"; validator: Address; installData: Hex }
+  | { kind: "uninstall"; validator: Address }
+  | null {
+  try {
+    const call = decodeFunctionData({ abi: kernelModuleAbi, data });
+    if (call.functionName === "installModule") {
+      const [moduleType, module, initData] = call.args;
+      if (moduleType !== KERNEL_MODULE_TYPE_VALIDATOR || size(initData) < 20) return null;
+      const [validatorData] = decodeAbiParameters(parseAbiParameters("bytes, bytes, bytes"), slice(initData, 20));
+      return { kind: "install", validator: getAddress(module), installData: validatorData };
+    }
+    const [vId] = call.args;
+    if (slice(vId, 0, 1) !== "0x01") return null;
+    return { kind: "uninstall", validator: getAddress(slice(vId, 1)) };
+  } catch {
+    return null;
+  }
+}
+
+/** Decodes `x402ValidatorInstallData` back into the configuration. */
+export function decodeX402InstallData(data: Hex): X402ValidatorConfig {
+  const [signer, maxValue, paymentsPerEpoch, maxValidity, payees] = decodeAbiParameters(
+    parseAbiParameters("address, uint128, uint32, uint32, address[]"),
+    data,
+  );
+  return { signer, maxValue, paymentsPerEpoch, maxValidity, payees: [...payees] };
 }

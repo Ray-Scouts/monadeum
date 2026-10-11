@@ -1,5 +1,5 @@
 import type { AllowedCall } from "@monadeum/risk";
-import { getAddress, keccak256, toHex, type Address, type Hex } from "viem";
+import { getAddress, isAddressEqual, keccak256, toHex, type Address, type Hex } from "viem";
 import { privateKeyToAddress } from "viem/accounts";
 import {
   PaymasterUnavailableError,
@@ -15,6 +15,7 @@ import {
 } from "./chain.js";
 import { tradedAssetsOf, type Call } from "./scope.js";
 import { isRevokedOnChain } from "./wallets.service.js";
+import { decodeX402InstallData, decodeX402ModuleCall, type X402ValidatorConfig } from "./x402.js";
 
 // Test double, exported as `@monadeum/wallets/testing` so other packages can test against WalletsService without a
 // chain. Never use it outside tests: it holds no key and enforces nothing.
@@ -36,6 +37,8 @@ interface Account {
   currentNonce: number;
   validNonceFrom: number;
   permissions: Map<Hex, { installed: boolean; nonce: number }>;
+  /** X402PaymentValidator configurations by lowercased validator address, as Kernel and the validator hold them. */
+  x402: Map<string, { installed: boolean; config: X402ValidatorConfig | null }>;
   /** Next session-key nonce (key 0). Owner operations use another Kernel nonce key and do not move it. */
   sessionNonce: bigint;
 }
@@ -83,7 +86,7 @@ export class FakeChain implements WalletsChain {
     const key = address.toLowerCase();
     let a = this.accounts.get(key);
     if (!a) {
-      a = { deployed: false, limits: null, allowed: new Set(), traded: new Set(), balance: 0n, currentNonce: 1, validNonceFrom: 0, permissions: new Map(), sessionNonce: 0n };
+      a = { deployed: false, limits: null, allowed: new Set(), traded: new Set(), balance: 0n, currentNonce: 1, validNonceFrom: 0, permissions: new Map(), sessionNonce: 0n, x402: new Map() };
       this.accounts.set(key, a);
     }
     return a;
@@ -193,6 +196,14 @@ export class FakeChain implements WalletsChain {
           for (const token of parsed.traded ?? []) a.traded.add(token);
           for (const entry of parsed.scope) a.allowed.add(entry);
         }
+        // Kernel installModule / uninstallValidation, encoded exactly as libs/wallets/src/x402.ts builds them. The
+        // validator refuses to replace a live configuration (onInstall reverts), modelled here as no change.
+        const module = call.to.toLowerCase() === input.account.toLowerCase() ? decodeX402ModuleCall(call.data) : null;
+        if (module?.kind === "install") {
+          const key = module.validator.toLowerCase();
+          if (!a.x402.get(key)?.installed) a.x402.set(key, { installed: true, config: decodeX402InstallData(module.installData) });
+        }
+        if (module?.kind === "uninstall") a.x402.set(module.validator.toLowerCase(), { installed: false, config: null });
         if (call.data.startsWith(REVOKE)) {
           const permissionId = `0x${call.data.slice(REVOKE.length)}` as Hex;
           const p = a.permissions.get(permissionId);
@@ -239,6 +250,23 @@ export class FakeChain implements WalletsChain {
 
   async revocationCalls(input: { account: Address; permissionId: Hex }): Promise<Call[]> {
     return [{ to: input.account, value: 0n, data: `${REVOKE}${input.permissionId.slice(2)}` }];
+  }
+
+  async x402Installed(account: Address, validator: Address) {
+    return Boolean(this.acct(account).x402.get(validator.toLowerCase())?.installed);
+  }
+
+  async x402Configured(account: Address, validator: Address, expected: X402ValidatorConfig) {
+    const entry = this.acct(account).x402.get(validator.toLowerCase());
+    const c = entry?.installed ? entry.config : null;
+    if (!c) return false;
+    return isAddressEqual(c.signer, expected.signer) && c.maxValue === expected.maxValue && c.paymentsPerEpoch === expected.paymentsPerEpoch &&
+      c.maxValidity === expected.maxValidity && expected.payees.every((p) => c.payees.some((q) => isAddressEqual(p, q)));
+  }
+
+  /** Gives `address` code, for contracts such as the x402 validator that the module checks before using. */
+  deployContract(address: Address) {
+    this.acct(address).deployed = true;
   }
 
   revoked(account: Address, permissionId: Hex, enableNonce: number) {

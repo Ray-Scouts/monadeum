@@ -2,6 +2,8 @@ import { isAddress, isHex, type Address, type Hex } from "viem";
 import { monadTestnet } from "viem/chains";
 import type { SponsorshipBudget } from "./budget.js";
 import { buildScope } from "./scope.js";
+import type { X402WalletSettings } from "./wallets.service.js";
+import { X402_PROPOSED_LIMITS } from "./x402.js";
 import type { ZeroDevChainConfig } from "./zerodev.js";
 
 // Environment variables, documented in libs/wallets/README.md. None of them is a private key: the module generates
@@ -9,9 +11,46 @@ import type { ZeroDevChainConfig } from "./zerodev.js";
 
 export class WalletsConfigError extends Error {}
 
+/** The x402 settings of WalletsService, without the vault, which the process supplies. */
+export type X402WalletConfig = Omit<X402WalletSettings, "vault">;
+
 export interface WalletsConfig {
   chain: ZeroDevChainConfig;
   budget: SponsorshipBudget;
+  /** Null unless WALLETS_X402_VALIDATOR_ADDRESS is set: no x402 key is created and agents cannot pay x402. */
+  x402: X402WalletConfig | null;
+}
+
+function positiveInteger(env: Env, name: string, fallback: bigint): bigint {
+  const value = env[name]?.trim();
+  if (!value) return fallback;
+  if (!/^\d+$/.test(value) || BigInt(value) === 0n) throw new WalletsConfigError(`${name} is not a positive integer`);
+  return BigInt(value);
+}
+
+/**
+ * The x402 validator settings. `maxValue`, `paymentsPerEpoch`, and `maxValidity` default to X402_PROPOSED_LIMITS,
+ * which are proposals pending the owner, not decided values. Every value is checked again when install data is built.
+ */
+function x402Config(env: Env, settlementAsset: Address): X402WalletConfig | null {
+  if (!env.WALLETS_X402_VALIDATOR_ADDRESS?.trim()) return null;
+  const payees = required(env, "WALLETS_X402_PAYEES").split(",").map((s) => s.trim()).filter(Boolean);
+  for (const p of payees) if (!isAddress(p)) throw new WalletsConfigError(`WALLETS_X402_PAYEES: ${p} is not an address`);
+  const maxValue = positiveInteger(env, "WALLETS_X402_MAX_VALUE", X402_PROPOSED_LIMITS.maxValue);
+  const paymentsPerEpoch = positiveInteger(env, "WALLETS_X402_PAYMENTS_PER_EPOCH", BigInt(X402_PROPOSED_LIMITS.paymentsPerEpoch));
+  const maxValidity = positiveInteger(env, "WALLETS_X402_MAX_VALIDITY", BigInt(X402_PROPOSED_LIMITS.maxValidity));
+  if (maxValue >= 2n ** 128n) throw new WalletsConfigError("WALLETS_X402_MAX_VALUE must fit uint128");
+  if (paymentsPerEpoch >= 2n ** 32n) throw new WalletsConfigError("WALLETS_X402_PAYMENTS_PER_EPOCH must fit uint32");
+  if (maxValidity > 3600n) throw new WalletsConfigError("WALLETS_X402_MAX_VALIDITY must be at most 3600 seconds");
+  if (payees.length === 0 || payees.length > 8) throw new WalletsConfigError("WALLETS_X402_PAYEES must list 1 to 8 addresses");
+  return {
+    validator: address(env, "WALLETS_X402_VALIDATOR_ADDRESS"),
+    settlementAsset,
+    maxValue,
+    paymentsPerEpoch: Number(paymentsPerEpoch),
+    maxValidity: Number(maxValidity),
+    payees: payees as Address[],
+  };
 }
 
 type Env = Record<string, string | undefined>;
@@ -69,8 +108,9 @@ export function loadWalletsConfig(env: Env = process.env): WalletsConfig {
   for (const [name, url] of [["WALLETS_BUNDLER_URL", bundlerUrl], ["WALLETS_PAYMASTER_URL", paymasterUrl]] as const) {
     if (url && !url.startsWith("https://")) throw new WalletsConfigError(`${name} must be an https URL`);
   }
+  const settlementAsset = address(env, "WALLETS_SETTLEMENT_ASSET");
   const scope = buildScope({
-    settlementAsset: address(env, "WALLETS_SETTLEMENT_ASSET"),
+    settlementAsset,
     kuruRouter: address(env, "WALLETS_KURU_ROUTER"),
     kuruRouterSelectors: selectors(env, "WALLETS_KURU_ROUTER_SELECTORS"),
     reallocation: address(env, "WALLETS_REALLOCATION_CONTRACT"),
@@ -93,5 +133,6 @@ export function loadWalletsConfig(env: Env = process.env): WalletsConfig {
       scope,
     },
     budget: { operations: Number(operations), gasWei: nonNegativeInteger(env, "WALLETS_SPONSORED_GAS_WEI") },
+    x402: x402Config(env, settlementAsset),
   };
 }

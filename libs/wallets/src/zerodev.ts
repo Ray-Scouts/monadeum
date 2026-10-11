@@ -21,6 +21,7 @@ import {
   createPublicClient,
   encodeFunctionData,
   http,
+  isAddressEqual,
   pad,
   parseAbi,
   RpcRequestError,
@@ -52,6 +53,7 @@ import {
   type WalletsChain,
 } from "./chain.js";
 import { tradedAssetsOf, type Call } from "./scope.js";
+import { validatorValidationId, x402ValidatorAbi, type X402ValidatorConfig } from "./x402.js";
 
 // Kernel v3.1 on EntryPoint 0.7 and call policy v0.0.4: the versions the issue #18 and #19 spikes ran on Monad testnet.
 export const entryPoint = getEntryPoint("0.7");
@@ -351,6 +353,29 @@ export class ZeroDevChain implements WalletsChain {
       this.publicClient.readContract({ address, abi, functionName: "validNonceFrom" }),
     ]);
     return { installed: config.hook !== zeroAddress, validatorNonce: config.nonce, currentNonce, validNonceFrom };
+  }
+
+  async x402Installed(account: Address, validator: Address): Promise<boolean> {
+    if (!(await this.isDeployed(account))) return false;
+    const config = await this.publicClient.readContract({
+      address: account, abi: KernelV3AccountAbi, functionName: "validationConfig", args: [validatorValidationId(validator) as `0x${string}`],
+    });
+    return config.hook !== zeroAddress;
+  }
+
+  async x402Configured(account: Address, validator: Address, expected: X402ValidatorConfig): Promise<boolean> {
+    try {
+      if (!(await this.x402Installed(account, validator))) return false;
+      const c = await this.publicClient.readContract({ address: validator, abi: x402ValidatorAbi, functionName: "config", args: [account] });
+      if (!c.live || !isAddressEqual(c.signer, expected.signer) || c.maxValue !== expected.maxValue) return false;
+      if (c.paymentsPerEpoch !== expected.paymentsPerEpoch || c.maxValidity !== expected.maxValidity) return false;
+      for (const payee of expected.payees) {
+        if (!(await this.publicClient.readContract({ address: validator, abi: x402ValidatorAbi, functionName: "isPayee", args: [account, payee] }))) return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async revocationCalls(input: { account: Address; sessionKeyAddress: Address; permissionId: Hex; state: PermissionState }): Promise<Call[]> {
