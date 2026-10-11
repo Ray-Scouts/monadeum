@@ -187,6 +187,45 @@ contract X402MainnetForkTest is Test {
         assertEq(usdc.allowance(address(kernel), attacker), 0);
     }
 
+    /// The exact calls libs/wallets builds (src/x402.ts `x402InstallCall` and `x402UninstallCall`): `installModule(1,
+    /// validator, address(0) || abi.encode(installData, "", ""))` and `uninstallValidation(0x01 || validator, "", "")`,
+    /// each a call the account makes to itself inside `execute`, the way an owner operation from the SDK carries it.
+    /// Reinstalling with a new key after the uninstall works, and the old key's authorization stays dead.
+    function test_fork_walletsLibraryInstallAndUninstallCalls() public {
+        uint256 t = block.timestamp;
+        (bytes32 oldNonce, bytes memory oldSig) = _signPayment(payee, 1, t - 60, t + 300, 0);
+        _handle(_rootOp(_selfCall(abi.encodeCall(IKernelInstall.uninstallValidation, (_validatorVId(), hex"", hex"")))));
+        assertFalse(validator.isInitialized(address(kernel)), "uninstalled through execute");
+
+        Vm.Wallet memory rotated = vm.createWallet("rotatedX402Key");
+        address[] memory payees = new address[](1);
+        payees[0] = payee;
+        bytes memory installData = abi.encode(rotated.addr, MAX_VALUE, SLOTS, MAX_VALIDITY, payees);
+        bytes memory initData = abi.encodePacked(address(0), abi.encode(installData, hex"", hex""));
+        _handle(
+            _rootOp(
+                _selfCall(
+                    abi.encodeWithSignature("installModule(uint256,address,bytes)", 1, address(validator), initData)
+                )
+            )
+        );
+        assertEq(validator.config(address(kernel)).signer, rotated.addr, "installed through installModule");
+
+        vm.expectRevert();
+        usdc.transferWithAuthorization(address(kernel), payee, 1, t - 60, t + 300, oldNonce, oldSig);
+
+        x402Key = rotated;
+        (bytes32 nonce, bytes memory sig) = _signPayment(payee, MAX_VALUE, t - 60, t + 300, 1);
+        usdc.transferWithAuthorization(address(kernel), payee, MAX_VALUE, t - 60, t + 300, nonce, sig);
+        assertEq(usdc.balanceOf(payee), MAX_VALUE, "the new key pays");
+    }
+
+    function _selfCall(bytes memory data) internal view returns (bytes memory) {
+        return abi.encodeWithSignature(
+            "execute(bytes32,bytes)", bytes32(0), abi.encodePacked(address(kernel), uint256(0), data)
+        );
+    }
+
     function test_fork_uninstallKillsOutstandingAuthorization() public {
         uint256 t = block.timestamp;
         (bytes32 nonce, bytes memory sig) = _signPayment(payee, 1, t - 60, t + 300, 3);
