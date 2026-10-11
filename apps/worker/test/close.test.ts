@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { SellFill, SellOrder } from "@monadeum/trading";
+import { baseToQuote, type SellFill, type SellOrder } from "@monadeum/trading";
 import { DECIMALS, assertOnlyApprovedPlansSent, world } from "./harness.js";
 
 // Closing a position through the worker loop over the real modules (see harness.ts). A "flat" decision with a
@@ -8,7 +8,7 @@ import { DECIMALS, assertOnlyApprovedPlansSent, world } from "./harness.js";
 
 type World = Awaited<ReturnType<typeof world>>;
 
-const one = () => world({ market: "wrapped", information: false, agents: [{ agentId: "1", owner: "a" }] });
+const one = () => world({ market: "weth", information: false, agents: [{ agentId: "1", owner: "a" }] });
 const sessions = (w: World) => w.sessionOps().length;
 const units = (v: bigint) => Number(v) / 10 ** DECIMALS;
 
@@ -30,9 +30,9 @@ test("round trip: buy, then a flat decision sells the whole position, and fitnes
   assert.equal(bought.size, w.kuru.baseOf(account));
   assert.ok(bought.size > 0n);
 
-  // The market moves up to 1.09 / 1.11, and the signal turns: the strategy's exit decision.
-  w.kuru.bid = 109n * 10n ** 16n;
-  w.kuru.ask = 111n * 10n ** 16n;
+  // WETH moves up to 2740 / 2760 USDC, and the signal turns: the strategy's exit decision.
+  w.kuru.bid = 2_740n * 10n ** 18n;
+  w.kuru.ask = 2_760n * 10n ** 18n;
   w.setSignal("1", -0.01);
   const close = await worker.tick("1", 3);
   assert.equal(close?.action, "executed");
@@ -44,9 +44,9 @@ test("round trip: buy, then a flat decision sells the whole position, and fitnes
   const position = await trading.position("1");
   assert.deepEqual([position.size, position.basis, position.closing], [0n, 0n, null]);
 
-  // Realized at reference prices: the base is worth 1.10 a unit at the close's mid, and cost 1.00 at the buy's.
+  // Realized at reference prices: WETH at the close's 2750 mid, against its cost at the buy's 2500 mid.
   const buy = (await w.stores.trades.get("1:1"))!;
-  const expected = (bought.size * 110n) / 10n ** 14n - bought.basis;
+  const expected = baseToQuote(bought.size, 2_750n * 10n ** 18n, w.market) - bought.basis;
   assert.equal(position.realized, expected);
   assert.ok(expected > 0n);
 
@@ -101,8 +101,8 @@ test("a crash mid-close never sells twice: other ticks wait, and the restart rec
 test("a crash after the close filled, while measuring: the restart realizes the P&L once", async () => {
   const w = await one();
   await opened(w);
-  w.kuru.bid = 109n * 10n ** 16n;
-  w.kuru.ask = 111n * 10n ** 16n;
+  w.kuru.bid = 2_740n * 10n ** 18n;
+  w.kuru.ask = 2_760n * 10n ** 18n;
   w.setSignal("1", -0.01);
   const first = await w.boot();
   const original = w.stores.ticks.write.bind(w.stores.ticks);
@@ -124,7 +124,7 @@ test("a crash after the close filled, while measuring: the restart realizes the 
 });
 
 test("the RiskModule checks a close: a policy without the traded asset rejects it, and nothing is sent", async () => {
-  const w = await world({ market: "wrapped", information: false, tradedAssetInPolicy: false, agents: [{ agentId: "1", owner: "a" }] });
+  const w = await world({ market: "weth", information: false, tradedAssetInPolicy: false, agents: [{ agentId: "1", owner: "a" }] });
   await opened(w);
   w.setSignal("1", -0.01);
   const { worker, risk } = await w.boot();
@@ -138,7 +138,21 @@ test("the RiskModule checks a close: a policy without the traded asset rejects i
   assert.ok(position && position.size > 0n && position.closing === null, "the position stays open and unmarked");
 });
 
-test("on the configured native-MON market a close is not built: the sell would need native value", async () => {
+test("WETH/USDC: gas is costed at the MON book's mid, and with no usable MON price nothing is built or sent", async () => {
+  const w = await one();
+  const { worker } = await w.boot();
+  assert.equal((await worker.tick("1", 1))?.action, "executed");
+  const buy = (await w.stores.trades.get("1:1"))!;
+  assert.deepEqual(buy.order.monPrice, { price: 25n * 10n ** 15n, source: "kuru-mon-usdc-mid" });
+  assert.notEqual(buy.order.monPrice!.price, buy.order.reference.price, "not the WETH price");
+
+  w.setMonPriceDown(true);
+  const blocked = await worker.tick("1", 3);
+  assert.deepEqual(blocked?.outcome?.kind === "failed" && [blocked.outcome.step, blocked.outcome.reason], ["plan", "gas-price"]);
+  assert.equal(sessions(w), 1);
+});
+
+test("on the native-MON market a close is not built: the sell would need native value", async () => {
   const w = await world({ information: false, agents: [{ agentId: "1", owner: "a" }] });
   await opened(w);
   w.setSignal("1", -0.01);
