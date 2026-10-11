@@ -44,9 +44,9 @@ pragma solidity ^0.8.24;
 ///   decodes the same calldata into `Call[]` and calls `record(calls)`.
 /// - Validation-phase storage reads must satisfy ERC-7562's associated-storage rule: the account address is the
 ///   innermost mapping key of every per-account mapping `check` reads.
-/// - x402 payments, assumed to settle through an EIP-3009 authorization the account signs, reach the account
-///   through ERC-1271 `isValidSignature`, not through `check`. This interface does not bound them. See the open
-///   question in ARCHITECTURE.md section 16.3.
+/// - x402 payments settle through an EIP-3009 authorization the account signs, so they reach the account through
+///   ERC-1271 `isValidSignature`, not through `check`. This interface does not bound them; the separate
+///   X402PaymentValidator does (ARCHITECTURE.md section 16.3, "x402 signature path").
 interface IAgentSpendPolicy {
     struct Limits {
         uint128 perTxCap; // settlement-asset base units, applied to the sum over one operation

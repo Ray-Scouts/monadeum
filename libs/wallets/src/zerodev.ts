@@ -104,7 +104,7 @@ export function sessionPolicies(scope: readonly AllowedCall[], spendPolicy: Spen
   });
   // Flag 0x0000 on both policies: neither skips the user-operation or the signature check. AgentSpendPolicy's
   // checkSignaturePolicy always fails (16.3), so a session key issued here cannot produce an ERC-1271 signature for
-  // the account. Enabling the x402 signature path needs the owner's skip-signature flag, which this module never sets.
+  // the account. The skip-signature flag is never set: x402 payments go through X402PaymentValidator (16.3).
   const custom: Policy = {
     getPolicyData: () => spendPolicy.policyData,
     getPolicyInfoInBytes: () => concatHex(["0x0000", spendPolicy.address]),

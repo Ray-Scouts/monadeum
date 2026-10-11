@@ -3,7 +3,7 @@ import { getAddress, isAddress, isAddressEqual, isHex, toFunctionSelector, type 
 
 // The session key scope is the call allowlist of SECURITY.md section 1 and ARCHITECTURE.md section 16.3: Kuru's
 // router, the owner-scoped reallocation contract, and `transfer` and `approve` on the settlement asset, nothing
-// else. The x402 facilitator is not a call target (16.3, open question on x402 coverage), so it is not in scope.
+// else. The x402 facilitator is not a call target (16.3, x402 signature path), so it is not in scope.
 // The reallocation entry keeps the allowlist label "reproduction", as ARCHITECTURE.md section 16.1 does until
 // issue #31 renames it.
 

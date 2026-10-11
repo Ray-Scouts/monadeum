@@ -25,8 +25,8 @@ import {IHook, IPolicy, PackedUserOperation} from "./kernel/IKernelModules.sol";
 /// - `preCheck` decodes `msgData` the same way, without the `executeUserOp` prefix, which Kernel strips, and runs
 ///   `record` for the calling account.
 /// - `checkSignaturePolicy` always fails: this contract does not bound ERC-1271 signatures, so a session key holding
-///   it as a policy cannot sign for the account unless the owner installs it with Kernel's skip-signature flag. That
-///   is an explicit, visible choice at install time, pending the x402 open question in section 16.3.
+///   it as a policy cannot sign for the account. Kernel's skip-signature flag is never set on it: x402 payments are
+///   signed through the separate X402PaymentValidator (ARCHITECTURE.md section 16.3, "x402 signature path").
 contract AgentSpendPolicy is IAgentSpendPolicy, IPolicy, IHook {
     /// The account calldata is not `execute(bytes32,bytes)`, optionally wrapped in `executeUserOp`.
     error UnsupportedAccountCall(bytes4 selector);
