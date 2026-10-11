@@ -44,6 +44,13 @@ function selectors(env: Env, name: string): Hex[] {
   return required(env, name).split(",").map((s) => s.trim()).filter(Boolean) as Hex[];
 }
 
+/** Optional: the ERC-20 bases a close sells, comma-separated. Unset means no close can be built for any agent. */
+function tradedAssets(env: Env): Address[] {
+  const list = (env.WALLETS_TRADED_ASSETS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  for (const a of list) if (!isAddress(a)) throw new WalletsConfigError(`WALLETS_TRADED_ASSETS: ${a} is not an address`);
+  return list as Address[];
+}
+
 function nonNegativeInteger(env: Env, name: string): bigint {
   const value = required(env, name);
   if (!/^\d+$/.test(value)) throw new WalletsConfigError(`${name} is not a non-negative integer`);
@@ -68,6 +75,7 @@ export function loadWalletsConfig(env: Env = process.env): WalletsConfig {
     kuruRouterSelectors: selectors(env, "WALLETS_KURU_ROUTER_SELECTORS"),
     reallocation: address(env, "WALLETS_REALLOCATION_CONTRACT"),
     reallocationSelectors: selectors(env, "WALLETS_REALLOCATION_SELECTORS"),
+    tradedAssets: tradedAssets(env),
   });
   const operations = nonNegativeInteger(env, "WALLETS_SPONSORED_OPERATIONS");
   if (operations > BigInt(Number.MAX_SAFE_INTEGER)) throw new WalletsConfigError("WALLETS_SPONSORED_OPERATIONS is too large");

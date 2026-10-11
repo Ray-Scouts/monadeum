@@ -25,6 +25,8 @@ abstract contract PolicyTestBase is Test {
     address internal router;
     address internal repro;
     address internal account;
+    /// An ERC-20 the account trades (the base of its market), marked with `setTradedAsset`.
+    address internal traded;
 
     function setUp() public virtual {
         // Start at a realistic timestamp so hour arithmetic never sits at the zero edge by accident.
@@ -33,6 +35,7 @@ abstract contract PolicyTestBase is Test {
         router = makeAddr("router");
         repro = makeAddr("reallocation");
         account = makeAddr("account");
+        traded = makeAddr("tradedAsset");
         policy = new AgentSpendPolicy(asset);
         _configure(account, PER_TX_CAP, DAILY_CAP);
     }
@@ -44,7 +47,18 @@ abstract contract PolicyTestBase is Test {
         policy.setAllowed(asset, APPROVE, true);
         policy.setAllowed(router, SWAP, true);
         policy.setAllowed(repro, REALLOCATE, true);
+        policy.setTradedAsset(traded, true);
+        policy.setAllowed(traded, APPROVE, true);
+        policy.setAllowed(traded, TRANSFER, true);
         vm.stopPrank();
+    }
+
+    function _tradedCall(bytes4 selector, address to, uint256 amount)
+        internal
+        view
+        returns (IAgentSpendPolicy.Call memory)
+    {
+        return IAgentSpendPolicy.Call({target: traded, value: 0, data: abi.encodeWithSelector(selector, to, amount)});
     }
 
     function _transfer(address to, uint256 amount) internal view returns (IAgentSpendPolicy.Call memory) {

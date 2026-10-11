@@ -210,6 +210,132 @@ contract AgentSpendPolicyTest is PolicyTestBase {
         }
     }
 
+    // --- traded assets ---------------------------------------------------------------------------------------------
+
+    function test_setTradedAsset_emitsAndIsPerAccount() public {
+        address other = makeAddr("other");
+        address token = makeAddr("token");
+        vm.expectEmit(true, true, true, true, address(policy));
+        emit IAgentSpendPolicy.TradedAssetSet(other, token, true);
+        vm.prank(other);
+        policy.setTradedAsset(token, true);
+        assertTrue(policy.isTradedAsset(other, token));
+        assertFalse(policy.isTradedAsset(account, token), "other accounts unaffected");
+        assertTrue(policy.isTradedAsset(account, traded));
+        assertFalse(policy.isTradedAsset(other, traded));
+    }
+
+    function test_setTradedAsset_rejectsTheAssetPolicyAccountZeroAndAnAllowlistedTarget() public {
+        address[5] memory bad = [address(0), asset, address(policy), account, router];
+        vm.startPrank(account);
+        for (uint256 i = 0; i < bad.length; ++i) {
+            vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.TradedAssetNotAllowed.selector, bad[i]));
+            policy.setTradedAsset(bad[i], true);
+        }
+        vm.stopPrank();
+    }
+
+    function test_setTradedAsset_changesOnlyWhileNoSelectorIsAllowed() public {
+        vm.startPrank(account);
+        vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.TradedAssetNotAllowed.selector, traded));
+        policy.setTradedAsset(traded, false);
+        policy.setAllowed(traded, APPROVE, false);
+        policy.setAllowed(traded, TRANSFER, false);
+        policy.setTradedAsset(traded, false);
+        vm.stopPrank();
+        assertFalse(policy.isTradedAsset(account, traded));
+        vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.CallNotAllowed.selector, traded, APPROVE));
+        policy.check(account, _one(_tradedCall(APPROVE, router, 1)));
+    }
+
+    function testFuzz_setAllowed_tradedAssetAdmitsOnlyTransferAndApprove(bytes4 selector) public {
+        vm.prank(account);
+        if (selector == TRANSFER || selector == APPROVE) {
+            policy.setAllowed(traded, selector, true);
+            assertTrue(policy.isAllowed(account, traded, selector));
+        } else {
+            vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.TradedAssetSelector.selector, traded, selector));
+            policy.setAllowed(traded, selector, true);
+        }
+    }
+
+    /// Only the settlement asset and a traded asset may hold `transfer` or `approve`, so an allowlisted token call
+    /// outside them, which `check` would let through unread, cannot be configured.
+    function testFuzz_setAllowed_rejectsTokenSelectorsOnAnyOtherTarget(address target, bool viaApprove, bool allowed)
+        public
+    {
+        vm.assume(target != asset && target != traded);
+        bytes4 selector = viaApprove ? APPROVE : TRANSFER;
+        vm.prank(account);
+        vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.TradedAssetSelector.selector, target, selector));
+        policy.setAllowed(target, selector, allowed);
+    }
+
+    function test_check_tradedAssetCallToTheRouterIsAcceptedAndCountsNothing() public view {
+        IAgentSpendPolicy.Call[] memory calls = new IAgentSpendPolicy.Call[](3);
+        calls[0] = _tradedCall(APPROVE, router, type(uint256).max); // far above every cap: a traded asset is uncounted
+        calls[1] = _swap();
+        calls[2] = _approve(router, 7e6);
+        assertEq(policy.check(account, calls), 7e6, "only the settlement-asset approve counts");
+        assertEq(policy.check(account, _one(_tradedCall(TRANSFER, repro, 1e30))), 0);
+    }
+
+    /// THREAT-MODEL.md scenario A on the traded asset: approving or sending it to anyone but an allowed recipient.
+    function testFuzz_check_tradedAssetCallToAnyOtherRecipientIsRejected(
+        address recipient,
+        uint256 amount,
+        bool viaApprove
+    ) public {
+        vm.assume(recipient != router && recipient != repro);
+        IAgentSpendPolicy.Call memory c = _tradedCall(viaApprove ? APPROVE : TRANSFER, recipient, amount);
+        vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.RecipientNotAllowed.selector, recipient));
+        policy.check(account, _one(c));
+    }
+
+    function test_check_aTradedAssetIsNeverARecipient() public {
+        address second = makeAddr("secondTradedAsset");
+        vm.startPrank(account);
+        policy.setTradedAsset(second, true);
+        policy.setAllowed(second, APPROVE, true);
+        vm.stopPrank();
+        assertFalse(policy.isRecipientAllowed(account, traded), "it has allowed selectors, and is still excluded");
+        vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.RecipientNotAllowed.selector, traded));
+        policy.check(account, _one(_approve(traded, 1)));
+        vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.RecipientNotAllowed.selector, traded));
+        policy.check(account, _one(_transfer(traded, 1)));
+        IAgentSpendPolicy.Call memory c = IAgentSpendPolicy.Call(second, 0, abi.encodeWithSelector(APPROVE, traded, 1));
+        vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.RecipientNotAllowed.selector, traded));
+        policy.check(account, _one(c));
+    }
+
+    function test_check_rejectsMalformedTradedAssetCalls() public {
+        IAgentSpendPolicy.Call memory c = _tradedCall(APPROVE, router, 1);
+        c.data = abi.encodePacked(APPROVE, bytes32(uint256(uint160(router))));
+        vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.CallNotAllowed.selector, traded, APPROVE));
+        policy.check(account, _one(c));
+        c.data = abi.encodePacked(APPROVE, bytes32((uint256(1) << 160) | uint256(uint160(router))), uint256(1));
+        vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.CallNotAllowed.selector, traded, APPROVE));
+        policy.check(account, _one(c));
+    }
+
+    /// As for the settlement asset: an entry `setAllowed` refuses, written into storage directly, is still refused
+    /// by `check`.
+    function test_check_rejectsOtherTradedAssetSelectorsEvenIfStored() public {
+        vm.store(address(policy), _allowedSlot(traded, TRANSFER_FROM, account), bytes32(uint256(1)));
+        IAgentSpendPolicy.Call memory c = IAgentSpendPolicy.Call({
+            target: traded, value: 0, data: abi.encodeWithSelector(TRANSFER_FROM, account, router, uint256(1))
+        });
+        vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.CallNotAllowed.selector, traded, TRANSFER_FROM));
+        policy.check(account, _one(c));
+    }
+
+    function test_record_tradedAssetCallsAddNothingToTheWindow() public {
+        _record(account, _two(_tradedCall(APPROVE, router, 1e30), _swap()));
+        assertEq(policy.windowTotal(account), 0);
+        _record(account, _two(_tradedCall(APPROVE, router, 1e30), _approve(router, 3e6)));
+        assertEq(policy.windowTotal(account), 3e6);
+    }
+
     // --- check: ERC-7562 associated storage ------------------------------------------------------------------------
 
     /// Every storage slot the validation path reads must be associated with the account (ERC-7562): the account is
@@ -217,7 +343,10 @@ contract AgentSpendPolicyTest is PolicyTestBase {
     /// exercises every read in `_check` (limits, allowlist entries, the recipient rule) and requires each to be one
     /// of the slots derived with the account as innermost key, with no writes and no other contract touched.
     function test_validation_readsOnlyAccountAssociatedStorage() public {
-        IAgentSpendPolicy.Call[] memory calls = _two(_transfer(router, 10e6), _swap());
+        IAgentSpendPolicy.Call[] memory calls = new IAgentSpendPolicy.Call[](3);
+        calls[0] = _transfer(router, 10e6);
+        calls[1] = _swap();
+        calls[2] = _tradedCall(APPROVE, router, 5e18); // the traded-asset branch and its recipient rule
         bytes memory callData = abi.encodeWithSelector(
             bytes4(keccak256("execute(bytes32,bytes)")), bytes32(bytes1(0x01)), abi.encode(calls)
         );
@@ -225,11 +354,14 @@ contract AgentSpendPolicyTest is PolicyTestBase {
         op.sender = account;
         op.callData = callData;
 
-        bytes32[4] memory expected = [
+        bytes32[7] memory expected = [
             keccak256(abi.encode(account, uint256(0))), // _limits[account]
             _allowedSlot(asset, TRANSFER, account),
             _allowedSlot(router, SWAP, account),
-            keccak256(abi.encode(account, keccak256(abi.encode(router, uint256(2))))) // _allowedSelectorCount[router][account]
+            _allowedSlot(traded, APPROVE, account),
+            keccak256(abi.encode(account, keccak256(abi.encode(router, uint256(2))))), // _allowedSelectorCount[router][account]
+            _tradedSlot(router, account), // _tradedAsset[router][account]: is the router a token? (target and recipient)
+            _tradedSlot(traded, account) // _tradedAsset[traded][account]
         ];
 
         vm.record();
@@ -254,6 +386,10 @@ contract AgentSpendPolicyTest is PolicyTestBase {
             }
             assertTrue(found, "expected read did not happen, so the slot derivation above is stale");
         }
+    }
+
+    function _tradedSlot(address token, address who) internal pure returns (bytes32) {
+        return keccak256(abi.encode(who, keccak256(abi.encode(token, uint256(3)))));
     }
 
     function _allowedSlot(address target, bytes4 selector, address who) internal pure returns (bytes32) {

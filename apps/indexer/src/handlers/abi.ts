@@ -21,6 +21,7 @@ export const spendPolicyEvents = parseAbi([
   "event LimitsSet(address indexed account, uint128 perTxCap, uint128 dailyCap)",
   "event CallAllowed(address indexed account, address indexed target, bytes4 indexed selector, bool allowed)",
   "event Spent(address indexed account, uint256 amount, uint256 windowTotal)",
+  "event TradedAssetSet(address indexed account, address indexed token, bool traded)",
 ]);
 
 export const kernelEvents = pickEvents(KernelV3_1AccountAbi as Abi, ["PermissionInstalled", "PermissionUninstalled", "NonceInvalidated"]);

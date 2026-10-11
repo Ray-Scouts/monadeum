@@ -4,6 +4,7 @@ import {
   PgDebitStore,
   PgChallengeStore,
   PgPaymentLog,
+  PgPositionStore,
   PgSessionStore,
   PgSponsorshipLedger,
   PgReadModelStore,
@@ -18,7 +19,7 @@ export const STORE_TABLES = [
   "wallet_accounts", "wallet_tick_operations", "wallet_sponsorship", "auth_user_wallets", "auth_users",
   "auth_challenges", "auth_sessions", "trade_records", "x402_payments", "tick_records",
   "indexer_cursor", "indexer_blocks", "indexer_tracked_accounts", "chain_events", "indexer_settings",
-  "worker_agent_states", "worker_agents", "reallocation_debits",
+  "worker_agent_states", "worker_agents", "reallocation_debits", "trade_positions",
 ];
 
 /** Postgres stores over one migrated database, emptied before each test. */
@@ -38,6 +39,7 @@ export function postgresHarness(db: Database): Harness {
         readModel: new PgReadModelStore(db),
         agents: new PgAgentStore(db),
         debits: new PgDebitStore(db),
+        positions: new PgPositionStore(db),
       };
     },
   };

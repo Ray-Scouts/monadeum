@@ -13,6 +13,7 @@ import {
   buildScope,
   callsInScope,
   isRevokedOnChain,
+  tradedAssetsOf,
   type OwnerSigner,
   type SponsorshipBudget,
 } from "../src/index.js";
@@ -71,6 +72,24 @@ test("the scope rejects aliased targets, empty selector lists, and malformed sel
   assert.throws(() => buildScope({ ...base, reallocationSelectors: ["0x1234"] }), ScopeError);
   assert.throws(() => buildScope({ ...base, kuruRouterSelectors: [ROUTER_SWAP, ROUTER_SWAP] }), ScopeError);
   assert.throws(() => buildScope({ ...base, kuruRouter: "0x0000000000000000000000000000000000000000" }), ScopeError);
+  assert.throws(() => buildScope({ ...base, tradedAssets: [ROUTER] }), ScopeError, "a traded asset aliasing the router");
+  assert.throws(() => buildScope({ ...base, tradedAssets: [USDC] }), ScopeError, "the settlement asset is not a traded asset");
+  assert.throws(() => buildScope({ ...base, tradedAssets: ["0x0000000000000000000000000000000000000000"] }), ScopeError);
+});
+
+test("a traded asset gets approve only, and the fake chain is configured only once it is marked", async () => {
+  const WETH = getAddress("0xEE8c0E9f1BFFb4Eb878d8f15f368A02a35481242");
+  const withBase = buildScope({ settlementAsset: USDC, kuruRouter: ROUTER, kuruRouterSelectors: [ROUTER_SWAP], reallocation: REALLOC, reallocationSelectors: [REALLOC_MOVE], tradedAssets: [WETH] });
+  assert.deepEqual(withBase.filter((c) => c.target === WETH).map((c) => [c.label, c.selector]), [["traded-asset", APPROVE_SELECTOR]]);
+  assert.deepEqual(tradedAssetsOf(withBase), [WETH]);
+  const chain = new FakeChain();
+  const account = getAddress("0x00000000000000000000000000000000000000aa");
+  const owner = privateKeyToAccount(generatePrivateKey());
+  const prepared = await chain.prepareOwnerOperation({ owner: { address: owner.address, signer: owner }, index: 0n, account, calls: chain.configurationCalls(withBase, limits), sponsored: false });
+  await prepared.submit();
+  assert.equal(await chain.policyConfigured(account, withBase, limits), true);
+  chain.acct(account).traded.clear();
+  assert.equal(await chain.policyConfigured(account, withBase, limits), false, "allowed but not marked is not configured");
 });
 
 test("calls outside the allowlist, with native value, or without a selector are out of scope", () => {

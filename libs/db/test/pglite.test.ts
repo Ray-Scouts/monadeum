@@ -33,7 +33,7 @@ describe("pglite: migration runner", () => {
     try {
       assert.deepEqual(await migrate(db), []);
       const { rows } = await db.query<{ name: string }>("SELECT name FROM store_schema_migrations ORDER BY version");
-      assert.deepEqual(rows.map((r) => r.name), ["0001_stores.sql", "0002_indexer_read_model.sql", "0003_risk_policy_versions.sql", "0004_roles_and_grants.sql", "0005_store_grants.sql", "0006_agent_registry.sql", "0007_api.sql", "0008_api_agent_creation.sql", "0009_funding_principal.sql", "0010_indexer_settlement_asset.sql"]);
+      assert.deepEqual(rows.map((r) => r.name), ["0001_stores.sql", "0002_indexer_read_model.sql", "0003_risk_policy_versions.sql", "0004_roles_and_grants.sql", "0005_store_grants.sql", "0006_agent_registry.sql", "0007_api.sql", "0008_api_agent_creation.sql", "0009_funding_principal.sql", "0010_indexer_settlement_asset.sql", "0011_trade_positions.sql"]);
     } finally {
       await pg.close();
     }

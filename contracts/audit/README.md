@@ -23,14 +23,14 @@ Contents:
 
 | File | nSLOC | Role |
 | --- | --- | --- |
-| `contracts/src/AgentSpendPolicy.sol` | 177 | Implementation: spend rules, rolling window, Kernel v3.1 policy and hook entry points |
-| `contracts/src/IAgentSpendPolicy.sol` | 30 | Authoritative interface and NatSpec specification |
+| `contracts/src/AgentSpendPolicy.sol` | 194 | Implementation: spend rules, traded assets, rolling window, Kernel v3.1 policy and hook entry points |
+| `contracts/src/IAgentSpendPolicy.sol` | 35 | Authoritative interface and NatSpec specification |
 | `contracts/src/kernel/IKernelModules.sol` | 32 | Kernel v3.1 module interfaces and `PackedUserOperation`, declared locally to match Kernel's ABI |
-| **Total** | **239** | |
+| **Total** | **261** | |
 
 nSLOC as counted by Aderyn 0.6.8 (normalized source lines, excluding comments and blank lines).
 
-- **Commit**: the commit at which this package is merged to `main`. An engagement pins the exact commit hash in the statement of work; any later change to a file above is out of the audited scope until re-reviewed.
+- **Commit**: the commit at which this package is merged to `main`. An engagement pins the exact commit hash in the statement of work; any later change to a file above is out of the audited scope until re-reviewed. **Re-pin required**: the traded-asset rule (`setTradedAsset`, `isTradedAsset`, the `TradedAssetSelector` and `TradedAssetNotAllowed` errors, the `TradedAssetSet` event, and the traded-asset branch of `check` and of the recipient rule) was added after the package was first assembled, by the pull request that adds closing positions on Kuru's WETH/USDC market. Any commit pinned before it is not the code that will be deployed.
 - **Compiler**: solc 0.8.24, pinned in `contracts/foundry.toml`. `AgentSpendPolicy.sol` uses an exact `pragma solidity 0.8.24;`; the two interface files keep `^0.8.24` so that other contracts can import them. EVM version `cancun`, optimizer on with 200 runs, `bytecode_hash = "none"`.
 - **Dependencies**: none at runtime. The contract imports only the two local interface files. `forge-std` (git submodule under `contracts/lib/forge-std`) is used by tests only.
 - **Toolchain**: Foundry `forge` 1.8.5, the version CI pins.
@@ -42,17 +42,19 @@ Each agent in this system runs a ZeroDev Kernel v3.1 smart account (ERC-4337, En
 
 What it enforces, for operations validated by the session key:
 
-- **Validation phase** (`checkUserOpPolicy`, which calls the same logic as the view `check`): every call's `(target, selector)` is on the account's allowlist; no target is the policy contract or the account itself; native value is 0; a counted call (`transfer` or `approve` on the settlement asset) decodes and names a recipient that passes the recipient rule; the sum of counted amounts over the whole operation is at most `perTxCap`. No time-dependent reads.
+- **Validation phase** (`checkUserOpPolicy`, which calls the same logic as the view `check`): every call's `(target, selector)` is on the account's allowlist; no target is the policy contract or the account itself; native value is 0; a counted call (`transfer` or `approve` on the settlement asset) decodes and names a recipient that passes the recipient rule; the sum of counted amounts over the whole operation is at most `perTxCap`. A `transfer` or `approve` on a traded asset (an ERC-20 the owner marked with `setTradedAsset`, the base of the market the agent trades, WETH in the default deployment) decodes and names a recipient that passes the same rule, and counts 0. A traded asset is never a recipient. No time-dependent reads.
+- **Configuration rules** (`setAllowed`, `setTradedAsset`): the settlement asset and a traded asset admit only `transfer` and `approve`; no other target may hold either selector; a token is marked or unmarked only while the account has no selector allowed on it.
 - **Execution phase** (`preCheck`, which calls the same logic as `record`): recomputes the total with the same rules, adds it to the current hour's bucket, and reverts with `DailyCapExceeded` if the 25-bucket window total would exceed `dailyCap`.
 
 Trust model:
 
 | Actor | Trusted for | Not trusted for |
 | --- | --- | --- |
-| Account owner (root validator) | Setting limits and the allowlist through `setLimits` and `setAllowed`, which read the account from `msg.sender`; choosing install flags | Nothing is enforced against the owner; the owner can always change or remove the policy |
+| Account owner (root validator) | Setting limits, the allowlist, and the traded assets through `setLimits`, `setAllowed`, and `setTradedAsset`, which read the account from `msg.sender`; choosing install flags | Nothing is enforced against the owner; the owner can always change or remove the policy |
 | Session key | Nothing | Assumed fully compromised: the policy must bound everything it can do through user operations |
 | Kernel v3.1 implementation | Calling the entry points in the sequence its source shows (section 3) | n/a, its behavior is an assumption the fork test checks |
 | Settlement asset | Standard ERC-20 `transfer` and `approve` semantics | Its ERC-1271 signature paths are not bounded by this contract; `X402PaymentValidator` bounds the one the system uses (section 12) |
+| Traded asset (WETH on Monad mainnet in the default deployment) | Standard ERC-20 `transfer` and `approve` semantics | Amounts on it are not capped by this contract (section 8, item 15) |
 | Allowlisted non-asset targets (Kuru router, reallocation contract) | Pulling funds only through allowances the account set with a counted `approve` | Not decoded: their arguments are not inspected |
 | Anyone else | Nothing | May call every external function; each writes only state keyed by `msg.sender` |
 
@@ -116,7 +118,7 @@ The contract's decoder (`_decodeExecute`) is a reimplementation of K4, not a cal
 | I2 | No 24-hour period holds more than `dailyCap` of accepted spend | `THREAT-MODEL.md` invariant 1 | `invariant_rolling24hSpendWithinDailyCap`; `invariant_windowTotalMatchesModel`; `testFuzz_window_matchesModelAcrossDays`; `test_window_boundaryAtHour25`; `test_window_lateThenEarlyBurstIsBounded`; `test_window_bucketSlotReuseDropsStaleHour`; `test_fork_dailyCapBreachRevertsInExecutionAndRecordsNothing` |
 | I3 | No call outside the allowlist is accepted, at any amount | `THREAT-MODEL.md` invariant 11 | `invariant_allowlistAlwaysEnforced`; `testFuzz_check_rejectsNonAllowlistedTargetRegardlessOfAmount`; `testFuzz_check_rejectsNonAllowlistedSelectorOnAllowlistedTarget`; `test_check_rejectsAccountWithoutAllowlist` |
 | I4 | No call to the policy contract or the account itself is accepted, even if allowlisted | `ARCHITECTURE.md` 16.3, self-protection | `test_check_rejectsPolicyAndAccountTargetsEvenIfAllowlisted`; `test_e2e_sessionKeyCannotRaiseOwnCaps`; `test_fork_sessionKeyCannotReachPolicyEvenIfAllowlisted`; the invariant handler allowlists both and counts acceptances |
-| I5 | A counted call's recipient has an allowed selector and is not the asset, the policy, or the account | `THREAT-MODEL.md` invariant 11 | `invariant_recipientRuleAndNativeValueEnforced`; `testFuzz_check_rejectsRecipientWithoutAllowedSelector`; `test_check_rejectsRecipientThatIsAssetPolicyOrAccount`; `test_check_recipientRuleFollowsAllowlistRemoval` |
+| I5 | The recipient of a `transfer` or `approve` on the settlement asset or on a traded asset has an allowed selector and is not the settlement asset, a traded asset, the policy, or the account | `THREAT-MODEL.md` invariant 11 | `invariant_recipientRuleAndNativeValueEnforced`; `testFuzz_check_rejectsRecipientWithoutAllowedSelector`; `test_check_rejectsRecipientThatIsAssetPolicyOrAccount`; `test_check_recipientRuleFollowsAllowlistRemoval`; `testFuzz_check_tradedAssetCallToAnyOtherRecipientIsRejected`; `test_check_aTradedAssetIsNeverARecipient`; `test_check_rejectsMalformedTradedAssetCalls`; `test_e2e_tradedAssetApproveToRouterOnlyAndUncounted`; `test_fork_tradedAssetApproveIsRecipientCheckedAndUncounted` |
 | I6 | Nonzero native value is never accepted | `ARCHITECTURE.md` 16.3 | `invariant_recipientRuleAndNativeValueEnforced`; `testFuzz_check_rejectsNativeValue` |
 | I7 | No allowlist entry can move the settlement asset uncounted | `ARCHITECTURE.md` 16.3 | `testFuzz_setAllowed_settlementAssetAdmitsOnlyTransferAndApprove`; `test_setAllowed_rejectsUncountedSettlementSelectors`; `test_check_rejectsUncountedSettlementSelectorEvenIfStored` |
 | I8 | `record` never trusts validation: it reruns every rule, and accepts nothing `check` rejects | `IAgentSpendPolicy` NatSpec | `invariant_checkAgreesWithModel`; `test_record_runsTheValidationRulesAgain` |
@@ -124,9 +126,10 @@ The contract's decoder (`_decodeExecute`) is a reimplementation of K4, not a cal
 | I10 | State is per account: no account's calls read or write another's limits, allowlist, or window | Design | `test_setLimits_isPerAccountAndEmits`; `test_record_isKeyedByMsgSender`; `test_hook_recordsForCallingAccount` |
 | I11 | Only `execute` with call type single or batch and exec type default or try is accepted; delegatecall, static, other call types, and every other account selector are rejected | `ARCHITECTURE.md` 16.3 | `test_policy_rejectsDelegatecall`; `testFuzz_policy_rejectsEveryOtherCallType`; `testFuzz_policy_rejectsUnknownExecType`; `test_policy_rejectsOtherAccountSelectors`; `test_policy_rejectsMalformedExecutionData`; `test_fork_delegatecallRejectedInValidation` |
 | I12 | The ERC-1271 signature policy never approves | `ARCHITECTURE.md` 16.3 | `test_signaturePolicyAlwaysFails`; `test_fork_sessionKeyErc1271SignatureFailsByDefault` |
-| I13 | Validation reads only account-associated storage and writes nothing | ERC-7562 | `test_validation_readsOnlyAccountAssociatedStorage` |
+| I13 | Validation reads only account-associated storage and writes nothing | ERC-7562 | `test_validation_readsOnlyAccountAssociatedStorage`, which since the traded-asset change includes a traded-asset call and expects the `_tradedAsset[target][account]` slots it reads, both with the account as innermost key |
+| I14 | No token call outside the settlement asset escapes the recipient rule: only a traded asset may hold `transfer` or `approve`, a traded asset admits no other selector, its calls count 0 against `perTxCap` and the window, and a token is marked or unmarked only while no selector is allowed on it | `ARCHITECTURE.md` 16.3, traded assets | `invariant_tradedAssetMarkingRefusesWhatItMust`; `invariant_checkAgreesWithModel` (the model counts traded-asset calls as 0); `testFuzz_setAllowed_tradedAssetAdmitsOnlyTransferAndApprove`; `testFuzz_setAllowed_rejectsTokenSelectorsOnAnyOtherTarget`; `test_setTradedAsset_rejectsTheAssetPolicyAccountZeroAndAnAllowlistedTarget`; `test_setTradedAsset_changesOnlyWhileNoSelectorIsAllowed`; `test_check_rejectsOtherTradedAssetSelectorsEvenIfStored`; `test_check_tradedAssetCallToTheRouterIsAcceptedAndCountsNothing`; `test_record_tradedAssetCallsAddNothingToTheWindow` |
 
-The invariant suite (`test/AgentSpendPolicy.invariant.t.sol`) keeps an independent model of the allowlist and of accepted spend, drives random batches over a pool of allowlisted and non-allowlisted targets (including the policy and the account, both allowlisted), random selectors, recipients, and amounts, allowlist toggles, and time jumps across hour and day boundaries, and counts every acceptance the model says must be a rejection. Configuration: 256 runs, depth 64, `fail_on_revert = true`; fuzz tests run 1000 cases.
+The invariant suite (`test/AgentSpendPolicy.invariant.t.sol`) keeps an independent model of the allowlist and of accepted spend, drives random batches over a pool of allowlisted and non-allowlisted targets (including the policy and the account, both allowlisted), random selectors, recipients, and amounts, allowlist toggles, traded-asset marking and unmarking, close-shaped approves on a traded asset, and time jumps across hour and day boundaries, and counts every acceptance the model says must be a rejection. Configuration: 256 runs, depth 64, `fail_on_revert = true`; fuzz tests run 1000 cases.
 
 ## 5. Test suite and coverage
 
@@ -134,16 +137,16 @@ The invariant suite (`test/AgentSpendPolicy.invariant.t.sol`) keeps an independe
 | --- | --- | --- |
 | Unit and fuzz | `test/AgentSpendPolicy.t.sol` | Every rule of `check`, `record`, the window, configuration, and the storage-read check |
 | Kernel adapter | `test/KernelIntegration.t.sol` | The policy and hook entry points with calldata built to Kernel's encoding, and an end-to-end flow through a test double of Kernel (`test/utils/Mocks.sol`) |
-| Invariant | `test/AgentSpendPolicy.invariant.t.sol` | I1 to I8 over fuzzed sequences |
+| Invariant | `test/AgentSpendPolicy.invariant.t.sol` | I1 to I8 and I14 over fuzzed sequences |
 | Fork (opt-in) | `test/fork/KernelV31Fork.t.sol` | The deployed Kernel v3.1 contracts on Monad testnet, section 7 |
 
 Coverage of `src/` (test and mock files excluded), from `forge coverage` with forge 1.8.5:
 
 | File | Lines | Statements | Branches | Functions |
 | --- | --- | --- | --- | --- |
-| `src/AgentSpendPolicy.sol` | 100.00% (106/106) | 100.00% (139/139) | 100.00% (26/26) | 100.00% (23/23) |
+| `src/AgentSpendPolicy.sol` | 100.00% (120/120) | 100.00% (163/163) | 100.00% (31/31) | 100.00% (25/25) |
 
-Before this package, coverage was 99.06% of lines and 96.15% of branches. The one uncovered branch was the second, independent refusal of an uncounted settlement-asset selector in `_check`, unreachable through `setAllowed` by design. `test_check_rejectsUncountedSettlementSelectorEvenIfStored` writes such an entry into storage directly to show `check` refuses it on its own. Coverage is a floor, not evidence of correctness: the invariant and fuzz suites in section 4 are the substantive checks.
+Regenerated on 2026-10-10 after the traded-asset change, and again after rebasing onto the `X402PaymentValidator` change (107 tests passed, the two fork suites skipped; `AgentSpendPolicy.sol` figures unchanged by the rebase, which touched only its comments; the validator's own figures are in the same `summary.txt`; before the change: 106/106 lines, 139/139 statements, 26/26 branches, 23/23 functions). Before this package, coverage was 99.06% of lines and 96.15% of branches. The one uncovered branch was the second, independent refusal of an uncounted settlement-asset selector in `_check`, unreachable through `setAllowed` by design. `test_check_rejectsUncountedSettlementSelectorEvenIfStored` writes such an entry into storage directly to show `check` refuses it on its own. Coverage is a floor, not evidence of correctness: the invariant and fuzz suites in section 4 are the substantive checks.
 
 To regenerate, from the repository root, with Foundry 1.8.5 installed:
 
@@ -155,11 +158,11 @@ It writes `contracts/audit/coverage-report/summary.txt` and `contracts/audit/cov
 
 ## 6. Static analysis and triage
 
-Run on 2026-10-10 against this package's sources.
+First run on 2026-10-10 against this package's sources, and re-run the same day, with the same tool versions and commands, after the traded-asset change, on the tree before `X402PaymentValidator.sol` was added (section 12.4 covers that file). Since that re-run, `AgentSpendPolicy.sol` and `IAgentSpendPolicy.sol` changed only in comments. The re-run's results are below; every finding of the first run reappears, and the only differences are listed.
 
-- **Slither 0.11.4**, installed from PyPI into a throwaway virtual environment: `slither . --filter-paths "lib/|test/"` from `contracts/` (it runs `forge clean` and a forced build first). 100 detectors, 6 results from 5 detectors (`timestamp` reports two functions).
-- **Aderyn 0.6.8**, installed from Cyfrin's npm package `@cyfrin/aderyn`: `aderyn . --src src` from `contracts/`. 88 detectors, 1 high and 6 low results.
-- **forge lint** (Foundry 1.8.5, built in; it also runs on every `forge build`): `forge lint` from `contracts/`. On `src/`: 7 `unsafe-typecast`, 8 `require-revert-in-loop`, 1 `block-timestamp`, 1 `reentrancy-events`. On `test/`: 4 `environment-read-across-mutation`.
+- **Slither 0.11.4**, installed from PyPI into a throwaway virtual environment: `slither . --filter-paths "lib/|test/"` from `contracts/` (it runs `forge clean` and a forced build first). 100 detectors. First run: 6 results from 5 detectors (`timestamp` reports two functions). Re-run: 7 results from 6 detectors. `cyclomatic-complexity` on `_check` rose from 12 to 13 (the traded-asset branch), and `pragma` reported the exact pragma of the implementation against the caret pragma of the two interfaces (S6).
+- **Aderyn 0.6.8**, installed from Cyfrin's npm package `@cyfrin/aderyn`: `aderyn . --src src` from `contracts/`. 88 detectors, 1 high and 6 low results, the same findings in both runs; nSLOC 261 in the re-run (239 before).
+- **forge lint** (Foundry 1.8.5, built in; it also runs on every `forge build`): `forge lint` from `contracts/`. On `src/`, in both runs: 7 `unsafe-typecast`, 8 `require-revert-in-loop`, 1 `block-timestamp`, 1 `reentrancy-events`. On `test/`: 4 `environment-read-across-mutation` in the first run, 3 in the re-run (the one fixed under L5).
 
 Every finding is triaged below. None is dropped.
 
@@ -169,7 +172,8 @@ Every finding is triaged below. None is dropped.
 | S2 | Slither | `locked-ether`: payable functions, no withdrawal | `checkUserOpPolicy`, `preCheck`, `postCheck`, `onInstall`, `onUninstall` | **Accepted risk.** The functions are `payable` because Kernel's `IPolicy` and `IHook` declare them so, and keeping the declared mutability avoids any doubt about matching the interface. Kernel v3.1 sends no value to any of them (section 3.1, K1 and K3, from source). Ether can therefore reach the contract only if a third party sends it directly, which is that party's own loss and touches no system funds; native value can also always be forced in with `selfdestruct`. A withdrawal function would add an owner role this contract deliberately does not have. Rejecting `msg.value != 0` was considered and not adopted: it protects only that third party and adds a revert path to every validation |
 | S3 | Slither | `timestamp`: comparisons using `block.timestamp` | `_record`, `_windowTotal` | **Accepted by design.** The window is hourly; a block producer's influence over a timestamp is far below one hour, and the window rule over-counts rather than under-counts at the hour edge (`ARCHITECTURE.md` 16.3). Timestamp is read only in execution, never in validation |
 | S4 | Slither | `assembly` | `_word` | **Accepted, reviewed.** One `mload` of a 32-byte word. Both call sites check `data.length >= 68` first, so the read stays inside `data`. Marked `memory-safe` correctly: it only reads |
-| S5 | Slither | `cyclomatic-complexity` 12 | `_check` | **Accepted, informational.** One linear rule per line, each reverting with a distinct error; splitting it would spread a single rule set across functions without reducing what an auditor must read |
+| S6 | Slither | `pragma`: different versions used | `AgentSpendPolicy.sol` (`0.8.24`) and the two interfaces (`^0.8.24`) | **Accepted, by design.** Same decision as D7: the implementation is pinned, the interfaces stay importable |
+| S5 | Slither | `cyclomatic-complexity` 12, 13 since the traded-asset change | `_check` | **Accepted, informational.** One linear rule per line, each reverting with a distinct error; splitting it would spread a single rule set across functions without reducing what an auditor must read |
 | D1 | Aderyn H-1 | Contract locks Ether without a withdraw function | `AgentSpendPolicy` | Same as S2 |
 | D2 | Aderyn L-1 | Empty block | `postCheck`, `onInstall`, `onUninstall` | **False positive.** Required interface functions whose correct behavior is to do nothing: configuration never comes from installation data, and nothing is checked after execution |
 | D3 | Aderyn L-2 | Literal instead of constant (16 instances) | `_check`, `_decodeExecute`, `checkUserOpPolicy` | **Accepted, informational.** The literals are ABI layout offsets (4-byte selector, 20-byte address, 32-byte words, 68-byte two-argument call), each next to the slice it bounds. Named constants would not make the layout easier to check against the ABI specification |
@@ -215,7 +219,7 @@ It adds no dependency: the few EntryPoint and Kernel functions it calls are decl
 2. Configures limits and the allowlist as the owner, through a root-validator user operation.
 3. Enables the session-key permission (ECDSA signer plus this contract as policy, and this contract as the permission's hook) in Kernel's enable mode, the path ZeroDev's SDK uses for v3.1, signed by the owner over Kernel's EIP-712 enable digest, inside the first session-key operation.
 
-Tests: a batch within the caps executes and is recorded; a single call; a batch over `perTxCap` fails validation with `FailedOpWithRevert(0, "AA23 reverted", PerTxCapExceeded(...))`; a daily-cap breach is included, reverts in execution with `DailyCapExceeded` in `UserOperationRevertReason`, and records and moves nothing; delegatecall fails validation with `UnsupportedExecMode`; a session-key call to `setLimits` fails validation with `CallNotAllowed` even with a mistaken allowlist entry for it; and the session key's ERC-1271 signature reverts with Kernel's `PolicyFailed(0)`. All 7 passed on 2026-10-10 against the latest Monad testnet block.
+Tests: a batch within the caps executes and is recorded; a single call; a batch over `perTxCap` fails validation with `FailedOpWithRevert(0, "AA23 reverted", PerTxCapExceeded(...))`; a daily-cap breach is included, reverts in execution with `DailyCapExceeded` in `UserOperationRevertReason`, and records and moves nothing; delegatecall fails validation with `UnsupportedExecMode`; a session-key call to `setLimits` fails validation with `CallNotAllowed` even with a mistaken allowlist entry for it; and the session key's ERC-1271 signature reverts with Kernel's `PolicyFailed(0)`. All 7 passed on 2026-10-10 against the latest Monad testnet block. After the traded-asset change an eighth test was added: the owner marks an ERC-20 as a traded asset and allows its `approve` through the root validator, the session key's close-shaped batch (approve the router on it, then a router call) executes and adds nothing to the window, and an approve of it to another address fails validation with `RecipientNotAllowed`. All 8 passed on 2026-10-10 against the latest Monad testnet block, through `https://testnet-rpc.monad.xyz`.
 
 Run, from `contracts/`:
 
@@ -245,18 +249,20 @@ This step needs testnet funds and a bundler endpoint, so it is a manual run, not
 5. **The signature policy always fails, and the skip-signature flag is never set.** `checkSignaturePolicy` always fails, so a session key cannot produce an ERC-1271 signature; the owner could override that only with Kernel's skip-signature flag, which the design forbids for every agent (`ARCHITECTURE.md` 16.3). On 2026-10-10, calls to Monad mainnet's USDC (`0x754704Bc059F8C67012fEd69BC8A327a5aafb603`) with a contract as `from` returned the ERC-1271 path's invalid-signature errors (`FiatTokenV2: invalid signature`, `EIP2612: invalid signature`) for the `bytes`-signature `transferWithAuthorization` and `permit`, where an externally owned `from` gets the ECDSA length error. That indicates the token accepts ERC-1271 signatures for both, though no signature was actually accepted in that check. A Monad mainnet fork then confirmed it (`test_fork_skipSignatureFlagWouldLetASessionKeyPermitTheWholeBalance`, block 112242207): with the flag, a session key's signature made USDC grant a `permit` of the whole balance to an arbitrary spender, outside both caps and the recipient rule. The flag must never be set; x402 uses the separate validator of section 12 instead.
 6. **x402 is outside this contract.** x402 settles through EIP-3009 authorizations (the x402 specification's default for USDC, `ARCHITECTURE.md` 16.3), which never pass through `check` or `record`. `X402PaymentValidator` (section 12) bounds them with its own payee list and rate bound, which adds to `dailyCap`.
 7. **Uncounted calls are not decoded.** Calls to the Kuru router and the reallocation contract count 0. If either can be made to forward funds to an arbitrary address, or to pull more than the account approved, the recipient rule and the caps do not see it. This is a property of those contracts (issue #20 for the router).
-8. **The allowlist is the owner's responsibility beyond the two self-protection rules.** Only the policy and the account are refused as targets regardless of configuration. Allowlisting the EntryPoint (`withdrawTo` moves the account's deposit), a Kernel module, a validator, or any contract that forwards calls would hand the session key a path this policy does not inspect. Any allowlisted target also becomes a valid recipient under the derived recipient rule.
+8. **The allowlist is the owner's responsibility beyond the two self-protection rules.** Only the policy and the account are refused as targets regardless of configuration. Allowlisting the EntryPoint (`withdrawTo` moves the account's deposit), a Kernel module, a validator, or any contract that forwards calls would hand the session key a path this policy does not inspect. Any allowlisted target that is not a token also becomes a valid recipient under the derived recipient rule.
 9. **The hook must be installed with the policy.** If the policy is installed on a permission without this contract as that permission's hook, validation still applies the per-transaction rules, but `record` never runs and the daily cap does not apply. Kernel does not tie the two together; the installer must.
 10. **Configuration persists across uninstall and reinstall.** `onInstall` and `onUninstall` change no state, so limits and allowlist entries outlive a permission's removal and apply again if the policy is reinstalled.
 11. **Approvals are counted when set, not when used.** A counted `approve` for an amount uses that much of `perTxCap` and the window at the moment it is set; a later pull by the spender is not counted again. Allowance left unused stays available to the spender beyond the window in which it was counted.
 12. **Window shape.** The window total covers 24 to 25 hours, so it can over-count by up to one hour of spend; it never under-counts. `record` reads 25 storage slots per operation, a fixed gas cost per counted or uncounted operation.
 13. **The settlement asset's issuer can change its behavior.** USDC is upgradeable and can blocklist addresses (section 3.3, A4).
 14. **No formal verification.** The guarantees rest on review, unit, fuzz, invariant, and fork tests.
+15. **A traded asset's amounts are not capped.** A `transfer` or `approve` on a traded asset is held to the recipient rule and counts 0, because the caps are denominated in the settlement asset and the contract has no price for the token. A compromised session key can therefore approve the router for the account's whole traded-asset balance and sell it through the router with any `minAmountOut`, converting the position to the settlement asset at a bad price. It cannot send the token anywhere else. This is the same exposure a buy already has (a bad trade within the router), widened to the whole position rather than one `perTxCap`; the off-chain RiskModule bounds the size of a close by the position, not this contract.
+16. **The traded-asset mark is the owner's responsibility.** Only an owner can mark a token. A marked token's behavior (for example WETH's) is assumed standard ERC-20, as A1 assumes for the settlement asset; a token with hooks, fee-on-transfer, or an upgrade path could behave otherwise. Unmarking requires removing its selectors first, so the rule cannot be dropped under a live entry.
 
 ## 9. Out of scope
 
 - ZeroDev Kernel v3.1, its validators, signers, and factory; the ERC-4337 EntryPoint v0.7. Assumed correct as deployed; their behavior that this contract depends on is listed in section 3.1.
-- The settlement asset (USDC) and its issuer's controls.
+- The settlement asset (USDC) and its issuer's controls, and any traded asset (WETH in the default deployment).
 - The Kuru router and any other allowlisted target.
 - Off-chain components: the RiskModule (`libs/risk`), the wallet library (`libs/wallets`), the agent runtime, and any bundler or paymaster.
 - Test code, mocks, and the fork test, except as evidence for the claims above.
@@ -280,23 +286,24 @@ This is a draft for issue #46. It has not been sent to any auditor.
 
 **Project**: monadeum, an agent economy on Monad in which each agent trades through a ZeroDev Kernel v3.1 smart account under a session key.
 
-**Scope**: `AgentSpendPolicy` and its interfaces, 239 nSLOC in three files (section 1), and `X402PaymentValidator` (section 12), at a pinned commit. Planned addition before engagement if ready: the owner-scoped reallocation contract (issue #31), size to be stated when merged.
+**Scope**: `AgentSpendPolicy` and its interfaces, 261 nSLOC in three files (section 1), and `X402PaymentValidator` (section 12), at a pinned commit. Planned addition before engagement if ready: the owner-scoped reallocation contract (issue #31), size to be stated when merged.
 
 **What we ask the auditor to focus on**:
 
 1. Whether any operation a fully compromised session key can submit moves the settlement asset beyond `perTxCap` per operation or `dailyCap` per 24 hours, or to a recipient outside the derived recipient rule.
 2. Parser equivalence between `_decodeExecute` and Kernel v3.1's `ExecLib` for every byte string Kernel would execute (section 3.1).
-3. The self-protection rules: whether a session key can reach `setLimits`, `setAllowed`, or the account's module functions by any route.
-4. ERC-7562 compliance of the validation path for an unstaked policy (section 3.2).
-5. The rolling window arithmetic and its edge cases.
-6. The known limitations in section 8: whether any is worse than stated, and whether any accepted risk should be fixed instead.
-7. `X402PaymentValidator`: whether any signature a fully compromised x402 key can produce moves the settlement asset other than to a listed payee, above `maxValue`, or beyond the 24-hour rate bound, and whether the self-protection rule in section 12.1 holds against direct calls from the account (section 12).
+3. The self-protection rules: whether a session key can reach `setLimits`, `setAllowed`, `setTradedAsset`, or the account's module functions by any route.
+4. The traded-asset rule (I14): whether any configuration reachable through `setAllowed` and `setTradedAsset` lets a token call outside the settlement asset escape the recipient rule.
+5. ERC-7562 compliance of the validation path for an unstaked policy (section 3.2).
+6. The rolling window arithmetic and its edge cases.
+7. The known limitations in section 8: whether any is worse than stated, and whether any accepted risk should be fixed instead.
+8. `X402PaymentValidator`: whether any signature a fully compromised x402 key can produce moves the settlement asset other than to a listed payee, above `maxValue`, or beyond the 24-hour rate bound, and whether the self-protection rule in section 12.1 holds against direct calls from the account (section 12).
 
 **Materials provided**: this README, the interface NatSpec, `ARCHITECTURE.md` section 16.3, `THREAT-MODEL.md` section 7, the test suites, the coverage report, and the static-analysis triage.
 
 **Timeline assumptions** (to confirm with the auditor, not commitments):
 
-- Size: 239 nSLOC is a small engagement. Our working estimate is 3 to 5 auditor-days for this contract alone, plus time for the reallocation contract once its size is known. This is an assumption, not a quote.
+- Size: 261 nSLOC is a small engagement. Our working estimate is 3 to 5 auditor-days for this contract alone, plus time for the reallocation contract once its size is known. This is an assumption, not a quote.
 - Start: after the reallocation contract is merged, so both are audited in one engagement, unless that slips past the testnet deployment target (issue #48), in which case `AgentSpendPolicy` goes first on its own.
 - Fix review: one round of fix review included, on the commits that resolve findings.
 - Gate: no real user-controlled capital on testnet or mainnet before the report is final and every finding is resolved or accepted in `SECURITY.md` (section 3 of that document).

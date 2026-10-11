@@ -53,21 +53,42 @@ export class SignerRejected extends Error {
   }
 }
 
-/** The order as built at plan time. Amounts are base units; prices are quote per base at the 1e18 scale. */
-export interface OrderSnapshot {
+/** What every order records, whichever side. Amounts are base units; prices are quote per base at the 1e18 scale. */
+interface OrderCommon {
   tickKey: string;
   agentId: string;
   account: Hex;
   pair: string;
+  maxSlippageBps: number;
+  /** What slippage and the position's basis are measured against: the mid, else the side of the book this order takes. */
+  reference: { kind: "mid" | "ask" | "bid"; price: bigint };
+  /**
+   * Quote per MON at the 1e18 scale that this order's gas converts at, and where it came from: "market" when the base
+   * is native MON (the reference itself), else the MON price source. Absent on records written before it existed,
+   * which were all on a native-MON market, so the reference stands in.
+   */
+  monPrice?: { price: bigint; source: string };
+  takerFeeBps: number;
+  preparedAtBlock: bigint;
+}
+
+/** A buy as built at plan time: spend exactly `quoteIn` of the settlement asset for at least `minBaseOut`. */
+export interface BuyOrder extends OrderCommon {
   side: "buy";
   quoteIn: bigint;
   expectedBaseOut: bigint;
   minBaseOut: bigint;
-  maxSlippageBps: number;
-  reference: { kind: "mid" | "ask"; price: bigint };
-  takerFeeBps: number;
-  preparedAtBlock: bigint;
 }
+
+/** A close as built at plan time: sell exactly `baseIn`, the whole open position, for at least `minQuoteOut`. */
+export interface SellOrder extends OrderCommon {
+  side: "sell";
+  baseIn: bigint;
+  expectedQuoteOut: bigint;
+  minQuoteOut: bigint;
+}
+
+export type OrderSnapshot = BuyOrder | SellOrder;
 
 /** Realized costs of one trade, in settlement-asset base units. Slippage is negative on a price improvement. */
 export interface TradeCosts {
@@ -77,7 +98,9 @@ export interface TradeCosts {
   slippage: bigint;
 }
 
-export interface Fill {
+/** A buy's fill. `side` is optional so that a record written before sells existed still reads as a buy. */
+export interface BuyFill {
+  side?: "buy";
   transactionHash: Hex;
   blockNumber: bigint;
   quoteIn: bigint;
@@ -89,6 +112,26 @@ export interface Fill {
   feeBase: bigint;
   executedPrice: bigint;
 }
+
+/**
+ * A sell's fill. The fee is the market's taker fee rate applied to the quote received, on the hypothesis that Kuru
+ * charges a sell's fee in the asset received, as it does for a buy. That has not been observed on a receipt; the
+ * measured taker fee is 0 bps (ECONOMICS.md section 1), so the hypothesis changes nothing until a fee is charged.
+ */
+export interface SellFill {
+  side: "sell";
+  transactionHash: Hex;
+  blockNumber: bigint;
+  baseIn: bigint;
+  quoteOut: bigint;
+  /** Quote received plus the fee. */
+  grossQuoteOut: bigint;
+  feeSource: "taker-fee-bps";
+  feeQuote: bigint;
+  executedPrice: bigint;
+}
+
+export type Fill = BuyFill | SellFill;
 
 /**
  * policy: the RiskModule rejected the plan, or the plan presented does not match the approved one; nothing was sent.
@@ -151,5 +194,51 @@ export class MemoryTradeStore implements TradeStore {
   async findByTransaction(hash: Hex): Promise<TradeRecord | undefined> {
     const h = hash.toLowerCase();
     return [...this.rows.values()].find((r) => r.fill?.transactionHash.toLowerCase() === h);
+  }
+}
+
+/**
+ * One agent's open position on the service's market. Money is settlement-asset base units; size is base units.
+ *
+ * `basis` is the open size valued at the reference price captured when each buy was planned, not at the price paid.
+ * The gap between the two is that buy's fee and slippage, which FitnessModule already counts as costs, so carrying it
+ * in the basis as well would count it twice. Realized P&L is therefore market P&L between reference prices, and
+ * realized P&L minus every trade's gas, fees, and slippage equals the settlement asset received minus that paid.
+ *
+ * `closing` is the tick key of a close that may still be in flight. While it is set, no other close is built, so a
+ * crash or an unknown outcome mid-close cannot sell the same position twice.
+ *
+ * `applied` maps each trade key already settled into the position to the realized P&L it produced, so settling a
+ * trade again, after a crash or from a second caller, changes nothing and returns the same figure.
+ */
+export interface Position {
+  agentId: string;
+  pair: string;
+  size: bigint;
+  basis: bigint;
+  realized: bigint;
+  closing: string | null;
+  applied: Record<string, bigint>;
+}
+
+/**
+ * Durable position store. A write must be durable before it resolves. Writes for one agent are serialized by the
+ * worker, which runs one tick of an agent at a time; a store written concurrently for one agent would need a
+ * compare-and-set on top. Only the in-memory implementation exists so far.
+ */
+export interface PositionStore {
+  get(agentId: string): Promise<Position | undefined>;
+  write(position: Position): Promise<void>;
+}
+
+/** In-memory store for tests and local development only. */
+export class MemoryPositionStore implements PositionStore {
+  private readonly rows = new Map<string, Position>();
+  async get(agentId: string): Promise<Position | undefined> {
+    const p = this.rows.get(agentId);
+    return p ? structuredClone(p) : undefined;
+  }
+  async write(position: Position): Promise<void> {
+    this.rows.set(position.agentId, structuredClone(position));
   }
 }

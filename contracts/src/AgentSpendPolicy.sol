@@ -12,7 +12,8 @@ import {IHook, IPolicy, PackedUserOperation} from "./kernel/IKernelModules.sol";
 /// - `check` (validation): every call's target and selector must be allowed for the account, the target must not be
 ///   this contract or the account, the native value must be 0, and a counted call (`transfer` or `approve` on the
 ///   settlement asset) must decode and name an allowed recipient. The counted amounts are summed over the operation
-///   and the sum must not exceed `perTxCap`. No time-dependent reads.
+///   and the sum must not exceed `perTxCap`. A `transfer` or `approve` on a traded asset must decode and name an
+///   allowed recipient too, and counts 0. No time-dependent reads.
 /// - `record` (execution): recomputes the total by running the same rules as `check`, then adds it to the current
 ///   hour's bucket and reverts with `DailyCapExceeded` if the 25-bucket window total would exceed `dailyCap`.
 ///
@@ -64,6 +65,8 @@ contract AgentSpendPolicy is IAgentSpendPolicy, IPolicy, IHook {
     mapping(address target => mapping(bytes4 selector => mapping(address account => bool))) internal _allowed;
     /// Number of allowed selectors per target, the basis of the derived recipient rule.
     mapping(address target => mapping(address account => uint256)) internal _allowedSelectorCount;
+    /// ERC-20 tokens other than the settlement asset the account trades: recipient-checked, uncounted, never recipients.
+    mapping(address token => mapping(address account => bool)) internal _tradedAsset;
     mapping(address account => Bucket[BUCKETS]) internal _buckets;
 
     constructor(address settlementAsset_) {
@@ -110,8 +113,13 @@ contract AgentSpendPolicy is IAgentSpendPolicy, IPolicy, IHook {
 
     /// @inheritdoc IAgentSpendPolicy
     function setAllowed(address target, bytes4 selector, bool allowed) external override {
-        if (target == settlementAsset && selector != TRANSFER_SELECTOR && selector != APPROVE_SELECTOR) {
-            revert UncountedSettlementSelector(selector);
+        bool tokenSelector = selector == TRANSFER_SELECTOR || selector == APPROVE_SELECTOR;
+        if (target == settlementAsset) {
+            if (!tokenSelector) revert UncountedSettlementSelector(selector);
+        } else if (tokenSelector != _tradedAsset[target][msg.sender]) {
+            // A traded asset admits only `transfer` and `approve`, and only a traded asset may hold them, so no token
+            // call outside the settlement asset escapes the recipient rule.
+            revert TradedAssetSelector(target, selector);
         }
         if (_allowed[target][selector][msg.sender] != allowed) {
             _allowed[target][selector][msg.sender] = allowed;
@@ -122,6 +130,21 @@ contract AgentSpendPolicy is IAgentSpendPolicy, IPolicy, IHook {
             }
         }
         emit CallAllowed(msg.sender, target, selector, allowed);
+    }
+
+    /// @inheritdoc IAgentSpendPolicy
+    function setTradedAsset(address token, bool traded) external override {
+        if (
+            token == address(0) || token == settlementAsset || token == address(this) || token == msg.sender
+                || _allowedSelectorCount[token][msg.sender] != 0
+        ) revert TradedAssetNotAllowed(token);
+        _tradedAsset[token][msg.sender] = traded;
+        emit TradedAssetSet(msg.sender, token, traded);
+    }
+
+    /// @inheritdoc IAgentSpendPolicy
+    function isTradedAsset(address account, address token) external view override returns (bool) {
+        return _tradedAsset[token][account];
     }
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -185,9 +208,11 @@ contract AgentSpendPolicy is IAgentSpendPolicy, IPolicy, IHook {
             if (data.length < 4 || !_allowed[c.target][selector][account]) revert CallNotAllowed(c.target, selector);
             if (c.value != 0) revert NativeValueNotAllowed(c.value);
 
-            if (c.target != settlementAsset) continue; // allowlisted, uncounted
+            bool counted = c.target == settlementAsset;
+            if (!counted && !_tradedAsset[c.target][account]) continue; // allowlisted, uncounted, not a token
 
-            // setAllowed admits no other selector on the settlement asset; this keeps the rule local.
+            // setAllowed admits no other selector on the settlement asset or a traded asset; this keeps the rule
+            // local.
             if (selector != TRANSFER_SELECTOR && selector != APPROVE_SELECTOR) {
                 revert CallNotAllowed(c.target, selector);
             }
@@ -196,6 +221,9 @@ contract AgentSpendPolicy is IAgentSpendPolicy, IPolicy, IHook {
             if (recipientWord > type(uint160).max) revert CallNotAllowed(c.target, selector);
             address recipient = address(uint160(recipientWord));
             if (!_isRecipientAllowed(account, recipient)) revert RecipientNotAllowed(recipient);
+
+            // A traded asset is held to the recipient rule but moves no settlement asset, so it counts 0.
+            if (!counted) continue;
 
             uint256 amount = _word(data, 36);
             // total <= perTxCap holds before this line, so the subtraction cannot underflow. A perTxCap of 0, the
@@ -236,7 +264,7 @@ contract AgentSpendPolicy is IAgentSpendPolicy, IPolicy, IHook {
 
     function _isRecipientAllowed(address account, address recipient) internal view returns (bool) {
         return recipient != settlementAsset && recipient != address(this) && recipient != account
-            && _allowedSelectorCount[recipient][account] != 0;
+            && !_tradedAsset[recipient][account] && _allowedSelectorCount[recipient][account] != 0;
     }
 
     /// Decodes `execute(bytes32 mode, bytes executionCalldata)` into the calls Kernel v3.1 would run.

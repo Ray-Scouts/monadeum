@@ -17,7 +17,7 @@ export function spendPolicyHandler(address: Address): EventHandler {
     name: "agent-spend-policy",
     source: { kind: "contract", address: lower(address), discoversAccounts: true },
     events: spendPolicyEvents,
-    kinds: ["spend.limits-set", "spend.call-allowed", "spend.spent"],
+    kinds: ["spend.limits-set", "spend.call-allowed", "spend.spent", "spend.traded-asset-set"],
     handle({ eventName, args }): HandledEvent | null {
       const account = lower(args.account);
       switch (eventName) {
@@ -31,6 +31,8 @@ export function spendPolicyHandler(address: Address): EventHandler {
           };
         case "Spent":
           return { kind: "spend.spent", account, data: { amount: int(args.amount), windowTotal: int(args.windowTotal) } };
+        case "TradedAssetSet":
+          return { kind: "spend.traded-asset-set", account, data: { token: lower(args.token), traded: Boolean(args.traded) } };
         default:
           return null;
       }

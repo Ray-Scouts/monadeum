@@ -258,6 +258,41 @@ contract KernelV31ForkTest is Test {
         assertEq(policy.limits(address(kernel)).perTxCap, PER_TX_CAP, "caps unchanged");
     }
 
+    /// A close on an ERC-20-base market through the real Kernel: the owner marks the base as a traded asset and allows
+    /// its approve through the root validator; the session key approves the router on it, uncounted, and an approve
+    /// of the base to anyone else is rejected in validation.
+    function test_fork_tradedAssetApproveIsRecipientCheckedAndUncounted() public {
+        _enableWithSmallTransfer(); // window total 1e6
+        MockERC20 base = new MockERC20();
+        base.mint(address(kernel), 5e18);
+        IAgentSpendPolicy.Call[] memory cfg = new IAgentSpendPolicy.Call[](2);
+        cfg[0] = _policyCall(abi.encodeCall(IAgentSpendPolicy.setTradedAsset, (address(base), true)));
+        cfg[1] = _policyCall(abi.encodeCall(IAgentSpendPolicy.setAllowed, (address(base), APPROVE, true)));
+        _handle(_rootOp(abi.encodeWithSelector(EXECUTE, BATCH, abi.encode(cfg))));
+        assertTrue(policy.isTradedAsset(address(kernel), address(base)), "owner path marked the traded asset");
+
+        IAgentSpendPolicy.Call[] memory close = new IAgentSpendPolicy.Call[](2);
+        close[0] = IAgentSpendPolicy.Call(address(base), 0, abi.encodeWithSelector(APPROVE, router, 5e18));
+        close[1] = IAgentSpendPolicy.Call(router, 0, abi.encodeWithSelector(SWAP, hex"01"));
+        _handle(_sessionOp(_wrap(abi.encodeWithSelector(EXECUTE, BATCH, abi.encode(close)))));
+        assertEq(base.allowance(address(kernel), router), 5e18, "close approve executed");
+        assertEq(policy.windowTotal(address(kernel)), 1e6, "the traded asset counted nothing");
+
+        address attacker = makeAddr("attacker");
+        PackedUserOperation memory op = _sessionOp(
+            _wrap(
+                abi.encodeWithSelector(
+                    EXECUTE,
+                    SINGLE,
+                    abi.encodePacked(address(base), uint256(0), abi.encodeWithSelector(APPROVE, attacker, 5e18))
+                )
+            )
+        );
+        _expectValidationRevert(abi.encodeWithSelector(IAgentSpendPolicy.RecipientNotAllowed.selector, attacker));
+        _handle(op);
+        assertEq(base.allowance(address(kernel), attacker), 0, "nothing approved");
+    }
+
     function test_fork_sessionKeyErc1271SignatureFailsByDefault() public {
         _enableWithSmallTransfer();
         bytes32 hash = keccak256("x402 authorization stand-in");

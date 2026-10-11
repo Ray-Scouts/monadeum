@@ -6,6 +6,7 @@ import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, parseAbiPar
 import {
   ISSUE_20,
   KURU_TESTNET_MON_USDC as M,
+  MemoryPositionStore,
   MemoryTradeStore,
   SignerRejected,
   TradingService,
@@ -14,6 +15,8 @@ import {
   estimateTradeCost,
   planHashOf,
   toCostedFill,
+  type BuyFill,
+  type BuyOrder,
   type Call,
   type LogEntry,
   type OperationReceipt,
@@ -29,6 +32,8 @@ const E18 = 10n ** 18n;
 // Book in the 1e18 scale `bestBidAsk` returns: bid 0.99, ask 1.01 USDC per MON, mid 1.00.
 const BOOK = { bid: 99n * 10n ** 16n, ask: 101n * 10n ** 16n };
 const SWAP_CALL: Call = { target: M.router, data: "0xffa5210a" };
+// Shared by the tests that restart a service over the same stores; these tests only buy, so no position is read.
+const positions = new MemoryPositionStore();
 
 function proposal(overrides: Partial<NonNullable<ActionProposal["action"]>> = {}, tick = 7): ActionProposal {
   return {
@@ -47,6 +52,8 @@ function venue(overrides: Partial<Venue> = {}) {
     takerFeeBps: async () => 0,
     quoteBuy: async () => 99n * 10n ** 16n, // 0.99 MON for 1 USDC
     swapCall: async () => SWAP_CALL,
+    quoteSell: async () => 0n,
+    sellCall: async () => SWAP_CALL,
     swapsSince: async () => {
       calls.swapsSince++;
       return [];
@@ -98,26 +105,27 @@ async function prepared(service: TradingService, p = proposal()): Promise<Prepar
 
 test("prepare builds an exact-amount approve then the router swap, with minOut from the quote and the slippage bound", async () => {
   const { v } = venue();
-  const service = new TradingService(M, v, signer().s, new MemoryTradeStore());
+  const service = new TradingService(M, v, signer().s, new MemoryTradeStore(), new MemoryPositionStore());
   const trade = await prepared(service);
   const [approve, swap] = trade.plan.calls;
   assert.equal(approve!.target, M.quote);
   const decoded = decodeFunctionData({ abi: ERC20_ABI, data: approve!.data });
   assert.deepEqual(decoded.args, [M.router, 1_000_000n]);
   assert.deepEqual(swap, SWAP_CALL);
-  assert.equal(trade.order.minBaseOut, (99n * 10n ** 16n * 9_950n) / 10_000n);
+  assert.equal((trade.order as BuyOrder).minBaseOut, (99n * 10n ** 16n * 9_950n) / 10_000n);
   assert.deepEqual(trade.order.reference, { kind: "mid", price: E18 });
   assert.equal(trade.plan.planHash, planHashOf("agent-1:7", trade.plan.calls));
 });
 
-test("prepare declines flat, a foreign pair, a bad slippage bound, and an empty book without building anything", async () => {
-  const service = new TradingService(M, venue().v, signer().s, new MemoryTradeStore());
-  assert.deepEqual(await service.prepare(proposal({ side: "flat" })), { ok: false, reason: "no-action" });
+test("prepare declines a declared close size, a native-MON close, a foreign pair, a bad slippage bound, and an empty book", async () => {
+  const service = new TradingService(M, venue().v, signer().s, new MemoryTradeStore(), new MemoryPositionStore());
+  assert.deepEqual(await service.prepare(proposal({ side: "flat" })), { ok: false, reason: "notional" });
+  assert.deepEqual(await service.prepare(proposal({ side: "flat", notional: 0n })), { ok: false, reason: "native-sell" });
   assert.deepEqual(await service.prepare(proposal({ pair: "ETH/USDC" })), { ok: false, reason: "pair" });
   assert.deepEqual(await service.prepare(proposal({ maxSlippageBps: 10_000 })), { ok: false, reason: "slippage" });
-  const empty = new TradingService(M, venue({ book: async () => ({ bid: 0n, ask: 0n }) }).v, signer().s, new MemoryTradeStore());
+  const empty = new TradingService(M, venue({ book: async () => ({ bid: 0n, ask: 0n }) }).v, signer().s, new MemoryTradeStore(), new MemoryPositionStore());
   assert.deepEqual(await empty.prepare(proposal()), { ok: false, reason: "no-liquidity" });
-  const down = new TradingService(M, venue({ quoteBuy: async () => { throw new Error("rpc"); } }).v, signer().s, new MemoryTradeStore());
+  const down = new TradingService(M, venue({ quoteBuy: async () => { throw new Error("rpc"); } }).v, signer().s, new MemoryTradeStore(), new MemoryPositionStore());
   assert.deepEqual(await down.prepare(proposal()), { ok: false, reason: "network" });
 });
 
@@ -126,16 +134,16 @@ test("a filled trade records executed price, size, fee, slippage, and gas, and f
   const gross = (995n * 10n ** 15n * M.sizePrecision) / E18;
   const { s, sent } = signer({ lookup: async () => ({ state: "included", ref: "0xabc", receipt: receipt([swapLog(1_000_000n, 99n * 10n ** 16n), tradeLog(gross)]) }) });
   const store = new MemoryTradeStore();
-  const service = new TradingService(M, venue().v, s, store);
+  const service = new TradingService(M, venue().v, s, store, positions);
   const trade = await prepared(service);
   const record = await service.submit(trade, approved(trade.plan.planHash));
 
   assert.equal(sent.length, 1);
   assert.equal(record.status, "filled");
-  assert.equal(record.fill!.quoteIn, 1_000_000n);
-  assert.equal(record.fill!.baseOut, 99n * 10n ** 16n);
+  assert.equal((record.fill as BuyFill).quoteIn, 1_000_000n);
+  assert.equal((record.fill as BuyFill).baseOut, 99n * 10n ** 16n);
   assert.equal(record.fill!.feeSource, "trade-events");
-  assert.equal(record.fill!.feeBase, 5n * 10n ** 15n);
+  assert.equal((record.fill as BuyFill).feeBase, 5n * 10n ** 15n);
   assert.equal(record.fill!.executedPrice, (E18 * 100n) / 99n);
   // At mid 1.00: fee 0.005 USDC, slippage 1 - 0.995 = 0.005 USDC, gas 0.043 MON = 0.043 USDC.
   assert.deepEqual(record.costs, { gasWei: 43n * 10n ** 15n, gas: 43_000n, fees: 5_000n, slippage: 5_000n });
@@ -147,31 +155,31 @@ test("a filled trade records executed price, size, fee, slippage, and gas, and f
 
 test("without Trade events the fee falls back to the market's taker fee rate", async () => {
   const { s } = signer({ lookup: async () => ({ state: "included", ref: "0xabc", receipt: receipt([swapLog(1_000_000n, 99n * 10n ** 16n)]) }) });
-  const service = new TradingService(M, venue({ takerFeeBps: async () => 0 }).v, s, new MemoryTradeStore());
+  const service = new TradingService(M, venue({ takerFeeBps: async () => 0 }).v, s, new MemoryTradeStore(), new MemoryPositionStore());
   const trade = await prepared(service);
   const record = await service.submit(trade, approved(trade.plan.planHash));
   assert.equal(record.fill!.feeSource, "taker-fee-bps");
-  assert.equal(record.fill!.feeBase, 0n);
+  assert.equal((record.fill as BuyFill).feeBase, 0n);
   assert.equal(record.costs!.slippage, 10_000n);
 });
 
 test("a policy rejection is logged with its violations, never sent, and blocks the tick key", async () => {
   const { s, sent } = signer();
   const store = new MemoryTradeStore();
-  const service = new TradingService(M, venue().v, s, store);
+  const service = new TradingService(M, venue().v, s, store, positions);
   const trade = await prepared(service);
   const rejected: Decision = { approved: false, policyVersion: 1, policyHash: "0x00", violations: ["per-action-cap"] };
   const record = await service.submit(trade, rejected);
   assert.equal(record.status, "failed");
   assert.deepEqual(record.failure, { kind: "policy", reason: "rejected by the RiskModule", violations: ["per-action-cap"] });
-  assert.equal(record.order.quoteIn, 1_000_000n);
+  assert.equal((record.order as BuyOrder).quoteIn, 1_000_000n);
   assert.equal((await service.submit(trade, approved(trade.plan.planHash))).status, "failed");
   assert.equal(sent.length, 0);
 });
 
 test("a plan that differs from the approved hash is refused as a policy failure", async () => {
   const { s, sent } = signer();
-  const service = new TradingService(M, venue().v, s, new MemoryTradeStore());
+  const service = new TradingService(M, venue().v, s, new MemoryTradeStore(), new MemoryPositionStore());
   const trade = await prepared(service);
   const tampered = { ...trade, plan: { ...trade.plan, calls: [trade.plan.calls[0]!, { target: M.router, data: "0xdeadbeef" as Hex }] } };
   const record = await service.submit(tampered, approved(trade.plan.planHash));
@@ -182,7 +190,7 @@ test("a plan that differs from the approved hash is refused as a policy failure"
 
 test("an on-chain revert is an execution failure with its reason, and the gas it paid is still costed", async () => {
   const { s } = signer({ lookup: async () => ({ state: "included", ref: "0xabc", receipt: receipt([], { success: false, revertReason: "TooMuchSlippage" }) }) });
-  const service = new TradingService(M, venue().v, s, new MemoryTradeStore());
+  const service = new TradingService(M, venue().v, s, new MemoryTradeStore(), new MemoryPositionStore());
   const trade = await prepared(service);
   const record = await service.submit(trade, approved(trade.plan.planHash));
   assert.equal(record.status, "failed");
@@ -193,14 +201,14 @@ test("an on-chain revert is an execution failure with its reason, and the gas it
 
 test("a bundler rejection is an execution failure; an unreachable signer is a network failure that stays claimed", async () => {
   const rejected = signer({ submit: async () => { throw new SignerRejected("AA23 reverted"); } });
-  const a = new TradingService(M, venue().v, rejected.s, new MemoryTradeStore());
+  const a = new TradingService(M, venue().v, rejected.s, new MemoryTradeStore(), new MemoryPositionStore());
   const ta = await prepared(a);
   const ra = await a.submit(ta, approved(ta.plan.planHash));
   assert.equal(ra.status, "failed");
   assert.deepEqual(ra.failure, { kind: "execution", reason: "AA23 reverted" });
 
   const down = signer({ submit: async () => { throw new Error("ECONNRESET"); } });
-  const b = new TradingService(M, venue().v, down.s, new MemoryTradeStore());
+  const b = new TradingService(M, venue().v, down.s, new MemoryTradeStore(), new MemoryPositionStore());
   const tb = await prepared(b);
   const rb = await b.submit(tb, approved(tb.plan.planHash));
   assert.equal(rb.status, "claimed");
@@ -211,12 +219,12 @@ test("a retried tick does not resubmit when the signer finds the operation pendi
   let status: OperationStatus = { state: "pending", ref: "0xabc" };
   const { s, sent } = signer({ lookup: async () => status });
   const store = new MemoryTradeStore();
-  const service = new TradingService(M, venue().v, s, store);
+  const service = new TradingService(M, venue().v, s, store, positions);
   const trade = await prepared(service);
   assert.equal((await service.submit(trade, approved(trade.plan.planHash))).status, "submitted");
 
   // A restarted worker rebuilds the service over the same durable store and retries the same tick.
-  const restarted = new TradingService(M, venue().v, s, store);
+  const restarted = new TradingService(M, venue().v, s, store, positions);
   assert.equal((await restarted.submit(trade, approved(trade.plan.planHash))).status, "submitted");
   status = { state: "included", ref: "0xabc", receipt: receipt([swapLog(1_000_000n, 99n * 10n ** 16n)]) };
   assert.equal((await restarted.submit(trade, approved(trade.plan.planHash))).status, "filled");
@@ -227,13 +235,13 @@ test("a retried tick does not resubmit when the signer finds the operation pendi
 test("a crash between send and record is reconciled from the signer by tick key, without resending", async () => {
   const store = new MemoryTradeStore();
   const first = signer({ submit: async () => { throw new Error("process killed"); } });
-  const service = new TradingService(M, venue().v, first.s, store);
+  const service = new TradingService(M, venue().v, first.s, store, positions);
   const trade = await prepared(service);
   await service.submit(trade, approved(trade.plan.planHash));
   assert.equal((await store.get("agent-1:7"))!.ref, null);
 
   const after = signer({ lookup: async () => ({ state: "included", ref: "0xabc", receipt: receipt([swapLog(1_000_000n, 99n * 10n ** 16n)]) }) });
-  const restarted = new TradingService(M, venue().v, after.s, store);
+  const restarted = new TradingService(M, venue().v, after.s, store, positions);
   const found = await restarted.reconcile("agent-1:7");
   assert.equal(found.state, "recorded");
   assert.equal((await store.get("agent-1:7"))!.status, "filled");
@@ -243,12 +251,12 @@ test("a crash between send and record is reconciled from the signer by tick key,
 test("when the signer finds nothing but the router shows an unattributed swap, the tick goes to review, not resubmission", async () => {
   const store = new MemoryTradeStore();
   const down = signer({ submit: async () => { throw new Error("timeout"); } });
-  const trade = await prepared(new TradingService(M, venue().v, down.s, store));
-  await new TradingService(M, venue().v, down.s, store).submit(trade, approved(trade.plan.planHash));
+  const trade = await prepared(new TradingService(M, venue().v, down.s, store, positions));
+  await new TradingService(M, venue().v, down.s, store, positions).submit(trade, approved(trade.plan.planHash));
 
   const { v } = venue({ swapsSince: async () => [{ transactionHash: "0xbeef", blockNumber: 101n }] });
   const later = signer();
-  const record = await new TradingService(M, v, later.s, store).submit(trade, approved(trade.plan.planHash));
+  const record = await new TradingService(M, v, later.s, store, positions).submit(trade, approved(trade.plan.planHash));
   assert.equal(record.status, "needs-review");
   assert.match(record.failure!.reason, /0xbeef/);
   assert.equal(later.sent.length, 0);
@@ -257,7 +265,7 @@ test("when the signer finds nothing but the router shows an unattributed swap, t
 test("when neither the signer nor the router shows anything, the same plan is resubmitted once", async () => {
   const store = new MemoryTradeStore();
   const down = signer({ submit: async () => { throw new Error("timeout"); } });
-  const service = new TradingService(M, venue().v, down.s, store);
+  const service = new TradingService(M, venue().v, down.s, store, positions);
   const trade = await prepared(service);
   await service.submit(trade, approved(trade.plan.planHash));
 
@@ -265,7 +273,7 @@ test("when neither the signer nor the router shows anything, the same plan is re
   // First lookup is the pre-send reconciliation (nothing found); the second follows the resend.
   const answers: OperationStatus[] = [{ state: "absent" }, { state: "pending", ref: "0xdef" }];
   const later = signer({ lookup: async () => answers.shift()! });
-  const retried = new TradingService(M, v, later.s, store);
+  const retried = new TradingService(M, v, later.s, store, positions);
   const record = await retried.submit(trade, approved(trade.plan.planHash));
   assert.equal(calls.swapsSince, 1);
   assert.equal(later.sent.length, 1);
@@ -276,17 +284,17 @@ test("when neither the signer nor the router shows anything, the same plan is re
 
 test("a different plan for an already claimed tick is never sent", async () => {
   const { s, sent } = signer({ lookup: async () => ({ state: "pending", ref: "0xabc" }) });
-  const service = new TradingService(M, venue().v, s, new MemoryTradeStore());
+  const service = new TradingService(M, venue().v, s, new MemoryTradeStore(), new MemoryPositionStore());
   const trade = await prepared(service);
   await service.submit(trade, approved(trade.plan.planHash));
-  const other = await prepared(new TradingService(M, venue({ quoteBuy: async () => 5n * 10n ** 17n }).v, s, new MemoryTradeStore()));
+  const other = await prepared(new TradingService(M, venue({ quoteBuy: async () => 5n * 10n ** 17n }).v, s, new MemoryTradeStore(), new MemoryPositionStore()));
   await service.submit(other, approved(other.plan.planHash));
   assert.equal(sent.length, 1);
 });
 
 test("concurrent submits for one tick reach the signer once", async () => {
   const { s, sent } = signer({ lookup: async () => ({ state: "pending", ref: "0xabc" }) });
-  const service = new TradingService(M, venue().v, s, new MemoryTradeStore());
+  const service = new TradingService(M, venue().v, s, new MemoryTradeStore(), new MemoryPositionStore());
   const trade = await prepared(service);
   await Promise.all([1, 2, 3].map(() => service.submit(trade, approved(trade.plan.planHash))));
   assert.equal(sent.length, 1);

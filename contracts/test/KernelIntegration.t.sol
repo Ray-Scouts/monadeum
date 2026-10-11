@@ -290,6 +290,28 @@ contract KernelIntegrationTest is Test {
         assertEq(token.balanceOf(router), 160e6);
     }
 
+    /// A close on an ERC-20-base market: the owner marks the base as a traded asset and allows its approve; the
+    /// session key can then approve the router on it, uncounted, and cannot approve anyone else.
+    function test_e2e_tradedAssetApproveToRouterOnlyAndUncounted() public {
+        MockERC20 base = new MockERC20();
+        base.mint(address(kernel), 5e18);
+        _owner(abi.encodeCall(IAgentSpendPolicy.setTradedAsset, (address(base), true)));
+        _owner(abi.encodeCall(IAgentSpendPolicy.setAllowed, (address(base), APPROVE, true)));
+
+        IAgentSpendPolicy.Call[] memory close = new IAgentSpendPolicy.Call[](2);
+        close[0] = IAgentSpendPolicy.Call(address(base), 0, abi.encodeWithSelector(APPROVE, router, 5e18));
+        close[1] = IAgentSpendPolicy.Call(router, 0, abi.encodeWithSelector(SWAP, hex"01"));
+        kernel.handleSessionKeyOp(_op(_wrap(_batch(close))));
+        assertEq(base.allowance(address(kernel), router), 5e18);
+        assertEq(policy.windowTotal(address(kernel)), 0, "the traded asset counts nothing against the USDC caps");
+
+        address attacker = makeAddr("attacker");
+        bytes memory drain = _wrap(_single(address(base), 0, abi.encodeWithSelector(APPROVE, attacker, 5e18)));
+        vm.expectRevert(abi.encodeWithSelector(IAgentSpendPolicy.RecipientNotAllowed.selector, attacker));
+        kernel.handleSessionKeyOp(_op(drain));
+        assertEq(base.allowance(address(kernel), attacker), 0);
+    }
+
     function test_e2e_sessionKeyCannotRaiseOwnCaps() public {
         _owner(
             abi.encodeCall(IAgentSpendPolicy.setAllowed, (address(policy), IAgentSpendPolicy.setLimits.selector, true))

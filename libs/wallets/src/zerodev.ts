@@ -51,7 +51,7 @@ import {
   type SpendLimits,
   type WalletsChain,
 } from "./chain.js";
-import type { Call } from "./scope.js";
+import { tradedAssetsOf, type Call } from "./scope.js";
 
 // Kernel v3.1 on EntryPoint 0.7 and call policy v0.0.4: the versions the issue #18 and #19 spikes ran on Monad testnet.
 export const entryPoint = getEntryPoint("0.7");
@@ -64,6 +64,8 @@ export const spendPolicyAbi = parseAbi([
   "function setAllowed(address target, bytes4 selector, bool allowed)",
   "function limits(address account) view returns (Limits)",
   "function isAllowed(address account, address target, bytes4 selector) view returns (bool)",
+  "function setTradedAsset(address token, bool traded)",
+  "function isTradedAsset(address account, address token) view returns (bool)",
 ]);
 
 export interface SpendPolicyConfig {
@@ -176,6 +178,10 @@ export class ZeroDevChain implements WalletsChain {
     try {
       const current = await this.publicClient.readContract({ address, abi: spendPolicyAbi, functionName: "limits", args: [account] });
       if (current.perTxCap !== limits.perTxCap || current.dailyCap !== limits.dailyCap) return false;
+      for (const token of tradedAssetsOf(scope)) {
+        const traded = await this.publicClient.readContract({ address, abi: spendPolicyAbi, functionName: "isTradedAsset", args: [account, token] });
+        if (!traded) return false;
+      }
       for (const c of scope) {
         const allowed = await this.publicClient.readContract({ address, abi: spendPolicyAbi, functionName: "isAllowed", args: [account, c.target, c.selector] });
         if (!allowed) return false;
@@ -186,10 +192,15 @@ export class ZeroDevChain implements WalletsChain {
     }
   }
 
+  /**
+   * Limits, then each traded asset marked, then the allowlist: the spend policy refuses `approve` on a token that is
+   * not marked, and refuses to mark a token that already has a selector allowed, so the order is required.
+   */
   configurationCalls(scope: readonly AllowedCall[], limits: SpendLimits): Call[] {
     const to = this.config.spendPolicy.address;
     return [
       { to, value: 0n, data: encodeFunctionData({ abi: spendPolicyAbi, functionName: "setLimits", args: [{ perTxCap: limits.perTxCap, dailyCap: limits.dailyCap }] }) },
+      ...tradedAssetsOf(scope).map((token) => ({ to, value: 0n, data: encodeFunctionData({ abi: spendPolicyAbi, functionName: "setTradedAsset", args: [token, true] }) })),
       ...scope.map((c) => ({ to, value: 0n, data: encodeFunctionData({ abi: spendPolicyAbi, functionName: "setAllowed", args: [c.target, c.selector, true] }) })),
     ];
   }

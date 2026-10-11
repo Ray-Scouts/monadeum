@@ -69,6 +69,8 @@ export interface Observation {
   /** The settlement asset's decimals, read from the token. */
   decimals: number;
   maxSlippageBps: number;
+  /** The agent's open position size on the market, base units, from TradingModule's position store. */
+  position: bigint;
   /** The information the agent may buy this tick, at most `maxPrice` base units, or null for none. */
   offer: { provider: Provider; resource: string; maxPrice: bigint } | null;
 }
@@ -183,8 +185,11 @@ export async function runTick(store: TickStore, agentId: string, tick: number, p
     return finish(store, ports, record, null, { kind: "failed", step: "decide", reason: error instanceof Error ? error.message : String(error) });
   }
 
+  // "long" buys `notional`. "flat" is the exit decision: with a position open it closes all of it, the size coming
+  // from TradingModule's position store, never from the proposal; with nothing open it is no action.
   const notional = action && action.side === "long" ? toBaseUnits(action.notional, decimals) : 0n;
-  if (!action || notional === 0n) return finish(store, ports, record, null, { kind: "no-action" });
+  const close = action?.side === "flat" && observed.position > 0n;
+  if (!action || (notional === 0n && !close)) return finish(store, ports, record, null, { kind: "no-action" });
 
   const proposal: ActionProposal = {
     schemaVersion: 1,
@@ -195,7 +200,7 @@ export async function runTick(store: TickStore, agentId: string, tick: number, p
     strategyType: "trading",
     state: { capital: ledger.capital, principal: observed.principal, ticksSinceTrade: view.ticksSinceTrade, observedAt: observed.observedAt },
     information,
-    action: { kind: "trade", pair: action.pair, side: "long", notional, maxSlippageBps: observed.maxSlippageBps },
+    action: { kind: "trade", pair: action.pair, side: close ? "flat" : "long", notional, maxSlippageBps: observed.maxSlippageBps },
   };
   const purchased = record;
   const failHere = (step: TickStep, reason: string, violations?: string[], trade?: TradeRecord) =>

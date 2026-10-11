@@ -25,6 +25,14 @@ pragma solidity ^0.8.24;
 /// reallocation contract (AgentReallocation), the same set the RiskModule's `recipient-not-allowed` rule uses. There
 /// is no separate recipient list to configure, so the two cannot drift apart.
 ///
+/// Traded assets: an account's owner may mark an ERC-20 token other than the settlement asset as a traded asset
+/// (`setTradedAsset`), the base of the market the agent trades, so a close can approve the router on it. A traded
+/// asset admits only `transfer` and `approve`; each must decode and name a recipient that passes the recipient rule,
+/// and counts 0, because it moves no settlement asset. A traded asset is never a recipient. No other target may hold
+/// the `transfer` or `approve` selector, so no token call outside the settlement asset escapes the recipient rule.
+/// A token can be marked or unmarked only while the account has no selector allowed on it, so the rule cannot change
+/// under an existing allowlist entry.
+///
 /// Self-protection, independent of how the allowlist is configured: `check` rejects any call whose target is the
 /// policy contract or the account itself, and `setAllowed` rejects any selector on the settlement asset other than
 /// `transfer` and `approve`, so no allowlist entry can move the settlement asset uncounted.
@@ -62,6 +70,7 @@ interface IAgentSpendPolicy {
     event LimitsSet(address indexed account, uint128 perTxCap, uint128 dailyCap);
     event CallAllowed(address indexed account, address indexed target, bytes4 indexed selector, bool allowed);
     event Spent(address indexed account, uint256 amount, uint256 windowTotal);
+    event TradedAssetSet(address indexed account, address indexed token, bool traded);
 
     /// Target and selector not allowed for the account, calldata shorter than a selector, a counted call whose
     /// arguments do not decode, or a target equal to the policy contract or the account itself.
@@ -73,6 +82,12 @@ interface IAgentSpendPolicy {
     error DailyCapExceeded(uint256 windowTotal, uint256 cap);
     /// Raised by `setAllowed` for a selector on the settlement asset other than `transfer` and `approve`.
     error UncountedSettlementSelector(bytes4 selector);
+    /// Raised by `setAllowed` for a selector other than `transfer` and `approve` on a traded asset, or for either of
+    /// those two on a target that is neither the settlement asset nor a traded asset.
+    error TradedAssetSelector(address target, bytes4 selector);
+    /// Raised by `setTradedAsset` for the zero address, the settlement asset, the policy contract, the account itself,
+    /// or a token on which the account has any selector allowed.
+    error TradedAssetNotAllowed(address token);
 
     /// Validation phase. No time-dependent reads. Receives every call in the operation, single or batched.
     /// Reverts with one of the errors above, or returns the total the operation counts; perTxCap applies to it.
@@ -87,6 +102,7 @@ interface IAgentSpendPolicy {
     function limits(address account) external view returns (Limits memory);
     function isAllowed(address account, address target, bytes4 selector) external view returns (bool);
     function isRecipientAllowed(address account, address recipient) external view returns (bool);
+    function isTradedAsset(address account, address token) external view returns (bool);
 
     /// Sum of the account's hourly buckets h - 24 through h, where h is the current hour. Covers 24 to 25 hours,
     /// so it can over-count by up to one hour of spend and never under-counts. The RiskModule reads this value as
@@ -97,4 +113,7 @@ interface IAgentSpendPolicy {
     /// per the self-protection rule.
     function setLimits(Limits calldata newLimits) external;
     function setAllowed(address target, bytes4 selector, bool allowed) external;
+    /// Owner only, like `setAllowed`. Marks or unmarks `token` as a traded asset for msg.sender. Mark it before
+    /// allowing its `approve` or `transfer`; unmark it only after removing them. Emits TradedAssetSet.
+    function setTradedAsset(address token, bool traded) external;
 }

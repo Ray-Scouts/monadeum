@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Decision } from "@monadeum/risk";
+import type { ActionProposal, Decision } from "@monadeum/risk";
 import { StrategyService } from "@monadeum/strategy";
 import type { PreparedTrade, TradeRecord } from "@monadeum/trading";
 import { MemoryTickStore, enqueueTick, runTick, type Observation, type TickMeasurement, type TickPorts } from "../src/tick.js";
@@ -18,6 +18,7 @@ const observation = (over: Partial<Observation> = {}): Observation => ({
   principal: 100_000_000n,
   decimals: 6,
   maxSlippageBps: 50,
+  position: 0n,
   offer: null,
   ...over,
 });
@@ -76,6 +77,22 @@ test("an approved plan is submitted once, measured once, and a rerun of the key 
   assert.equal(again.action, "executed");
   assert.equal(log.submits, 1);
   assert.equal(log.measures.length, 1);
+});
+
+test("a flat decision closes an open position with no declared size, and is no action when nothing is open", async () => {
+  const proposals: ActionProposal[] = [];
+  const bearish = (position: bigint) => async () => observation({ position, view: { ...observation().view, signal: -0.01 } });
+  const { p, log } = ports({ observe: bearish(5n * 10n ** 17n) });
+  p.trading = { ...p.trading, prepare: async (proposal) => { proposals.push(proposal); return { ok: true, trade }; } };
+  const closed = await runTick(new MemoryTickStore(), "a", 1, p);
+  assert.equal(closed.action, "executed");
+  assert.deepEqual(proposals[0]!.action, { kind: "trade", pair: "MON/USDC", side: "flat", notional: 0n, maxSlippageBps: 50 });
+  assert.equal(log.submits, 1);
+
+  const idle = ports({ observe: bearish(0n) });
+  const none = await runTick(new MemoryTickStore(), "a", 1, idle.p);
+  assert.equal(none.outcome?.kind, "no-action");
+  assert.equal(idle.log.submits, 0);
 });
 
 test("the RiskModule checks the built plan, and a rejection is logged without anything being sent", async () => {

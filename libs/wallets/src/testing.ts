@@ -13,7 +13,7 @@ import {
   type SpendLimits,
   type WalletsChain,
 } from "./chain.js";
-import type { Call } from "./scope.js";
+import { tradedAssetsOf, type Call } from "./scope.js";
 import { isRevokedOnChain } from "./wallets.service.js";
 
 // Test double, exported as `@monadeum/wallets/testing` so other packages can test against WalletsService without a
@@ -30,6 +30,8 @@ interface Account {
   deployed: boolean;
   limits: SpendLimits | null;
   allowed: Set<string>;
+  /** Tokens marked with the spend policy's `setTradedAsset`, lowercase. */
+  traded: Set<string>;
   balance: bigint;
   currentNonce: number;
   validNonceFrom: number;
@@ -81,7 +83,7 @@ export class FakeChain implements WalletsChain {
     const key = address.toLowerCase();
     let a = this.accounts.get(key);
     if (!a) {
-      a = { deployed: false, limits: null, allowed: new Set(), balance: 0n, currentNonce: 1, validNonceFrom: 0, permissions: new Map(), sessionNonce: 0n };
+      a = { deployed: false, limits: null, allowed: new Set(), traded: new Set(), balance: 0n, currentNonce: 1, validNonceFrom: 0, permissions: new Map(), sessionNonce: 0n };
       this.accounts.set(key, a);
     }
     return a;
@@ -96,10 +98,15 @@ export class FakeChain implements WalletsChain {
   async policyConfigured(account: Address, scope: readonly AllowedCall[], limits: SpendLimits) {
     const a = this.acct(account);
     return a.limits?.perTxCap === limits.perTxCap && a.limits.dailyCap === limits.dailyCap &&
-      scope.every((c) => a.allowed.has(`${c.target.toLowerCase()}:${c.selector}`));
+      scope.every((c) => a.allowed.has(`${c.target.toLowerCase()}:${c.selector}`)) &&
+      tradedAssetsOf(scope).every((t) => a.traded.has(t.toLowerCase()));
   }
   configurationCalls(scope: readonly AllowedCall[], limits: SpendLimits): Call[] {
-    const payload = JSON.stringify({ limits: [limits.perTxCap.toString(), limits.dailyCap.toString()], scope: scope.map((c) => `${c.target.toLowerCase()}:${c.selector}`) });
+    const payload = JSON.stringify({
+      limits: [limits.perTxCap.toString(), limits.dailyCap.toString()],
+      traded: tradedAssetsOf(scope).map((t) => t.toLowerCase()),
+      scope: scope.map((c) => `${c.target.toLowerCase()}:${c.selector}`),
+    });
     return [{ to: "0x00000000000000000000000000000000000000f0", value: 0n, data: `${CONFIGURE}${Buffer.from(payload).toString("hex")}` }];
   }
 
@@ -183,6 +190,7 @@ export class FakeChain implements WalletsChain {
         if (call.data.startsWith(CONFIGURE)) {
           const parsed = JSON.parse(Buffer.from(call.data.slice(CONFIGURE.length), "hex").toString());
           a.limits = { perTxCap: BigInt(parsed.limits[0]), dailyCap: BigInt(parsed.limits[1]) };
+          for (const token of parsed.traded ?? []) a.traded.add(token);
           for (const entry of parsed.scope) a.allowed.add(entry);
         }
         if (call.data.startsWith(REVOKE)) {
