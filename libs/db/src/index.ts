@@ -7,7 +7,7 @@ export type { Connect, DatabaseHandle, DatabaseSettings } from "./config.js";
 export { decode, encode } from "./codec.js";
 export { PgAgentWalletStore, PgSponsorshipLedger } from "./wallets.js";
 export { PgChallengeStore, PgSessionStore, PgUserStore } from "./auth.js";
-export { PgPaymentLog, PgPositionStore, PgTickStore, PgTradeStore } from "./logs.js";
+export { PgPaymentLog, PgPositionStore, PgTickStore, PgTradeStore, PgX402SlotStore } from "./logs.js";
 export { PgReadModelStore } from "./indexer.js";
 export { PgPolicyVersions } from "./policy.js";
 export { PgAgentStore, PgDebitStore } from "./agents.js";

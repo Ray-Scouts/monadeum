@@ -97,7 +97,12 @@ export interface SessionKeyVault {
 }
 
 const copy = (r: AgentWalletRecord): AgentWalletRecord =>
-  ({ ...r, deployment: { ...r.deployment }, session: r.session ? { ...r.session } : null, x402: r.x402 ? { ...r.x402 } : null });
+  ({
+    ...r,
+    deployment: { ...r.deployment },
+    session: r.session ? { ...r.session } : null,
+    ...(r.x402 === undefined ? {} : { x402: r.x402 ? { ...r.x402 } : null }),
+  });
 
 const copyOp = (r: TickOperationRecord): TickOperationRecord =>
   ({ ...r, attempts: r.attempts.map((a) => ({ ...a })), included: r.included ? { ...r.included } : null });

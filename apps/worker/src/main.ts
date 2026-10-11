@@ -31,6 +31,8 @@ export type { ChainReader, MarketReading, MarketSource } from "./ports.js";
 export { WORKER_STORES, memoryWorkerStores, postgresWorkerStores } from "./stores.js";
 export type { WorkerStores } from "./stores.js";
 export { WorkerConfigError, loadConsumerConfig } from "./config.js";
+export { DisabledX402Payer, agentOfTickKey, buildX402Payer, loadX402PayerConfig } from "./x402.js";
+export type { WorkerX402PayerConfig } from "./x402.js";
 export type { WorkerConsumerConfig } from "./config.js";
 export { UnconfiguredTickRunner, WorkerJobHandlers } from "./consumer/handlers.js";
 export type { ConsumerSettings, JobOutcome, TickRunner } from "./consumer/handlers.js";

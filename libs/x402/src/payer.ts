@@ -42,18 +42,27 @@ export class MemoryX402SlotStore implements X402SlotStore {
   private readonly bySlot = new Map<string, SlotClaim>();
   private readonly slotKey = (account: Address, epoch: bigint, slot: number) => `${account.toLowerCase()}:${epoch}:${slot}`;
 
+  /** Checks and inserts with no await in between, so concurrent claims in one process cannot both win. */
   async claim(claim: SlotClaim): Promise<boolean> {
     const key = this.slotKey(claim.account, claim.epoch, claim.slot);
-    if (this.bySlot.has(key) || (await this.findByPayment(claim.paymentKey))) return false;
+    if (this.bySlot.has(key) || this.byPayment(claim.paymentKey) || this.byNonce(claim.account, claim.nonce)) return false;
     this.bySlot.set(key, { ...claim });
     return true;
   }
   async findByPayment(paymentKey: string) {
-    for (const c of this.bySlot.values()) if (c.paymentKey === paymentKey) return { ...c };
-    return undefined;
+    const c = this.byPayment(paymentKey);
+    return c ? { ...c } : undefined;
   }
   async findByNonce(account: Address, nonce: Hex) {
-    for (const c of this.bySlot.values()) if (isAddressEqual(c.account, account) && c.nonce.toLowerCase() === nonce.toLowerCase()) return { ...c };
+    const c = this.byNonce(account, nonce);
+    return c ? { ...c } : undefined;
+  }
+  private byPayment(paymentKey: string) {
+    for (const c of this.bySlot.values()) if (c.paymentKey === paymentKey) return c;
+    return undefined;
+  }
+  private byNonce(account: Address, nonce: Hex) {
+    for (const c of this.bySlot.values()) if (isAddressEqual(c.account, account) && c.nonce.toLowerCase() === nonce.toLowerCase()) return c;
     return undefined;
   }
 }
