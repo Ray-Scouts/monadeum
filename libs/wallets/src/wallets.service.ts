@@ -1,6 +1,6 @@
 import type { AllowedCall } from "@monadeum/risk";
 import { encodeAbiParameters, isAddressEqual, keccak256, parseAbiParameters, type Address, type Hex } from "viem";
-import { generatePrivateKey, privateKeyToAddress } from "viem/accounts";
+import { generatePrivateKey, privateKeyToAccount, privateKeyToAddress } from "viem/accounts";
 import { hasHeadroom, type SponsorshipBudget, type SponsorshipLedger } from "./budget.js";
 import {
   PaymasterUnavailableError,
@@ -13,13 +13,33 @@ import {
   type WalletsChain,
 } from "./chain.js";
 import { callsInScope, type Call } from "./scope.js";
+import { x402InstallCall, x402UninstallCall, x402ValidatorInstallData, type X402ValidatorConfig } from "./x402.js";
 import type { AgentWalletRecord, AgentWalletStore, SessionKeyVault, TickAttempt, TickOperationRecord } from "./store.js";
+
+/**
+ * The x402 key and its validator (ARCHITECTURE.md section 16.3, x402 signature path). `maxValue` and
+ * `paymentsPerEpoch` are deployment configuration; see `X402_PROPOSED_LIMITS` for the values proposed pending the
+ * owner's decision.
+ */
+export interface X402WalletSettings {
+  validator: Address;
+  settlementAsset: Address;
+  maxValue: bigint;
+  paymentsPerEpoch: number;
+  maxValidity: number;
+  /** The x402 providers' pay-to addresses. */
+  payees: readonly Address[];
+  /** Holds x402 keys. Must be a different vault from the session-key vault. */
+  vault: SessionKeyVault;
+}
 
 export interface WalletsSettings {
   scope: readonly AllowedCall[];
   budget: SponsorshipBudget;
   /** False when no paymaster is configured: every operation is paid by the account itself. */
   paymaster: boolean;
+  /** Absent or null: no x402 key is created and no validator is installed; the agent cannot pay x402. */
+  x402?: X402WalletSettings | null;
 }
 
 export type FailureReason =
@@ -70,11 +90,24 @@ export type TickExecuteResult =
   | Failure;
 
 export interface RevocationStatus {
+  /** The session key is dead on chain, and so is the x402 key when the agent has one. */
   revoked: boolean;
   /** The key is no longer held by this process. */
   keyDestroyed: boolean;
   state: PermissionState;
   enableNonce: number;
+  /** The x402 key, when the agent has one. `keyDestroyed` is null when this process holds no x402 vault. */
+  x402?: { installed: boolean; keyDestroyed: boolean | null } | null;
+}
+
+export type X402InstallResult = { ok: true; keyAddress: Address; installed: boolean; operation: OperationOutcome | null } | Failure;
+
+/** What the x402 payer may use to sign for an agent: the account and a signer over the x402 key, never the key itself. */
+export interface X402SigningKey {
+  account: Address;
+  keyAddress: Address;
+  validator: Address;
+  sign(args: { hash: Hex }): Promise<Hex>;
 }
 
 /**
@@ -103,7 +136,53 @@ export class WalletsService {
     private readonly ledger: SponsorshipLedger,
     private readonly settings: WalletsSettings,
     private readonly now: () => number = Date.now,
-  ) {}
+  ) {
+    if (settings.x402 && settings.x402.vault === vault) throw new Error("the x402 key vault must be separate from the session key vault");
+  }
+
+  private x402Config(keyAddress: Address): X402ValidatorConfig {
+    const x = this.settings.x402!;
+    return { signer: keyAddress, maxValue: x.maxValue, paymentsPerEpoch: x.paymentsPerEpoch, maxValidity: x.maxValidity, payees: x.payees };
+  }
+
+  /**
+   * The x402 key for an install: the one already in the x402 vault when an earlier install attempt left it there,
+   * otherwise a new one. Recorded as `installing` before any operation is prepared, and the install call built.
+   */
+  private async prepareX402Install(record: AgentWalletRecord): Promise<{ ok: true; calls: Call[]; keyAddress: Address } | Failure> {
+    const x = this.settings.x402!;
+    if (!(await this.chain.isDeployed(x.validator))) return { ok: false, reason: "policy-unavailable", detail: "the x402 validator has no code" };
+    let key = await x.vault.get(record.agentId);
+    if (key && record.x402?.status !== "installing") {
+      // A key left over from a revoked install is never reused.
+      await x.vault.destroy(record.agentId);
+      key = null;
+    }
+    if (!key) {
+      key = generatePrivateKey();
+      await x.vault.put(record.agentId, key);
+    }
+    const keyAddress = privateKeyToAddress(key);
+    let installData: Hex;
+    try {
+      installData = x402ValidatorInstallData(this.x402Config(keyAddress), { account: record.account, settlementAsset: x.settlementAsset, validator: x.validator });
+    } catch (error) {
+      return { ok: false, reason: "misconfigured", detail: brief(error) };
+    }
+    record.x402 = { keyAddress, validator: x.validator, status: "installing", installedAt: null, revokedAt: null };
+    await this.store.update(record);
+    return { ok: true, calls: [x402InstallCall(record.account, x.validator, installData)], keyAddress };
+  }
+
+  /** After an install landed, or when an earlier one may have: marks the key active only if the chain shows it so. */
+  private async confirmX402(record: AgentWalletRecord): Promise<boolean> {
+    const x402 = record.x402;
+    if (!x402 || x402.status !== "installing" || !this.settings.x402) return false;
+    if (!(await this.chain.x402Configured(record.account, x402.validator, this.x402Config(x402.keyAddress)))) return false;
+    record.x402 = { ...x402, status: "active", installedAt: this.now() };
+    await this.store.update(record);
+    return true;
+  }
 
   /** Serializes operations per agent inside this process. Across processes, the store's claim and pending hashes apply. */
   private exclusive<T>(agentId: string, work: () => Promise<T>): Promise<T> {
@@ -170,13 +249,23 @@ export class WalletsService {
       }
       record.deployment = { status: "deployed", userOpHash: record.deployment.userOpHash };
       await this.store.update(record);
+      // An earlier attempt's operation may have installed the x402 validator; mark it active only if the chain shows it.
+      await this.confirmX402(record);
       return { ok: true, account, created: false, operation: null };
     }
 
     // Calling an address without code succeeds silently, so configuring a missing policy would look like success.
     if (!(await this.chain.policyDeployed())) return { ok: false, reason: "policy-unavailable" };
 
-    const calls = this.chain.configurationCalls(this.settings.scope, limits);
+    // The x402 validator is installed in the same owner-signed operation that deploys the account, when configured.
+    let x402Calls: Call[] = [];
+    if (this.settings.x402) {
+      const prepared = await this.prepareX402Install(record);
+      if (!prepared.ok) return prepared;
+      x402Calls = prepared.calls;
+    }
+
+    const calls = [...this.chain.configurationCalls(this.settings.scope, limits), ...x402Calls];
     const sent = await this.send(agentId, account, (sponsored) => this.chain.prepareOwnerOperation({ owner, index, account, calls, sponsored }), async (hash) => {
       record!.deployment = { status: "pending", userOpHash: hash };
       await this.store.update(record!);
@@ -187,6 +276,9 @@ export class WalletsService {
     }
     record.deployment = { status: "deployed", userOpHash: sent.userOpHash };
     await this.store.update(record);
+    if (this.settings.x402 && !(await this.confirmX402(record))) {
+      return { ok: false, reason: "misconfigured", detail: "operation succeeded but the x402 validator is not configured as asked" };
+    }
     return { ok: true, account, created: true, operation: { userOpHash: sent.userOpHash, sponsored: sent.sponsored, gasCost: sent.gasCost } };
   }
 
@@ -226,6 +318,51 @@ export class WalletsService {
     });
   }
 
+  /**
+   * Installs the x402 validator with a new x402 key on an already deployed account, in an owner-signed operation:
+   * for an account deployed before x402 was configured, or after a revocation removed the previous key. Idempotent
+   * while the key is active. Refuses while a revocation is unverified, and when the chain shows a validator
+   * configuration other than the one this call would install.
+   */
+  installX402(input: { agentId: string; owner: OwnerSigner }): Promise<X402InstallResult> {
+    return this.exclusive(input.agentId, async () => {
+      if (!this.settings.x402) return { ok: false, reason: "misconfigured", detail: "x402 is not configured" };
+      const record = await this.store.get(input.agentId);
+      if (!record) return { ok: false, reason: "unknown-agent" };
+      if (!isAddressEqual(record.owner, input.owner.address)) return { ok: false, reason: "conflict", detail: "signer is not the account owner" };
+      if (record.deployment.status !== "deployed") return { ok: false, reason: "not-deployed" };
+      if (record.x402?.status === "revoking") return { ok: false, reason: "revoked", detail: "an x402 revocation is not yet verified" };
+      if (record.x402?.status === "active") return { ok: true, keyAddress: record.x402.keyAddress, installed: false, operation: null };
+      if (await this.confirmX402(record)) return { ok: true, keyAddress: record.x402!.keyAddress, installed: false, operation: null };
+      if (await this.chain.x402Installed(record.account, this.settings.x402.validator)) {
+        return { ok: false, reason: "misconfigured", detail: "an x402 validator configuration other than this one is installed; revoke it first" };
+      }
+      const prepared = await this.prepareX402Install(record);
+      if (!prepared.ok) return prepared;
+      const sent = await this.send(input.agentId, record.account, (sponsored) =>
+        this.chain.prepareOwnerOperation({ owner: input.owner, index: record.index, account: record.account, calls: prepared.calls, sponsored }),
+      );
+      if (!sent.ok) return sent;
+      if (!(await this.confirmX402(record))) return { ok: false, reason: "misconfigured", detail: "operation succeeded but the x402 validator is not configured as asked" };
+      return { ok: true, keyAddress: prepared.keyAddress, installed: true, operation: { userOpHash: sent.userOpHash, sponsored: sent.sponsored, gasCost: sent.gasCost } };
+    });
+  }
+
+  /**
+   * The agent's x402 signing key for the payer, or null when the agent has no active x402 key, this process holds no
+   * x402 vault, or the vault no longer holds the key. The private key never leaves this object.
+   */
+  async x402SigningKey(agentId: string): Promise<X402SigningKey | null> {
+    const x = this.settings.x402;
+    const record = await this.store.get(agentId);
+    if (!x || !record || record.x402?.status !== "active" || record.deployment.status !== "deployed") return null;
+    const key = await x.vault.get(agentId);
+    if (!key) return null;
+    const signer = privateKeyToAccount(key);
+    if (!isAddressEqual(signer.address, record.x402.keyAddress)) return null;
+    return { account: record.account, keyAddress: signer.address, validator: record.x402.validator, sign: (args) => signer.sign(args) };
+  }
+
   /** Sends calls signed by the agent's session key. Refuses to sign anything outside the allowlist or after revocation. */
   execute(input: { agentId: string; calls: Call[] }): Promise<ExecuteResult> {
     return this.exclusive(input.agentId, async () => {
@@ -263,42 +400,67 @@ export class WalletsService {
       if (!record) return { ok: false, revokedLocallyAt: null, reason: "unknown-agent" };
       if (!isAddressEqual(record.owner, input.owner.address)) return { ok: false, revokedLocallyAt: null, reason: "conflict", detail: "signer is not the account owner" };
       const session = record.session;
-      if (!session) return { ok: false, revokedLocallyAt: null, reason: "no-session" };
+      const x402 = record.x402 ?? null;
+      if (!session && !x402) return { ok: false, revokedLocallyAt: null, reason: "no-session" };
 
-      if (session.status === "active") {
+      // Off chain first, for both keys: marked, then destroyed, before anything else can fail.
+      const now = this.now();
+      if (session?.status === "active") {
         session.status = "revoking";
-        session.revokedAt = this.now();
-        await this.store.update(record);
+        session.revokedAt = now;
       }
+      if (x402 && (x402.status === "active" || x402.status === "installing")) {
+        x402.status = "revoking";
+        x402.revokedAt = now;
+      }
+      await this.store.update(record);
       await this.vault.destroy(input.agentId);
-      const revokedLocallyAt = session.revokedAt ?? this.now();
+      if (this.settings.x402) await this.settings.x402.vault.destroy(input.agentId);
+      const revokedLocallyAt = session?.revokedAt ?? x402?.revokedAt ?? now;
 
-      let state: PermissionState;
+      // Kernel's ERC-1271 path ignores the nonce, so the x402 key is dead only once its validator is uninstalled.
+      const live = async () => {
+        const state = session ? await this.chain.permissionState(record.account, session.permissionId) : null;
+        return {
+          state,
+          sessionLive: Boolean(session && state && !isRevokedOnChain(state, session.enableNonce)),
+          x402Live: x402 ? await this.chain.x402Installed(record.account, x402.validator) : false,
+        };
+      };
+      const markRevoked = async () => {
+        if (session) session.status = "revoked";
+        if (x402) x402.status = "revoked";
+        await this.store.update(record);
+      };
+
+      let before;
       try {
-        state = await this.chain.permissionState(record.account, session.permissionId);
+        before = await live();
       } catch (error) {
         return { ok: false, revokedLocallyAt, reason: "rejected", detail: `cannot read permission state: ${brief(error)}` };
       }
-      if (isRevokedOnChain(state, session.enableNonce)) {
-        session.status = "revoked";
-        await this.store.update(record);
+      if (!before.sessionLive && !before.x402Live) {
+        await markRevoked();
         return { ok: true, revokedLocallyAt, onChain: "verified", operation: null };
       }
 
-      const calls = await this.chain.revocationCalls({ account: record.account, sessionKeyAddress: session.keyAddress, permissionId: session.permissionId, state });
+      const calls: Call[] = [];
+      if (session && before.sessionLive) {
+        calls.push(...(await this.chain.revocationCalls({ account: record.account, sessionKeyAddress: session.keyAddress, permissionId: session.permissionId, state: before.state! })));
+      }
+      if (x402 && before.x402Live) calls.push(x402UninstallCall(record.account, x402.validator));
       const sent = await this.send(input.agentId, record.account, (sponsored) =>
         this.chain.prepareOwnerOperation({ owner: input.owner, index: record.index, account: record.account, calls, sponsored }), async (hash) => {
-          session.revokeUserOpHash = hash;
+          if (session) session.revokeUserOpHash = hash;
           await this.store.update(record);
         }, "revocation");
       if (!sent.ok) return { ok: false, revokedLocallyAt, reason: sent.reason, detail: sent.detail };
 
-      const after = await this.chain.permissionState(record.account, session.permissionId);
-      if (!isRevokedOnChain(after, session.enableNonce)) {
-        return { ok: false, revokedLocallyAt, reason: "reverted", detail: "revocation landed but the chain still accepts the key" };
+      const after = await live();
+      if (after.sessionLive || after.x402Live) {
+        return { ok: false, revokedLocallyAt, reason: "reverted", detail: "revocation landed but the chain still accepts a key" };
       }
-      session.status = "revoked";
-      await this.store.update(record);
+      await markRevoked();
       return { ok: true, revokedLocallyAt, onChain: "verified", operation: { userOpHash: sent.userOpHash, sponsored: sent.sponsored, gasCost: sent.gasCost } };
     });
   }
@@ -308,11 +470,18 @@ export class WalletsService {
     const record = await this.store.get(agentId);
     if (!record?.session) return null;
     const state = await this.chain.permissionState(record.account, record.session.permissionId);
+    const x402 = record.x402
+      ? {
+          installed: await this.chain.x402Installed(record.account, record.x402.validator),
+          keyDestroyed: this.settings.x402 ? (await this.settings.x402.vault.get(agentId)) === null : null,
+        }
+      : null;
     return {
-      revoked: isRevokedOnChain(state, record.session.enableNonce),
+      revoked: isRevokedOnChain(state, record.session.enableNonce) && !x402?.installed,
       keyDestroyed: (await this.vault.get(agentId)) === null,
       state,
       enableNonce: record.session.enableNonce,
+      x402,
     };
   }
 

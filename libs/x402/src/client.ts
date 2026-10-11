@@ -10,16 +10,57 @@ export interface ProviderEndpoint {
   payTo: string;
 }
 
+/**
+ * The x402 v2 HTTP transport, FACT from the official specification (github.com/coinbase/x402,
+ * `specs/transports-v2/http.md` and `specs/x402-specification-v2.md` at commit dd927a2, read 2026-10-10): the server
+ * answers 402 with a `PAYMENT-REQUIRED` header holding base64 JSON `{ x402Version: 2, resource, accepts: [...] }`,
+ * each requirement `{ scheme, network (CAIP-2, e.g. "eip155:143"), amount (atomic units, string), asset, payTo,
+ * maxTimeoutSeconds, extra? }`; the client retries with a `PAYMENT-SIGNATURE` header holding base64 JSON
+ * `{ x402Version: 2, resource?, accepted, payload }`; the server answers with a `PAYMENT-RESPONSE` header holding
+ * base64 JSON `{ success, transaction, network, payer?, errorReason? }`. Version 1's `maxAmountRequired`, `X-PAYMENT`,
+ * and `X-PAYMENT-RESPONSE` are not accepted: anything else fails closed. ASSUMPTION, not verified: the providers in
+ * PROVIDERS serve v2 on Monad.
+ */
+export const X402_VERSION = 2;
+export const PAYMENT_REQUIRED_HEADER = "payment-required";
+export const PAYMENT_SIGNATURE_HEADER = "payment-signature";
+export const PAYMENT_RESPONSE_HEADER = "payment-response";
+
+/** One `accepts` entry the client chose, with its typed fields read and the entry kept as received. */
 export interface PaymentTerms {
+  scheme: "exact";
+  /** CAIP-2, e.g. "eip155:143". */
+  network: string;
   asset: string;
   payTo: string;
   amount: bigint;
-  network: string;
+  maxTimeoutSeconds: number;
+  /** The requirement exactly as the server sent it, echoed back as `accepted`. */
+  requirement: Record<string, unknown>;
+  /** The resource object of the 402 response, echoed back as `resource`. */
+  resource: Record<string, unknown> | null;
 }
 
-/** Signs the payment. Implemented by the wallet layer; this module never holds a key. */
+export interface Eip3009Authorization {
+  from: string;
+  to: string;
+  value: string;
+  validAfter: string;
+  validBefore: string;
+  nonce: string;
+}
+
+/** The v2 `PaymentPayload` for the `exact` scheme with EIP-3009. */
+export interface PaymentPayload {
+  x402Version: 2;
+  resource?: Record<string, unknown>;
+  accepted: Record<string, unknown>;
+  payload: { signature: string; authorization: Eip3009Authorization };
+}
+
+/** Signs the payment. Implemented over the wallet layer (`ValidatorPayer`); this client never holds a key. */
 export interface Payer {
-  authorize(terms: PaymentTerms): Promise<string>;
+  authorize(request: { key: string; tickKey: string; terms: PaymentTerms }): Promise<PaymentPayload>;
 }
 
 export interface PaymentLogEntry {
@@ -58,8 +99,13 @@ export type BuyResult =
 
 const NO_STORE = { "cache-control": "no-store", pragma: "no-cache" };
 const MAX_BODY_CHARS = 64 * 1024;
+const MAX_HEADER_CHARS = 16 * 1024;
 
 export class X402Client {
+  /**
+   * `network` is the CAIP-2 chain identifier the payments must use, e.g. "eip155:143" for Monad mainnet or
+   * "eip155:10143" for Monad testnet.
+   */
   constructor(
     private readonly endpoints: Readonly<Record<Provider, ProviderEndpoint>>,
     private readonly settlementAsset: string,
@@ -67,6 +113,8 @@ export class X402Client {
     private readonly payer: Payer,
     private readonly log: PaymentLog,
     private readonly http: typeof fetch = fetch,
+    /** The settlement asset's EIP-712 domain name and version, which the payer signs under. USDC: "USDC", "2". */
+    private readonly assetDomain: { name: string; version: string } = { name: "USDC", version: "2" },
   ) {}
 
   async buy(purchase: Purchase): Promise<BuyResult> {
@@ -82,30 +130,36 @@ export class X402Client {
 
     const first = await this.fetch(url, {});
     if (!first || first.status !== 402) return { ok: false, reason: "unreachable" };
-    const terms = parseTerms(await readJson(first), this.settlementAsset, endpoint.payTo, this.network);
+    const terms = parsePaymentRequired(first.headers.get(PAYMENT_REQUIRED_HEADER), this.settlementAsset, endpoint.payTo, this.network, this.assetDomain);
     if (!terms || terms.amount > purchase.maxPrice) return { ok: false, reason: "terms" };
 
     const entry = (patch: Partial<PaymentLogEntry>): PaymentLogEntry => ({ ...base, price: terms.amount, anomaly: null, ...patch });
     // Logged before paying: a crash after payment leaves "unconfirmed-payment" for monitoring, never a second payment.
     await this.log.write(entry({ anomaly: "unconfirmed-payment" }));
 
-    let authorization: string;
+    let payload: PaymentPayload;
     try {
-      authorization = await this.payer.authorize(terms);
+      payload = await this.payer.authorize({ key, tickKey: purchase.tickKey, terms });
     } catch {
       await this.log.write(entry({ price: 0n, anomaly: "authorize-failed" }));
       return { ok: false, reason: "anomaly" };
     }
-    const paid = await this.fetch(url, { "x-payment": authorization });
+    if (!payloadMatches(payload, terms)) {
+      // Signed but never sent. Counted in full anyway: a signed authorization is spendable by whoever holds it.
+      await this.log.write(entry({ anomaly: "authorize-mismatch" }));
+      return { ok: false, reason: "anomaly" };
+    }
+    const paid = await this.fetch(url, { [PAYMENT_SIGNATURE_HEADER]: encodeHeader(payload) });
     if (!paid || paid.status !== 200) {
       await this.log.write(entry({ anomaly: "paid-without-response" }));
       return { ok: false, reason: "anomaly" };
     }
-    const settlementRef = paid.headers.get("x-payment-response");
-    if (!settlementRef) {
-      await this.log.write(entry({ anomaly: "no-settlement-reference" }));
+    const settlement = parseSettlement(paid.headers.get(PAYMENT_RESPONSE_HEADER), this.network, payload.payload.authorization.from);
+    if (!settlement.ok) {
+      await this.log.write(entry({ anomaly: settlement.anomaly }));
       return { ok: false, reason: "anomaly" };
     }
+    const settlementRef = settlement.transaction;
     if (await this.log.findBySettlement(settlementRef)) {
       await this.log.write(entry({ settlementRef, anomaly: "duplicate-grant" }));
       return { ok: false, reason: "anomaly" };
@@ -169,21 +223,81 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-// Assumption, re-verify against the x402 version in use: a 402 body lists `accepts`, each with scheme,
-// network, maxAmountRequired (integer string), asset, and payTo. Descriptive fields are ignored on purpose
-// (SECURITY.md section 6, tool poisoning): only typed fields are read.
-function parseTerms(body: unknown, asset: string, payTo: string, network: string): PaymentTerms | null {
-  if (!body || typeof body !== "object" || !Array.isArray((body as { accepts?: unknown }).accepts)) return null;
-  for (const option of (body as { accepts: unknown[] }).accepts) {
-    if (!option || typeof option !== "object") continue;
-    const o = option as Record<string, unknown>;
-    if (o.scheme !== "exact" || o.network !== network) continue;
-    if (typeof o.asset !== "string" || o.asset.toLowerCase() !== asset.toLowerCase()) continue;
-    if (typeof o.payTo !== "string" || o.payTo.toLowerCase() !== payTo.toLowerCase()) continue;
-    if (typeof o.maxAmountRequired !== "string" || !/^\d{1,30}$/.test(o.maxAmountRequired)) continue;
-    return { asset, payTo, amount: BigInt(o.maxAmountRequired), network };
+/** Base64 JSON, as the v2 HTTP transport carries every x402 header. */
+export function encodeHeader(value: unknown): string {
+  return Buffer.from(JSON.stringify(value), "utf8").toString("base64");
+}
+
+export function decodeHeader(value: string | null): unknown {
+  if (!value || value.length > MAX_HEADER_CHARS || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return null;
+  try {
+    return JSON.parse(Buffer.from(value, "base64").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+
+/**
+ * Reads the `PAYMENT-REQUIRED` header and returns the one `exact` requirement on the configured network, asset, and
+ * provider pay-to address. Descriptive fields are ignored on purpose (SECURITY.md section 6, tool poisoning): only the
+ * typed fields are read. A requirement that names a transfer method other than EIP-3009, or a token domain other than
+ * the configured one, is skipped, because the payer signs only EIP-3009 under that domain.
+ */
+export function parsePaymentRequired(
+  header: string | null,
+  asset: string,
+  payTo: string,
+  network: string,
+  domain: { name: string; version: string } = { name: "USDC", version: "2" },
+): PaymentTerms | null {
+  const body = decodeHeader(header);
+  if (!isObject(body) || body.x402Version !== X402_VERSION || !Array.isArray(body.accepts)) return null;
+  const resource = isObject(body.resource) ? body.resource : null;
+  for (const option of body.accepts) {
+    if (!isObject(option)) continue;
+    if (option.scheme !== "exact" || option.network !== network) continue;
+    if (typeof option.asset !== "string" || option.asset.toLowerCase() !== asset.toLowerCase()) continue;
+    if (typeof option.payTo !== "string" || option.payTo.toLowerCase() !== payTo.toLowerCase()) continue;
+    if (typeof option.amount !== "string" || !/^[1-9]\d{0,29}$/.test(option.amount)) continue;
+    if (typeof option.maxTimeoutSeconds !== "number" || !Number.isInteger(option.maxTimeoutSeconds) || option.maxTimeoutSeconds <= 0) continue;
+    if (option.extra !== undefined) {
+      if (!isObject(option.extra)) continue;
+      const { assetTransferMethod, name, version } = option.extra;
+      if (assetTransferMethod !== undefined && assetTransferMethod !== "eip3009") continue;
+      if ((name !== undefined && name !== domain.name) || (version !== undefined && version !== domain.version)) continue;
+    }
+    return {
+      scheme: "exact", network, asset, payTo, amount: BigInt(option.amount), maxTimeoutSeconds: option.maxTimeoutSeconds,
+      requirement: option, resource,
+    };
   }
   return null;
+}
+
+/** The payer's payload must echo the chosen requirement and authorize exactly its payee and amount. */
+function payloadMatches(p: PaymentPayload, terms: PaymentTerms): boolean {
+  if (!isObject(p) || p.x402Version !== X402_VERSION || !isObject(p.payload) || !isObject(p.payload.authorization)) return false;
+  if (JSON.stringify(p.accepted) !== JSON.stringify(terms.requirement)) return false;
+  const a = p.payload.authorization;
+  return typeof a.to === "string" && a.to.toLowerCase() === terms.payTo.toLowerCase() && a.value === terms.amount.toString() &&
+    typeof a.from === "string" && typeof p.payload.signature === "string";
+}
+
+/** Reads the `PAYMENT-RESPONSE` header: a successful settlement on the configured network, by this payer. */
+export function parseSettlement(header: string | null, network: string, payer: string):
+  | { ok: true; transaction: string }
+  | { ok: false; anomaly: "no-settlement-reference" | "settlement-failed" | "settlement-mismatch" } {
+  const body = decodeHeader(header);
+  if (!isObject(body)) return { ok: false, anomaly: "no-settlement-reference" };
+  if (body.success !== true) return { ok: false, anomaly: "settlement-failed" };
+  if (typeof body.transaction !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(body.transaction)) return { ok: false, anomaly: "no-settlement-reference" };
+  if (body.network !== network) return { ok: false, anomaly: "settlement-mismatch" };
+  if (body.payer !== undefined && (typeof body.payer !== "string" || body.payer.toLowerCase() !== payer.toLowerCase())) {
+    return { ok: false, anomaly: "settlement-mismatch" };
+  }
+  return { ok: true, transaction: body.transaction.toLowerCase() };
 }
 
 /** In-memory log for tests and local development only. */

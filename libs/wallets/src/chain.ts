@@ -2,6 +2,7 @@ import type { AllowedCall } from "@monadeum/risk";
 import type { Signer } from "@zerodev/sdk/types";
 import type { Address, Hex } from "viem";
 import type { Call } from "./scope.js";
+import type { X402ValidatorConfig } from "./x402.js";
 
 /**
  * The user's root wallet as a signer. The platform never holds this key (SECURITY.md section 11): in production the
@@ -107,4 +108,9 @@ export interface WalletsChain {
   permissionState(account: Address, permissionId: Hex): Promise<PermissionState>;
   /** Owner calls that revoke the session key: uninstall its validator if installed, and invalidate the Kernel nonce. */
   revocationCalls(input: { account: Address; sessionKeyAddress: Address; permissionId: Hex; state: PermissionState }): Promise<Call[]>;
+
+  /** Kernel lists the x402 validator on the account (its validation hook is nonzero), so the x402 key can sign. */
+  x402Installed(account: Address, validator: Address): Promise<boolean>;
+  /** The validator's live configuration for the account is exactly `expected`, every listed payee included. */
+  x402Configured(account: Address, validator: Address, expected: X402ValidatorConfig): Promise<boolean>;
 }

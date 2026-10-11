@@ -1,7 +1,7 @@
 import type { TickRecord, TickStore } from "@monadeum/tick";
 import type { Position, PositionStore, TradeRecord, TradeStore } from "@monadeum/trading";
-import type { PaymentLog, PaymentLogEntry } from "@monadeum/x402";
-import type { Hex } from "viem";
+import type { PaymentLog, PaymentLogEntry, SlotClaim, X402SlotStore } from "@monadeum/x402";
+import type { Address, Hex } from "viem";
 import { decode, encode } from "./codec.js";
 import type { Database } from "./database.js";
 
@@ -41,6 +41,37 @@ export class PgTradeStore implements TradeStore {
 }
 
 const txKey = (record: TradeRecord): string | null => record.fill?.transactionHash.toLowerCase() ?? null;
+
+/**
+ * `X402SlotStore` on Postgres (`x402_nonce_slots`, migration 0012). `claim` is one INSERT ... ON CONFLICT DO NOTHING:
+ * the slot, the payment key, and the (account, nonce) pair are each unique, so a conflict on any of them claims
+ * nothing. There is no update or delete.
+ */
+export class PgX402SlotStore implements X402SlotStore {
+  constructor(private readonly db: Database) {}
+
+  async claim(claim: SlotClaim): Promise<boolean> {
+    const { rows } = await this.db.query(
+      `INSERT INTO x402_nonce_slots (account_key, epoch, slot, nonce_key, payment_key, body) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+       ON CONFLICT DO NOTHING RETURNING payment_key`,
+      [claim.account.toLowerCase(), claim.epoch.toString(), claim.slot, claim.nonce.toLowerCase(), claim.paymentKey, encode(claim)],
+    );
+    return rows.length === 1;
+  }
+
+  async findByPayment(paymentKey: string): Promise<SlotClaim | undefined> {
+    const { rows } = await this.db.query<{ body: string }>("SELECT body::text AS body FROM x402_nonce_slots WHERE payment_key = $1", [paymentKey]);
+    return rows[0] ? decode<SlotClaim>(rows[0].body) : undefined;
+  }
+
+  async findByNonce(account: Address, nonce: Hex): Promise<SlotClaim | undefined> {
+    const { rows } = await this.db.query<{ body: string }>(
+      "SELECT body::text AS body FROM x402_nonce_slots WHERE account_key = $1 AND nonce_key = $2",
+      [account.toLowerCase(), nonce.toLowerCase()],
+    );
+    return rows[0] ? decode<SlotClaim>(rows[0].body) : undefined;
+  }
+}
 
 /** `PaymentLog` on Postgres. `claim` is INSERT ... ON CONFLICT DO NOTHING on the purchase key, the primary key. */
 export class PgPaymentLog implements PaymentLog {

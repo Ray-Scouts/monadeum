@@ -15,6 +15,20 @@ export interface SessionRecord {
   revokeUserOpHash: Hex | null;
 }
 
+/**
+ * The agent's x402 key (ARCHITECTURE.md section 16.3, x402 signature path): a second key, separate from the session
+ * key, trusted only by X402PaymentValidator. `installing` is written before the owner operation that installs the
+ * validator is submitted, so a crash can always find the key's address again.
+ */
+export interface X402KeyRecord {
+  keyAddress: Address;
+  /** The X402PaymentValidator the key was installed on, kept so revocation still finds it if configuration changes. */
+  validator: Address;
+  status: "installing" | "active" | "revoking" | "revoked";
+  installedAt: number | null;
+  revokedAt: number | null;
+}
+
 export interface AgentWalletRecord {
   agentId: string;
   owner: Address;
@@ -23,6 +37,8 @@ export interface AgentWalletRecord {
   account: Address;
   deployment: { status: "pending" | "deployed"; userOpHash: Hex | null };
   session: SessionRecord | null;
+  /** Absent on records written before the x402 key existed, which reads as null. */
+  x402?: X402KeyRecord | null;
 }
 
 /** One signed operation for a tick. Recorded before it is submitted, so a crash can never lose its hash. */
@@ -70,7 +86,9 @@ export interface AgentWalletStore {
 /**
  * Holds session private keys. Production backs this with a secrets manager (SECURITY.md section 11); keys never
  * go to the database, a log, or source control, so `@monadeum/db` deliberately provides no implementation of this
- * interface. `destroy` must make the key unrecoverable from this store.
+ * interface. `destroy` must make the key unrecoverable from this store. The x402 key is held in a second, separate
+ * vault instance (WalletsService refuses the same instance for both), so a lookup for one key can never return the
+ * other.
  */
 export interface SessionKeyVault {
   put(agentId: string, privateKey: Hex): Promise<void>;
@@ -79,7 +97,12 @@ export interface SessionKeyVault {
 }
 
 const copy = (r: AgentWalletRecord): AgentWalletRecord =>
-  ({ ...r, deployment: { ...r.deployment }, session: r.session ? { ...r.session } : null });
+  ({
+    ...r,
+    deployment: { ...r.deployment },
+    session: r.session ? { ...r.session } : null,
+    ...(r.x402 === undefined ? {} : { x402: r.x402 ? { ...r.x402 } : null }),
+  });
 
 const copyOp = (r: TickOperationRecord): TickOperationRecord =>
   ({ ...r, attempts: r.attempts.map((a) => ({ ...a })), included: r.included ? { ...r.included } : null });

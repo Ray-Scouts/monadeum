@@ -12,6 +12,7 @@ import {
   PgAgentWalletStore,
   PgDebitStore,
   PgPaymentLog,
+  PgX402SlotStore,
   PgPolicyVersions,
   PgPositionStore,
   PgReadModelStore,
@@ -23,7 +24,7 @@ import {
   type Database,
   type Transaction,
 } from "../src/index.js";
-import { agentRecord, batch, chainEvent, debitRecord, operation, payment, tickRecord, trade, wallet } from "./conformance.js";
+import { agentRecord, batch, chainEvent, debitRecord, operation, payment, slotClaim, tickRecord, trade, wallet } from "./conformance.js";
 import { postgresHarness } from "./harness.js";
 
 const DENIED = (error: unknown) => (error as { code?: string }).code === "42501";
@@ -214,6 +215,10 @@ export function databaseRules(name: string, db: Database): void {
       assert.equal(await payments.claim(payment("a:1")), true);
       await payments.write(payment("a:1", "ref-1"));
       assert.equal((await payments.findBySettlement("ref-1"))?.key, "a:1");
+      const slots = new PgX402SlotStore(worker);
+      assert.equal(await slots.claim(slotClaim(0, "a:1")), true);
+      assert.equal((await new PgX402SlotStore(asRole(db, "monadeum_reader")).findByPayment("a:1"))?.slot, 0);
+      await assert.rejects(new PgX402SlotStore(asRole(db, "monadeum_reader")).claim(slotClaim(1, "a:2")), DENIED);
       const ticks = new PgTickStore(worker);
       assert.equal(await ticks.claim(tickRecord("a", 1)), true);
       await ticks.write({ ...tickRecord("a", 1), status: "recorded" });
@@ -265,6 +270,14 @@ export function databaseRules(name: string, db: Database): void {
       await assert.rejects(new PgPositionStore(asRole(db, "monadeum_indexer")).get("p"), DENIED);
       await assert.rejects(as(db, "monadeum_worker", "DELETE FROM trade_positions"), DENIED);
       await assert.rejects(as(db, "monadeum_worker", "TRUNCATE trade_positions"), DENIED);
+    });
+
+    it("no role updates or deletes an x402 nonce slot, so a slot is never reused", async () => {
+      for (const role of ["monadeum_worker", "monadeum_reader", "monadeum_indexer", "monadeum_policy_operator"]) {
+        await assert.rejects(as(db, role, "UPDATE x402_nonce_slots SET body = body"), DENIED, role);
+        await assert.rejects(as(db, role, "DELETE FROM x402_nonce_slots"), DENIED, role);
+        await assert.rejects(as(db, role, "TRUNCATE x402_nonce_slots"), DENIED, role);
+      }
     });
 
     it("no role deletes worker records, and no process role touches the auth tables", async () => {

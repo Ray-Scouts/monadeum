@@ -9,7 +9,7 @@ import type { TickRecord, TickStore } from "@monadeum/tick";
 import { SettlementAssetMismatchError, type BlockHash, type ChainEvent, type ReadModelStore, type SyncBatch } from "@monadeum/read-model";
 import type { Position, PositionStore, TradeRecord, TradeStore } from "@monadeum/trading";
 import type { AgentWalletRecord, AgentWalletStore, SponsorshipLedger, TickOperationRecord } from "@monadeum/wallets";
-import type { PaymentLog, PaymentLogEntry } from "@monadeum/x402";
+import type { PaymentLog, PaymentLogEntry, SlotClaim, X402SlotStore } from "@monadeum/x402";
 import type { Address, Hex } from "viem";
 
 export interface Stores {
@@ -20,6 +20,7 @@ export interface Stores {
   sessions: SessionStore;
   trades: TradeStore;
   payments: PaymentLog;
+  slots: X402SlotStore;
   ticks: TickStore;
   readModel: ReadModelStore;
   agents: AgentRegistry;
@@ -49,6 +50,14 @@ export function wallet(agentId: string, account: Address = ACCOUNT): AgentWallet
       keyAddress: addr(2), permissionId: "0x12345678", enableSignature: "0x5161", enableNonce: 3,
       status: "active", issuedAt: 1_700_000_000, revokedAt: null, revokeUserOpHash: null,
     },
+    x402: { keyAddress: addr(3), validator: addr(4), status: "active", installedAt: 1_700_000_001, revokedAt: null },
+  };
+}
+
+export function slotClaim(slot: number, paymentKey: string, overrides: Partial<SlotClaim> = {}): SlotClaim {
+  return {
+    account: ACCOUNT, epoch: 2n ** 70n, slot, nonce: hash(100 + slot), paymentKey, payTo: addr(5), value: BIG,
+    validAfter: 1_790_000_000n, validBefore: 1_790_000_060n, claimedAt: 1_790_000_005, ...overrides,
   };
 }
 
@@ -531,6 +540,27 @@ export function conformance(name: string, harness: Harness): void {
     it("lets exactly one of several concurrent claims for a purchase win", async () => {
       const { payments } = await harness.fresh();
       const results = await Promise.all(Array.from({ length: 8 }, () => payments.claim(payment("p1"))));
+      assert.equal(results.filter(Boolean).length, 1);
+    });
+  });
+
+  describe(`${name}: X402SlotStore`, () => {
+    it("claims a slot once, never for a second payment, and finds it by payment and by nonce", async () => {
+      const { slots } = await harness.fresh();
+      assert.equal(await slots.claim(slotClaim(0, "p1")), true);
+      assert.equal(await slots.claim(slotClaim(0, "p2")), false, "the slot is taken");
+      assert.equal(await slots.claim(slotClaim(1, "p1")), false, "the payment already holds a slot");
+      assert.equal(await slots.claim(slotClaim(2, "p3", { nonce: hash(100) })), false, "the nonce is taken");
+      assert.equal(await slots.claim(slotClaim(0, "p4", { epoch: 2n ** 70n + 1n, nonce: hash(400) })), true, "the same slot in another hour");
+      assert.deepEqual(await slots.findByPayment("p1"), slotClaim(0, "p1"));
+      assert.deepEqual(await slots.findByNonce(mixed(ACCOUNT), hash(100).toUpperCase().replace("0X", "0x") as Hex), slotClaim(0, "p1"));
+      assert.equal(await slots.findByPayment("p2"), undefined);
+      assert.equal(await slots.findByNonce(addr(77), hash(100)), undefined);
+    });
+
+    it("lets exactly one of several concurrent claims for a slot win", async () => {
+      const { slots } = await harness.fresh();
+      const results = await Promise.all(Array.from({ length: 8 }, (_, i) => slots.claim(slotClaim(0, `p${i}`, { nonce: hash(500 + i) }))));
       assert.equal(results.filter(Boolean).length, 1);
     });
   });

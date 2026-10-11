@@ -4,7 +4,7 @@ import { InMemoryReadModelStore } from "@monadeum/read-model";
 import { MemoryTickStore } from "@monadeum/tick";
 import { MemoryPositionStore, MemoryTradeStore } from "@monadeum/trading";
 import { MemoryAgentWalletStore, MemorySponsorshipLedger } from "@monadeum/wallets";
-import { MemoryPaymentLog } from "@monadeum/x402";
+import { MemoryPaymentLog, MemoryX402SlotStore } from "@monadeum/x402";
 import { conformance } from "./conformance.js";
 
 conformance("memory", {
@@ -17,6 +17,7 @@ conformance("memory", {
       sessions: new MemorySessionStore(),
       trades: new MemoryTradeStore(),
       payments: new MemoryPaymentLog(),
+      slots: new MemoryX402SlotStore(),
       ticks: new MemoryTickStore(),
       readModel: new InMemoryReadModelStore(),
       agents: new MemoryAgentStore(),
