@@ -156,7 +156,7 @@ export interface ApiAgent {
   principal: string | null;
   /** Capital at the last evaluation, base units. */
   capital?: string | null;
-  /** Trades in the current window. */
+  /** Filled trades since the agent was created. */
   tradeCount?: number | null;
   /** Adjusted fitness as a percentile within the agent's niche, 0 to 100. */
   fitnessPercentile?: number | null;

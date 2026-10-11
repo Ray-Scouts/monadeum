@@ -393,7 +393,7 @@ export function AgentFacts({ agent, settlement, actions }: { agent: ApiAgent; se
               : `Percentile in its niche${agent.lowWindows == null ? "" : `, ${agent.lowWindows} low ${agent.lowWindows === 1 ? "window" : "windows"} in a row`}`
           }
         />
-        <Kpi label="Trades" value={agent.tradeCount == null ? PENDING : agent.tradeCount} detail={agent.tradeCount == null ? PENDING_DETAIL : "In the current window"} />
+        <Kpi label="Trades" value={agent.tradeCount == null ? PENDING : agent.tradeCount} detail={agent.tradeCount == null ? PENDING_DETAIL : "Filled trades since creation"} />
         <Kpi
           label="x402 spend"
           value={agent.x402 == null ? PENDING : <span className="text-[19px]">{amount(agent.x402.spent, settlement)}</span>}
