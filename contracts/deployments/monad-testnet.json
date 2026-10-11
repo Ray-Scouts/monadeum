@@ -1,6 +1,6 @@
 {
   "chainId": 10143,
-  "status": "not deployed",
+  "status": "deployed",
   "note": "The committed record of the Monad testnet deployment. contracts/script/deploy-testnet.sh writes deployments/monad-testnet.latest.json (not committed) on every run; after a broadcast, copy its contracts, deployer, and the inclusion block of the first deployment here, set status to deployed, and commit. Addresses are public.",
   "deployer": "0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3",
   "inputs": {
@@ -11,11 +11,38 @@
     "minEvaluationInterval": 36000
   },
   "contracts": {
-    "AgentSpendPolicy": null,
-    "AgentReallocation": null,
-    "X402PaymentValidator": null
+    "AgentSpendPolicy": "0xe54512401B8fCD0DCc3f4Aa4929b99F05AbA3f05",
+    "AgentReallocation": "0x4e7500415e81017670a9cFb8763f873EE6694A7f",
+    "X402PaymentValidator": "0xCA918F53FFc7507Bd41602c0bD1ef72558705991"
   },
-  "deploymentBlock": null,
+  "deploymentBlock": 70167444,
+  "transactions": {
+    "AgentSpendPolicy": {
+      "hash": "0xe57f5b866b9eb5a438d137fdd126030c4bbec09d5a2d30b9ad14489a72af344e",
+      "block": 70167444,
+      "nonce": 1,
+      "gasUsed": 1975698
+    },
+    "AgentReallocation": {
+      "hash": "0x654a555c3214551412c29a6a17ec391ea9dd2b032221880116fd0e58a213ee3e",
+      "block": 70167453,
+      "nonce": 2,
+      "gasUsed": 2860335
+    },
+    "X402PaymentValidator": {
+      "hash": "0x914bb2d21130dd014ccc0688dbf5afca6df3bdd94f37880e560f1908e117bf0f",
+      "block": 70167461,
+      "nonce": 3,
+      "gasUsed": 1933835
+    }
+  },
+  "cost": {
+    "totalGas": 6769868,
+    "effectiveGasPriceWei": "103407500000",
+    "totalMon": "0.70005512521",
+    "note": "From the three receipts, broadcast 2026-10-11. Each receipt's gasUsed equals its transaction's gas limit."
+  },
+  "verified": "2026-10-11, against https://testnet-rpc.monad.xyz (chain id 10143): all three receipts have status 1 and are from the deployer; each address has code (6716, 9276, and 6566 bytes); settlementAsset() of all three is the input asset; AgentReallocation operator() and admin() are the Safe, pendingAdmin() is zero, minEvaluationInterval() is 36000, capitalFloor() is 60000, and currentEvaluation() and lastEvaluationAt() are 0.",
   "safe": {
     "address": "0x9671dB7Ab4Afa09fe76402Ce127896b166029897",
     "version": "1.4.1+L2",
