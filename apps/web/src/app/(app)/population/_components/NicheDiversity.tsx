@@ -9,19 +9,14 @@ const BAND_COLORS = ["var(--sky)", "var(--mint)", "var(--accent)", "var(--berry)
 const EDGES = [PROTOCOL.riskFloor, ...RISK_CUTS, PROTOCOL.riskCeiling];
 const BANDS = EDGES.slice(0, -1).map((lo, i) => `${lo.toFixed(2)} to ${EDGES[i + 1]!.toFixed(2)}`);
 
-export function NicheDiversity({ live }: { live: Agent[] }) {
-  const counts = BANDS.map((_, i) => live.filter((a) => riskBand(a.genome.riskTolerance) === i).length);
-  const total = Math.max(1, live.length);
+/** Agents counted per risk band, the band half of a niche (`nicheKey` in `@monadeum/fitness`), as a bar and a legend. */
+export function RiskBandBar({ riskTolerances, subject = "Live agents" }: { riskTolerances: number[]; subject?: string }) {
+  const counts = BANDS.map((_, i) => riskTolerances.filter((r) => riskBand(r) === i).length);
+  const total = Math.max(1, riskTolerances.length);
   const summary = counts.map((c, i) => `${BANDS[i]}: ${c} agents`).join("; ");
-
   return (
-    <Card>
-      <CardHead title="Diversity by risk band" />
-      <p className="mb-4 text-[13px] text-muted">
-        Fitness and the starvation rule are measured within a niche. No genome is ever copied, so the set of strategies changes only when owners create or
-        retire agents. A niche also includes the asset universe; this view groups by risk band only.
-      </p>
-      <div role="img" aria-label={`Live agents by risk band. ${summary}.`} className="flex h-[42px] gap-0.5 overflow-hidden rounded-xl">
+    <>
+      <div role="img" aria-label={`${subject} by risk band. ${summary}.`} className="flex h-[42px] gap-0.5 overflow-hidden rounded-xl">
         {counts.map((c, i) =>
           c ? <div key={i} className="min-w-0" style={{ flex: c, background: BAND_COLORS[i] }} title={`${BANDS[i]}: ${c} agents`} /> : null,
         )}
@@ -38,6 +33,19 @@ export function NicheDiversity({ live }: { live: Agent[] }) {
           </li>
         ))}
       </ul>
+    </>
+  );
+}
+
+export function NicheDiversity({ live }: { live: Agent[] }) {
+  return (
+    <Card>
+      <CardHead title="Diversity by risk band" />
+      <p className="mb-4 text-[13px] text-muted">
+        Fitness and the starvation rule are measured within a niche. No genome is ever copied, so the set of strategies changes only when owners create or
+        retire agents. A niche also includes the asset universe; this view groups by risk band only.
+      </p>
+      <RiskBandBar riskTolerances={live.map((a) => a.genome.riskTolerance)} />
     </Card>
   );
 }

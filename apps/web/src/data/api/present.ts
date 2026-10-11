@@ -1,7 +1,7 @@
 import { REALLOCATION_OFF_REASON } from "@monadeum/reallocation/switch";
 import { formatUnits } from "viem";
 import type { WebConfig } from "../config";
-import type { ApiAgent, OwnerResponse } from "./types";
+import type { ApiAgent, OwnerResponse, PopulationResponse } from "./types";
 
 type Settlement = WebConfig["settlement"];
 
@@ -10,6 +10,68 @@ export function amount(baseUnits: string, settlement: Settlement): string {
   if (!/^\d+$/.test(baseUnits)) return baseUnits;
   const value = formatUnits(BigInt(baseUnits), settlement.decimals);
   return settlement.symbol ? `${value} ${settlement.symbol}` : `${value} (settlement asset units)`;
+}
+
+const isBase = (v: string) => /^\d+$/.test(v);
+
+/** `part / total` of two base-unit amounts, 0 to 1, computed in integers so large amounts keep their precision. */
+export function share(part: string, total: string): number {
+  if (!isBase(part) || !isBase(total) || BigInt(total) === 0n) return 0;
+  return Number((BigInt(part) * 10_000n) / BigInt(total)) / 10_000;
+}
+
+/** A base-unit amount as a JavaScript number, for drawing a chart's shape only, never for arithmetic on money. */
+export function plotValue(baseUnits: string, settlement: Settlement): number {
+  return isBase(baseUnits) ? Number(formatUnits(BigInt(baseUnits), settlement.decimals)) : 0;
+}
+
+/** Whether capital stands at or above principal, or null when either is missing. */
+export function aboveOrAtPrincipal(agent: Pick<ApiAgent, "capital" | "principal">): boolean | null {
+  if (agent.capital == null || agent.principal == null || !isBase(agent.capital) || !isBase(agent.principal)) return null;
+  return BigInt(agent.capital) >= BigInt(agent.principal);
+}
+
+/** An agent the worker has retired, by its status or its retirement record. */
+export const isRetired = (agent: Pick<ApiAgent, "status" | "retirement">) => agent.status === "retired" || agent.retirement != null;
+
+const PROVIDER_NAME: Record<string, string> = { nansen: "Nansen", defillama: "DeFiLlama" };
+
+/** A provider's display name; one the web does not know is shown as the API names it. */
+export const providerName = (provider: string) => PROVIDER_NAME[provider] ?? provider;
+
+/** An instant in milliseconds as a UTC date and time, so every viewer reads the same text. */
+export const utc = (ms: number) => `${new Date(ms).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+
+/** No field the web shows as a figure carries net earnings after costs yet, so it is always named as not served. */
+const NET_EARNINGS = "net earnings after costs";
+
+/**
+ * The fields the population screen would show that this response leaves null or missing. An agent-level field is
+ * named only when none of the caller's agents carries it; with no agents, nothing is known about them.
+ */
+export function populationNotServed(population: PopulationResponse, agents: ApiAgent[]): string[] {
+  const none = (pick: (a: ApiAgent) => unknown) => agents.length > 0 && agents.every((a) => pick(a) == null);
+  const fields: string[] = [];
+  if (population.capital == null || none((a) => a.capital)) fields.push("capital");
+  if (none((a) => a.capitalHistory)) fields.push("capital history");
+  fields.push(NET_EARNINGS);
+  if (none((a) => a.fitnessPercentile)) fields.push("fitness");
+  if (population.trades == null || none((a) => a.tradeCount)) fields.push("trades");
+  if (population.x402 == null || none((a) => a.x402)) fields.push("x402 purchases");
+  if (population.lastEvaluation == null) fields.push("evaluation outcomes");
+  return fields;
+}
+
+/** The fields the per-agent view would show that this agent's answer leaves null or missing. */
+export function agentNotServed(agent: ApiAgent): string[] {
+  const fields: string[] = [];
+  if (agent.capital == null) fields.push("capital");
+  if (agent.capitalHistory == null) fields.push("capital history");
+  fields.push(NET_EARNINGS);
+  if (agent.fitnessPercentile == null) fields.push("fitness");
+  if (agent.tradeCount == null) fields.push("trades");
+  if (agent.x402 == null) fields.push("x402 purchases");
+  return fields;
 }
 
 export const DEPLOYMENT_LABEL: Record<ApiAgent["deployment"], string> = {
@@ -88,9 +150,9 @@ export function explainAgent(agent: ApiAgent, owner: OwnerResponse | null): Expl
     );
   }
   lines.push(
-    agent.fitnessPercentile === null
+    agent.fitnessPercentile == null
       ? "Not ranked here: the API does not serve evaluation results yet, so there is no rank, starvation count, or distance to the capital floor to show."
-      : `Fitness percentile in its niche: ${agent.fitnessPercentile}.`,
+      : `Fitness percentile in its niche: ${Math.round(agent.fitnessPercentile)}.`,
   );
   return { headline, lines };
 }

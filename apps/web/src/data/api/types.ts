@@ -29,6 +29,22 @@ export interface PopulationResponse {
   liveSessionKeys: number;
   totalSpent: string;
   cursor: { blockNumber: string; blockHash: string } | null;
+  /** The fields below are optional: an API built before they existed omits them, and the screens show them as pending. */
+  /** Trades by every live agent, all owners. */
+  trades?: number | null;
+  /** x402 purchases by every agent, all owners. */
+  x402?: X402Totals | null;
+  /** The last evaluation the worker completed, `at` in milliseconds since the epoch. */
+  lastEvaluation?: { sequence: number; at: number } | null;
+  /** Sum of the live agents' capital at the last evaluation, base units. */
+  capital?: string | null;
+}
+
+/** x402 purchases and their cost, base units, split by provider. */
+export interface X402Totals {
+  purchases: number;
+  spent: string;
+  byProvider: { provider: string; spent: string }[];
 }
 
 export interface OwnerPolicyView {
@@ -126,7 +142,8 @@ export type SessionStatus = "active" | "revoking" | "revoked";
 
 /**
  * One agent as the API serves it. The first group carries the field names of the sample `Agent`; every one of them
- * that no service produces yet is null, and the screens show that absence rather than a value.
+ * that no service produces yet is null or missing, and the screens show that absence rather than a value. They are
+ * optional so the screens read an API built before a field existed the same way as one that returns it as null.
  */
 export interface ApiAgent {
   id: string;
@@ -137,14 +154,20 @@ export interface ApiAgent {
   status: string | null;
   /** Owner deposits minus withdrawals, base units. 0 until funding is built, and an unfunded agent does not trade. */
   principal: string | null;
-  capital: string | number | null;
-  tradeCount: number | null;
-  fitnessPercentile: number | null;
-  lowWindows: number | null;
-  zeroDownsideFlag: boolean | null;
-  retirement: { rule: string; evaluation: number } | null;
+  /** Capital at the last evaluation, base units. */
+  capital?: string | null;
+  /** Filled trades since the agent was created. */
+  tradeCount?: number | null;
+  /** Adjusted fitness as a percentile within the agent's niche, 0 to 100. */
+  fitnessPercentile?: number | null;
+  /** Consecutive evaluations in the bottom of its niche (the starvation count). */
+  lowWindows?: number | null;
+  zeroDownsideFlag?: boolean | null;
+  retirement?: { rule: string; evaluation: number } | null;
   genome: ApiGenome | null;
-  capitalHistory: unknown;
+  /** Capital at each recorded evaluation, base units, oldest first. */
+  capitalHistory?: { evaluation: number; capital: string }[] | null;
+  x402?: X402Totals | null;
 
   owner: string;
   index: string;
