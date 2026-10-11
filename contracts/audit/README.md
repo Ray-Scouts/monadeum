@@ -146,7 +146,7 @@ Coverage of `src/` (test and mock files excluded), from `forge coverage` with fo
 | --- | --- | --- | --- | --- |
 | `src/AgentSpendPolicy.sol` | 100.00% (120/120) | 100.00% (163/163) | 100.00% (31/31) | 100.00% (25/25) |
 
-Regenerated on 2026-10-10 after the traded-asset change (71 tests passed, the fork suite skipped; before the change: 106/106 lines, 139/139 statements, 26/26 branches, 23/23 functions). Before this package, coverage was 99.06% of lines and 96.15% of branches. The one uncovered branch was the second, independent refusal of an uncounted settlement-asset selector in `_check`, unreachable through `setAllowed` by design. `test_check_rejectsUncountedSettlementSelectorEvenIfStored` writes such an entry into storage directly to show `check` refuses it on its own. Coverage is a floor, not evidence of correctness: the invariant and fuzz suites in section 4 are the substantive checks.
+Regenerated on 2026-10-10 after the traded-asset change, and again after rebasing onto the `X402PaymentValidator` change (107 tests passed, the two fork suites skipped; `AgentSpendPolicy.sol` figures unchanged by the rebase, which touched only its comments; the validator's own figures are in the same `summary.txt`; before the change: 106/106 lines, 139/139 statements, 26/26 branches, 23/23 functions). Before this package, coverage was 99.06% of lines and 96.15% of branches. The one uncovered branch was the second, independent refusal of an uncounted settlement-asset selector in `_check`, unreachable through `setAllowed` by design. `test_check_rejectsUncountedSettlementSelectorEvenIfStored` writes such an entry into storage directly to show `check` refuses it on its own. Coverage is a floor, not evidence of correctness: the invariant and fuzz suites in section 4 are the substantive checks.
 
 To regenerate, from the repository root, with Foundry 1.8.5 installed:
 
@@ -158,7 +158,7 @@ It writes `contracts/audit/coverage-report/summary.txt` and `contracts/audit/cov
 
 ## 6. Static analysis and triage
 
-First run on 2026-10-10 against this package's sources, and re-run the same day, with the same tool versions and commands, after the traded-asset change. The re-run's results are below; every finding of the first run reappears, and the only differences are listed.
+First run on 2026-10-10 against this package's sources, and re-run the same day, with the same tool versions and commands, after the traded-asset change, on the tree before `X402PaymentValidator.sol` was added (section 12.4 covers that file). Since that re-run, `AgentSpendPolicy.sol` and `IAgentSpendPolicy.sol` changed only in comments. The re-run's results are below; every finding of the first run reappears, and the only differences are listed.
 
 - **Slither 0.11.4**, installed from PyPI into a throwaway virtual environment: `slither . --filter-paths "lib/|test/"` from `contracts/` (it runs `forge clean` and a forced build first). 100 detectors. First run: 6 results from 5 detectors (`timestamp` reports two functions). Re-run: 7 results from 6 detectors. `cyclomatic-complexity` on `_check` rose from 12 to 13 (the traded-asset branch), and `pragma` reported the exact pragma of the implementation against the caret pragma of the two interfaces (S6).
 - **Aderyn 0.6.8**, installed from Cyfrin's npm package `@cyfrin/aderyn`: `aderyn . --src src` from `contracts/`. 88 detectors, 1 high and 6 low results, the same findings in both runs; nSLOC 261 in the re-run (239 before).
