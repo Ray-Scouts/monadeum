@@ -56,7 +56,7 @@ The user operation hash is a 32-byte digest, so the wallet shows the owner a has
 3. in one transaction, refuses at `API_POPULATION_CAP` Active agents (`409 population-cap`), then inserts the `api_agents` row and the `worker_agents` row: the worker's genome fields, the full normalized genome document, its hash, principal 0, and status `active`;
 4. starts the owner-signed deployment as below.
 
-Both rows are written or neither. Without a session key vault the request answers `503 wallets-unavailable` before anything is written. Principal is 0 until funding is recomputed from indexed owner transfers (`EVOLUTION.md` section 1.1); neither the funding flow nor that recomputation is built, and until then the worker does not tick or evaluate the agent. The agent view serves the committed genome (`genome`, with `hash` and `preset`; `informationBudget` in base units as a decimal string), `principal` in base units as a decimal string, and the worker's `status`.
+Both rows are written or neither. Without a session key vault the request answers `503 wallets-unavailable` before anything is written. Principal is 0 until the worker's principal job recomputes it from finalized, indexed owner transfers to the deployed account (`EVOLUTION.md` section 1.1); until then the worker does not tick or evaluate the agent. The relayed allocation transfer that funds an agent from the embedded wallet (`ARCHITECTURE.md` section 6.1) is not built. The agent view serves the committed genome (`genome`, with `hash` and `preset`; `informationBudget` in base units as a decimal string), `principal` in base units as a decimal string, and the worker's `status`.
 
 ### Stop this agent
 
