@@ -1,0 +1,19 @@
+# Build context for deploy/Dockerfile. Dependencies and build output are produced inside the image, never copied from
+# the host, and no local secret or environment file may enter an image.
+.git
+**/node_modules
+**/dist
+**/.next
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+!**/.env*.example
+deploy/secrets
+contracts/out
+contracts/cache
+contracts/broadcast
+contracts/lib
+spikes
+simulation/data/genome-edge/raw
+**/.DS_Store
+**/*.log

@@ -1,6 +1,10 @@
 node_modules/
+# Environment files hold secrets. Only *.example templates are committed.
 .env
-.env.local
+.env.*
+!*.example
+# Secret files for deploy/docker-compose.yml (vault passphrases).
+deploy/secrets/
 dist/
 build/
 .DS_Store

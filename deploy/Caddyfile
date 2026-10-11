@@ -1,0 +1,12 @@
+# TLS reverse proxy for the `proxy` profile of docker-compose.yml. Caddy obtains and renews certificates for both
+# domains itself; their DNS A (and AAAA) records must point at this VPS, and ports 80 and 443 must be open.
+# Caddy sets X-Forwarded-For, which is why the API runs with API_TRUST_PROXY=true behind it.
+
+{$WEB_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+{$API_DOMAIN} {
+	reverse_proxy api:3001
+}
