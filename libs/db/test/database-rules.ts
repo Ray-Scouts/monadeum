@@ -239,6 +239,9 @@ export function databaseRules(name: string, db: Database): void {
 
       const reader = asRole(db, "monadeum_reader");
       assert.equal((await new PgTradeStore(reader).get("a:1"))?.key, "a:1");
+      // The API reads trade counts and x402 spend through the reader role (apps/api `postgresStores`).
+      assert.equal(await new PgTradeStore(reader).filledTotal(), 1);
+      assert.equal((await new PgPaymentLog(reader).spendTotal()).purchases, 1);
       assert.equal((await new PgTickStore(reader).get("a:1"))?.status, "recorded");
       await assert.rejects(new PgTradeStore(reader).claim(trade("a:2")), DENIED);
       await assert.rejects(new PgTickStore(reader).write(tickRecord("a", 2)), DENIED);

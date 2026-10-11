@@ -1,12 +1,12 @@
 import type { TickRecord, TickStore } from "@monadeum/tick";
-import type { Position, PositionStore, TradeRecord, TradeStore } from "@monadeum/trading";
-import type { PaymentLog, PaymentLogEntry, SlotClaim, X402SlotStore } from "@monadeum/x402";
+import type { Position, PositionStore, TradeCounts, TradeRecord, TradeStore } from "@monadeum/trading";
+import type { PaymentLog, PaymentLogEntry, PaymentSpend, PaymentTotals, SlotClaim, X402SlotStore } from "@monadeum/x402";
 import type { Address, Hex } from "viem";
 import { decode, encode } from "./codec.js";
 import type { Database } from "./database.js";
 
 /** `TradeStore` on Postgres. `claim` is INSERT ... ON CONFLICT DO NOTHING on the tick key, the primary key. */
-export class PgTradeStore implements TradeStore {
+export class PgTradeStore implements TradeStore, TradeCounts {
   constructor(private readonly db: Database) {}
 
   async claim(record: TradeRecord): Promise<boolean> {
@@ -37,6 +37,24 @@ export class PgTradeStore implements TradeStore {
       [hash.toLowerCase()],
     );
     return rows[0] ? decode<TradeRecord>(rows[0].body) : undefined;
+  }
+
+  // The agent is the order's `agentId` in the record body; there is no agent column, so these scan the filled rows.
+  async filledByAgent(agentIds: readonly string[]): Promise<Map<string, number>> {
+    const counts = new Map(agentIds.map((id) => [id, 0]));
+    if (agentIds.length === 0) return counts;
+    const { rows } = await this.db.query<{ agent_id: string; n: string }>(
+      `SELECT body->'order'->>'agentId' AS agent_id, count(*)::text AS n FROM trade_records
+       WHERE status = 'filled' AND body->'order'->>'agentId' = ANY($1::text[]) GROUP BY 1`,
+      [[...agentIds]],
+    );
+    for (const r of rows) counts.set(r.agent_id, Number(r.n));
+    return counts;
+  }
+
+  async filledTotal(): Promise<number> {
+    const { rows } = await this.db.query<{ n: string }>("SELECT count(*)::text AS n FROM trade_records WHERE status = 'filled'");
+    return Number(rows[0]!.n);
   }
 }
 
@@ -74,7 +92,7 @@ export class PgX402SlotStore implements X402SlotStore {
 }
 
 /** `PaymentLog` on Postgres. `claim` is INSERT ... ON CONFLICT DO NOTHING on the purchase key, the primary key. */
-export class PgPaymentLog implements PaymentLog {
+export class PgPaymentLog implements PaymentLog, PaymentTotals {
   constructor(private readonly db: Database) {}
 
   async claim(entry: PaymentLogEntry): Promise<boolean> {
@@ -106,6 +124,45 @@ export class PgPaymentLog implements PaymentLog {
     );
     return rows[0] ? decode<PaymentLogEntry>(rows[0].body) : undefined;
   }
+
+  // `PaymentSpend`'s rule in SQL: entries with a nonzero price, the agent being the key up to its first colon
+  // (`paymentAgentId`). The price is a bigint, which the codec stores as {"$bigint": "<decimal>"}.
+  async spendByAgent(agentIds: readonly string[]): Promise<Map<string, PaymentSpend>> {
+    if (agentIds.length === 0) return new Map();
+    const groups = new Map<string, SpendRow[]>(agentIds.map((id) => [id, []]));
+    const { rows } = await this.db.query<SpendRow & { agent_id: string }>(
+      `SELECT split_part(key, ':', 1) AS agent_id, body->>'provider' AS provider, count(*)::text AS n, sum(${PRICE})::text AS spent
+       FROM x402_payments WHERE ${PRICE} > 0 AND split_part(key, ':', 1) = ANY($1::text[]) GROUP BY 1, 2`,
+      [[...agentIds]],
+    );
+    for (const r of rows) groups.get(r.agent_id)?.push(r);
+    return new Map([...groups].map(([id, g]) => [id, spendOf(g)]));
+  }
+
+  async spendTotal(): Promise<PaymentSpend> {
+    const { rows } = await this.db.query<SpendRow>(
+      `SELECT body->>'provider' AS provider, count(*)::text AS n, sum(${PRICE})::text AS spent FROM x402_payments WHERE ${PRICE} > 0 GROUP BY 1`,
+    );
+    return spendOf(rows);
+  }
+}
+
+const PRICE = "(body->'price'->>'$bigint')::numeric";
+
+interface SpendRow {
+  provider: string;
+  n: string;
+  spent: string;
+}
+
+/** One tally from per-provider rows, providers sorted as `tallyPayments` sorts them. */
+function spendOf(rows: readonly SpendRow[]): PaymentSpend {
+  const byProvider = rows.map((r) => ({ provider: r.provider, spent: BigInt(r.spent) })).sort((a, b) => (a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : 0));
+  return {
+    purchases: rows.reduce((n, r) => n + Number(r.n), 0),
+    spent: byProvider.reduce((s, p) => s + p.spent, 0n),
+    byProvider,
+  };
 }
 
 /**

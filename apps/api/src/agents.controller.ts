@@ -6,7 +6,7 @@ import { DEFAULT_GENOME_PRESET, GENOME_PRESETS, genomePreset } from "@monadeum/s
 import type { OwnerSigner, RevokeResult } from "@monadeum/wallets";
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Res, UseGuards } from "@nestjs/common";
 import type { Address } from "viem";
-import { agentView, callerUser, chainView, evaluationsOf, ownedAgent, spendsOf } from "./agents.js";
+import { activityOf, agentView, callerUser, chainView, evaluationsOf, ownedAgent, spendsOf, x402View } from "./agents.js";
 import { API_DEPENDENCIES, fail, type ApiDependencies } from "./dependencies.js";
 import { buildGenome, workerGenome } from "./genome.js";
 import { jsonSafe } from "./json.js";
@@ -47,12 +47,13 @@ export class AgentsController {
   }
 
   /**
-   * Population aggregates. Counts and sums only: no other user's agent is identified. `capital` is the sum, in base
-   * units, of the capital of the agents the latest evaluation recorded and did not retire.
+   * Population aggregates. Counts, sums, and platform totals only: no other user's agent is identified, and x402 spend
+   * is broken down by provider, never by agent. `capital` is the sum, in base units, of the capital of the agents the
+   * latest evaluation recorded and did not retire.
    */
   @Get("population")
   async population() {
-    const [agents, tracked, deployed, spends, installs, uninstalls, invalidations, cursor, evaluated] = await Promise.all([
+    const [agents, tracked, deployed, spends, installs, uninstalls, invalidations, cursor, trades, x402, evaluated] = await Promise.all([
       this.deps.agents.count(),
       this.deps.readModel.trackedAccounts(),
       this.deps.readModel.events({ kind: "account.deployed" }),
@@ -61,6 +62,8 @@ export class AgentsController {
       this.deps.readModel.events({ kind: "kernel.permission-uninstalled" }),
       this.deps.readModel.events({ kind: "kernel.nonce-invalidated" }),
       this.deps.readModel.cursor(),
+      this.deps.trades.filledTotal(),
+      this.deps.payments.spendTotal(),
       this.deps.evaluations.latest(),
     ]);
     const byAccount = new Map<string, ChainEvent[]>();
@@ -79,6 +82,8 @@ export class AgentsController {
       liveSessionKeys: liveSessions,
       totalSpent: spends.reduce((sum, e) => sum + BigInt(e.data.amount as string), 0n),
       cursor: cursor ? { blockNumber: cursor.number, blockHash: cursor.hash } : null,
+      trades,
+      x402: x402View(x402),
       lastEvaluation: evaluated[0] ? { sequence: evaluated[0].sequence, at: evaluated[0].evaluatedAt } : null,
       capital: evaluated[0] ? evaluated.filter((r) => !r.retired).reduce((sum, r) => sum + r.capital, 0n) : null,
     });
@@ -112,10 +117,11 @@ export class AgentsController {
     const user = await callerUser(this.deps, principal);
     if (!user.ownerWallet) return { agents: [] };
     const agents = await this.deps.agents.listByOwner(user.ownerWallet);
+    const activity = await activityOf(this.deps, agents.map((a) => a.agentId));
     const views = [];
     for (const agent of agents) {
       const wallet = await this.deps.walletStore.get(agent.agentId);
-      views.push(agentView(user, agent, wallet, await chainView(this.deps, wallet), await this.deps.workerAgents.get(agent.agentId), await evaluationsOf(this.deps, agent.agentId)));
+      views.push(agentView(user, agent, wallet, await chainView(this.deps, wallet), await this.deps.workerAgents.get(agent.agentId), activity.get(agent.agentId), await evaluationsOf(this.deps, agent.agentId)));
     }
     return { agents: views };
   }
@@ -124,8 +130,9 @@ export class AgentsController {
   async detail(@Param("id") id: string, @Caller() principal: Principal) {
     const { user, agent, wallet, worker } = await ownedAgent(this.deps, principal, id);
     const spends = wallet ? await spendsOf(this.deps, wallet.account) : [];
+    const activity = await activityOf(this.deps, [agent.agentId]);
     return {
-      agent: agentView(user, agent, wallet, await chainView(this.deps, wallet), worker, await evaluationsOf(this.deps, agent.agentId)),
+      agent: agentView(user, agent, wallet, await chainView(this.deps, wallet), worker, activity.get(agent.agentId), await evaluationsOf(this.deps, agent.agentId)),
       spends: jsonSafe(spends.map((e) => ({ amount: e.data.amount, windowTotal: e.data.windowTotal, transactionHash: e.transactionHash, blockNumber: e.blockNumber }))),
     };
   }

@@ -3,7 +3,9 @@ import type { AgentStore, EvaluationStore } from "@monadeum/agent-registry";
 import type { AuthService } from "@monadeum/auth";
 import type { ReallocationPolicyWriter } from "@monadeum/commitment";
 import type { ReadModelStore } from "@monadeum/indexer";
+import type { TradeCounts } from "@monadeum/trading";
 import type { AgentWalletStore, WalletsService } from "@monadeum/wallets";
+import type { PaymentTotals } from "@monadeum/x402";
 import { HttpException } from "@nestjs/common";
 import type { ApiSettings } from "./config.js";
 import type { SignatureRelay } from "./relay.js";
@@ -40,6 +42,10 @@ export interface ApiDependencies {
    * Served per agent only to the agent's owner, and to everyone else only as the population aggregate.
    */
   evaluations: EvaluationStore;
+  /** TradingModule's trade store, read for filled-trade counts, through `monadeum_reader` on Postgres. */
+  trades: TradeCounts;
+  /** X402Module's payment log, read for x402 spend, through `monadeum_reader` on Postgres. */
+  payments: PaymentTotals;
   relay: SignatureRelay;
   settings: ApiSettings;
   now: () => number;

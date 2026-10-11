@@ -62,7 +62,7 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
       assert.equal(agent.zeroDownsideFlag, true);
       assert.equal(agent.retirement, null);
       assert.deepEqual(agent.capitalHistory, [{ evaluation: 1, capital: "100000001" }, { evaluation: 2, capital: "100000002" }]);
-      assert.equal(agent.tradeCount, null, "not served by this change");
+      assert.equal(agent.tradeCount, 0, "filled trades from the trade store, not the evaluation record's trailing-window count");
 
       const list = await call(b.app, "GET", "/agents", { auth: aliceAuth });
       const retired = list.body.agents.find((a: { id: string }) => a.id === second);

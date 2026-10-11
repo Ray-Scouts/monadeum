@@ -131,7 +131,9 @@ export function AuthProvider({ privy, privyError = null, children }: { privy: Pr
         const session = client.as(privyCredential);
         try {
           const me = await session.me();
-          return done({ status: "signed-in", via: "privy", user: me.user, session });
+          // A user first seen before Privy created their embedded wallet has no owner wallet yet. Sending the current
+          // identity token again lets the API record the wallet; without this, `/auth/me` succeeding would skip it.
+          if (me.user.ownerWallet || !identityToken) return done({ status: "signed-in", via: "privy", user: me.user, session });
         } catch (error) {
           if (!isApiError(error) || error.status !== 401) return done({ status: "signed-out", error: describe(error) });
         }
