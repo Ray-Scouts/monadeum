@@ -30,11 +30,16 @@ export interface AgentRecord {
    */
   genomeDocument?: GenomeV1;
   /**
-   * Owner deposits minus owner withdrawals, base units. Reallocation never changes it. 0 at creation, until funding
-   * is recomputed from indexed transfers (EVOLUTION.md section 1.1); the worker neither ticks nor evaluates an agent
-   * whose principal is 0.
+   * Owner deposits minus owner withdrawals, base units, floored at 0. Reallocation never changes it. 0 at creation;
+   * the worker's principal job recomputes it from finalized indexed transfers (EVOLUTION.md section 1.1,
+   * `principalFrom` in `@monadeum/read-model`). The worker neither ticks nor evaluates an agent whose principal is 0.
    */
   principal: bigint;
+  /**
+   * The finalized block the principal job computed `principal` through when it last changed it, or absent while it
+   * is still the creation value. The job never writes a value computed through an earlier block than this one.
+   */
+  principalBlock?: bigint;
   status: "active" | "retired";
 }
 

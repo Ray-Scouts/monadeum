@@ -42,6 +42,12 @@ export interface SyncBatch {
   cursor: BlockHash;
   /** Block hashes below this number may be discarded. */
   pruneBelow: bigint;
+  /**
+   * True when every block up to `cursor` was read under the indexer's `finalized` rule. Absent means false. The store
+   * keeps the conjunction over every batch since it was empty, so one batch read under the confirmations rule makes
+   * `finalizedThrough` null until the read-model is rebuilt.
+   */
+  finalized?: boolean;
 }
 
 export interface EventFilter {
@@ -63,7 +69,15 @@ export interface ReadModelStore {
   rollback(ancestor: BlockHash): Promise<void>;
   /** Rows in chain order, (block, log index). */
   events(filter?: EventFilter): Promise<ChainEvent[]>;
+  /**
+   * The cursor's block number when every stored row was read from finalized blocks, otherwise null. Readers that must
+   * act only on finalized data, such as the worker's principal recomputation, read this bound and nothing above it.
+   */
+  finalizedThrough(): Promise<bigint | null>;
 }
+
+/** The read side a consumer of the read-model needs. Granted to the worker role for its principal job (libs/db 0009). */
+export type ReadModelReader = Pick<ReadModelStore, "events" | "finalizedThrough">;
 
 /** For tests and local development. Not durable: a restart starts from the configured start block. */
 export class InMemoryReadModelStore implements ReadModelStore {
@@ -71,6 +85,7 @@ export class InMemoryReadModelStore implements ReadModelStore {
   private hashes = new Map<bigint, BlockHash>();
   private tracked = new Map<Address, TrackedAccount>();
   private head: BlockHash | null = null;
+  private finalized = false;
 
   async cursor(): Promise<BlockHash | null> {
     return this.head;
@@ -91,6 +106,7 @@ export class InMemoryReadModelStore implements ReadModelStore {
     for (const block of batch.blocks) this.hashes.set(block.number, block);
     for (const number of [...this.hashes.keys()]) if (number < batch.pruneBelow && number !== batch.cursor.number) this.hashes.delete(number);
     for (const t of batch.discovered) if (!this.tracked.has(t.account)) this.tracked.set(t.account, t);
+    this.finalized = (this.head === null || this.finalized) && batch.finalized === true;
     this.head = batch.cursor;
   }
 
@@ -105,6 +121,10 @@ export class InMemoryReadModelStore implements ReadModelStore {
   async events(filter: EventFilter = {}): Promise<ChainEvent[]> {
     return this.rows.filter((r) => (filter.kind === undefined || r.kind === filter.kind) && (filter.account === undefined || r.account === filter.account.toLowerCase()));
   }
+
+  async finalizedThrough(): Promise<bigint | null> {
+    return this.head && this.finalized ? this.head.number : null;
+  }
 }
 
 export function chainOrder(a: ChainEvent, b: ChainEvent): number {
@@ -112,3 +132,5 @@ export function chainOrder(a: ChainEvent, b: ChainEvent): number {
   if (a.logIndex !== b.logIndex) return a.logIndex - b.logIndex;
   return a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0;
 }
+
+export * from "./funding.js";
