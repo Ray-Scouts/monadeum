@@ -97,13 +97,23 @@ describe("next parameter", () => {
 
   test("the sign-in link keeps the intended path, encoded", () => {
     expect(loginHref("/agents/ag1", "?tab=trades")).toBe(`${LOGIN_PATH}?next=${encodeURIComponent("/agents/ag1?tab=trades")}`);
-    expect(loginHref(HOME_PATH, "")).toBe(LOGIN_PATH);
+    expect(loginHref(HOME_PATH, "")).toBe(`${LOGIN_PATH}?next=${encodeURIComponent(HOME_PATH)}`);
+  });
+
+  test("the sign-in link drops next only for a refused target, never for the population", () => {
+    expect(loginHref("/login", "?next=/x")).toBe(LOGIN_PATH);
   });
 });
 
 describe("redirects", () => {
   test("an unauthenticated app route goes to the sign-in page with next", () => {
     expect(gateDecision(signedOut, "/capital-flow", "")).toEqual({ kind: "redirect", to: "/login?next=%2Fcapital-flow" });
+  });
+
+  test("the population, the default landing screen, keeps next too", () => {
+    // Regression: next was dropped for HOME_PATH because safeNext also returns HOME_PATH for a refused target.
+    expect(gateDecision(signedOut, "/population", "")).toEqual({ kind: "redirect", to: "/login?next=%2Fpopulation" });
+    expect(loginDecision(signedIn, "?next=%2Fpopulation")).toEqual({ kind: "redirect", to: HOME_PATH });
   });
 
   test("an app route waits while the session is unknown and renders only for a confirmed session", () => {
