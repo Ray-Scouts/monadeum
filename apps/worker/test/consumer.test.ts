@@ -189,7 +189,9 @@ test("with the reallocation switch off, the consumer still runs the evaluation, 
 });
 
 test("production refuses to run with reallocation on unless a new pre-registered study is acknowledged", async () => {
-  const prod = { MONADEUM_ENV: "production", DATABASE_URL: "postgres://unused", REDIS_URL: "redis://localhost:6379", WORKER_TICK_INTERVAL_MS: "60000" };
+  const prod = { MONADEUM_ENV: "production", DATABASE_URL: "postgres://unused", REDIS_URL: "redis://localhost:6379", WORKER_TICK_INTERVAL_MS: "60000",
+    WORKER_SETTLEMENT_ASSET_ADDRESS: "0x754704bc059f8c67012fed69bc8a327a5aafb603",
+  };
   await assert.rejects(
     runWorker({ env: { ...prod, MONADEUM_REALLOCATION_ENABLED: "true" }, runner: () => new RecordingRunner() }),
     (e: unknown) => e instanceof ReallocationSwitchError && /MONADEUM_REALLOCATION_PRODUCTION_ACK/.test(e.message),
