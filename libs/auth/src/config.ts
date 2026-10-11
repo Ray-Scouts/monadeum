@@ -1,7 +1,7 @@
 import { monadTestnet } from "viem/chains";
 
-// Environment variables, documented in libs/auth/README.md. None of them is a secret: the Privy verification key
-// is a public key, and this module never uses the Privy app secret.
+// Environment variables, documented in libs/auth/README.md. None of them is a secret: the optional Privy
+// verification key is a public key, and this module never uses the Privy app secret.
 
 export class AuthConfigError extends Error {}
 
@@ -19,7 +19,8 @@ export interface AuthSettings {
 }
 
 export interface AuthConfig {
-  privy: { appId: string; verificationKey: string };
+  /** `verificationKey` null: verify against Privy's published key set for `appId`. A PEM: use only that key. */
+  privy: { appId: string; verificationKey: string | null };
   settings: AuthSettings;
 }
 
@@ -46,9 +47,14 @@ function seconds(env: Env, name: string, fallback: number): number {
 export function loadAuthConfig(env: Env = process.env): AuthConfig {
   const chainId = Number(required(env, "AUTH_CHAIN_ID"));
   if (chainId !== monadTestnet.id) throw new AuthConfigError(`AUTH_CHAIN_ID ${chainId} is not supported; only Monad testnet (${monadTestnet.id})`);
-  // A PEM in a single-line environment variable usually arrives with literal "\n" sequences.
-  const verificationKey = required(env, "AUTH_PRIVY_VERIFICATION_KEY").replaceAll("\\n", "\n");
-  if (!verificationKey.startsWith("-----BEGIN PUBLIC KEY-----")) throw new AuthConfigError("AUTH_PRIVY_VERIFICATION_KEY must be a PEM public key");
+  const appId = required(env, "AUTH_PRIVY_APP_ID");
+  // The app ID becomes a path segment of the JWKS URL, so it is held to the characters Privy app IDs use.
+  if (!/^[A-Za-z0-9_-]+$/.test(appId)) throw new AuthConfigError("AUTH_PRIVY_APP_ID must contain only letters, digits, '_' and '-'");
+  // Optional static override; unset means Privy's published key set for the app. A PEM in a single-line environment
+  // variable usually arrives with literal "\n" sequences.
+  const rawKey = env.AUTH_PRIVY_VERIFICATION_KEY?.trim();
+  const verificationKey = rawKey ? rawKey.replaceAll("\\n", "\n") : null;
+  if (verificationKey !== null && !verificationKey.startsWith("-----BEGIN PUBLIC KEY-----")) throw new AuthConfigError("AUTH_PRIVY_VERIFICATION_KEY must be a PEM public key");
   const domain = required(env, "AUTH_SIWE_DOMAIN");
   if (/[/\s]/.test(domain)) throw new AuthConfigError("AUTH_SIWE_DOMAIN must be a host, with an optional port");
   const uri = required(env, "AUTH_SIWE_URI");
@@ -62,7 +68,7 @@ export function loadAuthConfig(env: Env = process.env): AuthConfig {
   if (parsed.protocol !== "https:" && !local) throw new AuthConfigError("AUTH_SIWE_URI must be https, or http on localhost");
   if (parsed.host !== domain) throw new AuthConfigError("AUTH_SIWE_URI must be served from AUTH_SIWE_DOMAIN");
   return {
-    privy: { appId: required(env, "AUTH_PRIVY_APP_ID"), verificationKey },
+    privy: { appId, verificationKey },
     settings: {
       chainId,
       domain,

@@ -12,6 +12,7 @@
     "@monadeum/wallets": "workspace:*",
     "@nestjs/common": "^11.1.6",
     "@privy-io/node": "0.35.0",
+    "jose": "6.2.12",
     "viem": "2.56.9"
   },
   "devDependencies": {
