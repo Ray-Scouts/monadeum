@@ -7,6 +7,7 @@ import type { JobQueue } from "./queue.js";
 /** One queue carries every job type; the job name is the type. */
 export const QUEUE_NAME = "monadeum-worker";
 const SYNC_SCHEDULE = "sync";
+const PRINCIPAL_SCHEDULE = "principal";
 
 const DAY = 24 * 60 * 60;
 /**
@@ -50,7 +51,7 @@ export class BullJobQueue implements JobQueue {
       const schedulers = await this.queue.getJobSchedulers(start, start + page - 1, true);
       for (const s of schedulers) {
         const agentId = (s.template?.data as { agentId?: unknown } | undefined)?.agentId;
-        if (s.key !== SYNC_SCHEDULE && typeof agentId === "string" && s.key === scheduleId(agentId)) out.push(agentId);
+        if (s.key !== SYNC_SCHEDULE && s.key !== PRINCIPAL_SCHEDULE && typeof agentId === "string" && s.key === scheduleId(agentId)) out.push(agentId);
       }
       if (schedulers.length < page) return out.sort();
     }
@@ -59,6 +60,11 @@ export class BullJobQueue implements JobQueue {
   /** The repeatable job that reconciles agent schedules with the registry. */
   async scheduleSync(everyMs: number): Promise<void> {
     await this.queue.upsertJobScheduler(SYNC_SCHEDULE, { every: everyMs }, { name: "sync", data: {}, opts: TRIGGER_KEEP });
+  }
+
+  /** The repeatable job that recomputes principals from finalized funding transfers. */
+  async schedulePrincipal(everyMs: number): Promise<void> {
+    await this.queue.upsertJobScheduler(PRINCIPAL_SCHEDULE, { every: everyMs }, { name: "principal", data: {}, opts: TRIGGER_KEEP });
   }
 }
 

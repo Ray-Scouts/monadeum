@@ -1,3 +1,4 @@
+import { isAddress, type Address } from "viem";
 import type { ConsumerSettings } from "./consumer/handlers.js";
 
 export class WorkerConfigError extends Error {
@@ -15,6 +16,11 @@ export interface WorkerConsumerConfig {
   concurrency: number;
   syncIntervalMs: number;
   settings: ConsumerSettings;
+  /**
+   * The principal job: the settlement asset whose transfers count, and how often it runs. Null when
+   * WORKER_SETTLEMENT_ASSET_ADDRESS is unset, in which case no principal changes and funded agents never start.
+   */
+  principal: { settlementAsset: Address; intervalMs: number } | null;
 }
 
 type Env = Record<string, string | undefined>;
@@ -45,12 +51,18 @@ export function loadConsumerConfig(env: Env): WorkerConsumerConfig | null {
   const evaluationDelayMs = integer(env, "WORKER_EVALUATION_DELAY_MS", Math.floor(tickIntervalMs / 2), 0);
   if (evaluationDelayMs >= tickIntervalMs) throw new WorkerConfigError("WORKER_EVALUATION_DELAY_MS must be shorter than WORKER_TICK_INTERVAL_MS");
   const prefix = env.WORKER_REDIS_PREFIX?.trim() || "monadeum";
+  const syncIntervalMs = integer(env, "WORKER_SYNC_INTERVAL_MS", tickIntervalMs, 1_000);
+  const asset = env.WORKER_SETTLEMENT_ASSET_ADDRESS?.trim();
+  if (asset && !isAddress(asset)) throw new WorkerConfigError("WORKER_SETTLEMENT_ASSET_ADDRESS is not an address");
   if (!/^[a-z0-9_-]+$/i.test(prefix)) throw new WorkerConfigError("WORKER_REDIS_PREFIX may contain only letters, digits, - and _");
   return {
     redisUrl,
     prefix,
     concurrency: integer(env, "WORKER_CONCURRENCY", 1, 1),
-    syncIntervalMs: integer(env, "WORKER_SYNC_INTERVAL_MS", tickIntervalMs, 1_000),
+    syncIntervalMs,
     settings: { tickIntervalMs, evaluationDelayMs, lockTtlMs, lockRetryMs: integer(env, "WORKER_LOCK_RETRY_MS", 1_000, 10) },
+    principal: asset
+      ? { settlementAsset: asset.toLowerCase() as Address, intervalMs: integer(env, "WORKER_PRINCIPAL_INTERVAL_MS", syncIntervalMs, 1_000) }
+      : null,
   };
 }

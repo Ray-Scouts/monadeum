@@ -8,9 +8,12 @@ import { tickKey } from "@monadeum/tick";
  *   and enqueues that tick's `tick` job, and, on the evaluation cadence, the `evaluate` job.
  * - `tick`: runs one tick for one agent.
  * - `evaluate`: runs one evaluation for the population.
+ * - `principal`: a repeatable job that recomputes every agent's principal from finalized funding transfers
+ *   (`PrincipalSync`, EVOLUTION.md section 1.1).
  */
 export type WorkerJob =
   | { kind: "sync" }
+  | { kind: "principal" }
   | { kind: "trigger"; agentId: string }
   | { kind: "tick"; agentId: string; tick: number }
   | { kind: "evaluate"; tick: number };
@@ -46,6 +49,7 @@ export function parseJob(name: string, data: unknown): WorkerJob {
   const agentId = typeof d.agentId === "string" && d.agentId.length > 0 ? d.agentId : null;
   const tick = typeof d.tick === "number" && Number.isSafeInteger(d.tick) && d.tick > 0 ? d.tick : null;
   if (name === "sync") return { kind: "sync" };
+  if (name === "principal") return { kind: "principal" };
   if (name === "trigger" && agentId) return { kind: "trigger", agentId };
   if (name === "tick" && agentId && tick !== null) return { kind: "tick", agentId, tick };
   if (name === "evaluate" && tick !== null) return { kind: "evaluate", tick };

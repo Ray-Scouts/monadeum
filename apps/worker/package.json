@@ -12,6 +12,7 @@
     "@monadeum/db": "workspace:*",
     "@monadeum/external": "workspace:*",
     "@monadeum/fitness": "workspace:*",
+    "@monadeum/read-model": "workspace:*",
     "@monadeum/reallocation": "workspace:*",
     "@monadeum/risk": "workspace:*",
     "@monadeum/strategy": "workspace:*",

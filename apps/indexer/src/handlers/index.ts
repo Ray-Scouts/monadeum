@@ -1,7 +1,8 @@
+import { ACCOUNT_DEPLOYED, SETTLEMENT_TRANSFER_IN, SETTLEMENT_TRANSFER_OUT } from "@monadeum/read-model";
 import type { Address, Hex } from "viem";
 import { HandlerRegistry } from "../registry.js";
 import type { EventHandler, HandledEvent } from "../types.js";
-import { entryPointEvents, kernelEvents, spendPolicyEvents } from "./abi.js";
+import { entryPointEvents, kernelEvents, spendPolicyEvents, transferEvents } from "./abi.js";
 
 const lower = (value: unknown): Address => String(value).toLowerCase() as Address;
 const int = (value: unknown): string => BigInt(value as bigint).toString();
@@ -43,10 +44,10 @@ export function accountDeployedHandler(entryPoint: Address): EventHandler {
     name: "entry-point-account-deployed",
     source: { kind: "contract-by-account", address: lower(entryPoint), accountTopic: 2 },
     events: entryPointEvents,
-    kinds: ["account.deployed"],
+    kinds: [ACCOUNT_DEPLOYED],
     handle({ args }) {
       return {
-        kind: "account.deployed",
+        kind: ACCOUNT_DEPLOYED,
         account: lower(args.sender),
         data: { userOpHash: String(args.userOpHash) as Hex, factory: lower(args.factory), paymaster: lower(args.paymaster) },
       };
@@ -83,6 +84,31 @@ export function kernelSessionHandler(): EventHandler {
 }
 
 /**
+ * The settlement asset's ERC-20 `Transfer` events that touch a followed account, as two handlers on the one configured
+ * contract: one filtered on `to` (topic 2), one on `from` (topic 1). A transfer between two followed accounts is stored
+ * once per side, under different kinds. Only `asset`, the configured USDC address, is queried: a token at any other
+ * address is never fetched, whatever its symbol (THREAT-MODEL.md invariant 16 and scenario H). The rows are facts
+ * only; what counts as principal is decided by `principalFrom` in `@monadeum/read-model`.
+ */
+export function settlementTransferHandlers(asset: Address): [EventHandler, EventHandler] {
+  const transfer = (direction: "in" | "out"): EventHandler => {
+    const kind = direction === "in" ? SETTLEMENT_TRANSFER_IN : SETTLEMENT_TRANSFER_OUT;
+    return {
+      name: `settlement-transfer-${direction}`,
+      source: { kind: "contract-by-account", address: lower(asset), accountTopic: direction === "in" ? 2 : 1 },
+      events: transferEvents,
+      kinds: [kind],
+      handle({ args }) {
+        const from = lower(args.from);
+        const to = lower(args.to);
+        return { kind, account: direction === "in" ? to : from, data: { from, to, value: int(args.value) } };
+      },
+    };
+  };
+  return [transfer("in"), transfer("out")];
+}
+
+/**
  * The handlers for every contract that exists today. Further handlers are added with `registry.register`.
  *
  * Admission: an account is followed only if the transaction in which it first touches the spend policy also deployed
@@ -91,12 +117,15 @@ export function kernelSessionHandler(): EventHandler {
  * deploy a Kernel account through the same public factory and configure the policy in one operation, so the API still
  * joins the followed set against its own agent records (THREAT-MODEL.md boundary 10).
  */
-export function defaultRegistry(input: { spendPolicy: Address; entryPoint: Address; kernelFactory: Address }): HandlerRegistry {
+export function defaultRegistry(input: { spendPolicy: Address; entryPoint: Address; kernelFactory: Address; settlementAsset: Address }): HandlerRegistry {
   const deployed = accountDeployedHandler(input.entryPoint);
   const factory = lower(input.kernelFactory);
+  const [transferIn, transferOut] = settlementTransferHandlers(input.settlementAsset);
   return new HandlerRegistry()
     .register(spendPolicyHandler(input.spendPolicy))
     .register(deployed)
     .register(kernelSessionHandler())
+    .register(transferIn)
+    .register(transferOut)
     .admitWith({ handler: deployed, admits: (row, log, seen) => row.data.factory === factory && log.transactionHash === seen.transactionHash });
 }

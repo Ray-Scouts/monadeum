@@ -68,7 +68,13 @@ export class PgReadModelStore implements ReadModelStore {
           [t.account, t.firstBlock.toString()],
         );
       }
-      await setCursor(tx, batch.cursor);
+      // The finalized flag is the conjunction over every batch since the read-model was empty (migration 0009).
+      await tx.query(
+        `INSERT INTO indexer_cursor (id, block_number, block_hash, finalized) VALUES (1, $1::numeric, $2, $3)
+         ON CONFLICT (id) DO UPDATE SET block_number = EXCLUDED.block_number, block_hash = EXCLUDED.block_hash,
+           finalized = indexer_cursor.finalized AND EXCLUDED.finalized`,
+        [batch.cursor.number.toString(), batch.cursor.hash, batch.finalized === true],
+      );
     });
   }
 
@@ -84,8 +90,18 @@ export class PgReadModelStore implements ReadModelStore {
          ON CONFLICT (block_number) DO UPDATE SET block_hash = EXCLUDED.block_hash`,
         [n, ancestor.hash],
       );
-      await setCursor(tx, ancestor);
+      // A rollback moves the cursor and leaves the finalized flag as it was.
+      await tx.query(
+        `INSERT INTO indexer_cursor (id, block_number, block_hash) VALUES (1, $1::numeric, $2)
+         ON CONFLICT (id) DO UPDATE SET block_number = EXCLUDED.block_number, block_hash = EXCLUDED.block_hash`,
+        [n, ancestor.hash],
+      );
     });
+  }
+
+  async finalizedThrough(): Promise<bigint | null> {
+    const { rows } = await this.db.query<{ n: string }>("SELECT block_number::text AS n FROM indexer_cursor WHERE id = 1 AND finalized");
+    return rows[0] ? BigInt(rows[0].n) : null;
   }
 
   async events(filter: EventFilter = {}): Promise<ChainEvent[]> {
@@ -107,12 +123,4 @@ export class PgReadModelStore implements ReadModelStore {
       data: JSON.parse(r.data) as ChainEvent["data"],
     }));
   }
-}
-
-async function setCursor(tx: { query(text: string, params?: readonly unknown[]): Promise<unknown> }, cursor: BlockHash): Promise<void> {
-  await tx.query(
-    `INSERT INTO indexer_cursor (id, block_number, block_hash) VALUES (1, $1::numeric, $2)
-     ON CONFLICT (id) DO UPDATE SET block_number = EXCLUDED.block_number, block_hash = EXCLUDED.block_hash`,
-    [cursor.number.toString(), cursor.hash],
-  );
 }

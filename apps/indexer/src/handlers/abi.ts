@@ -1,11 +1,11 @@
 import { KernelV3_1AccountAbi } from "@zerodev/sdk";
-import { parseAbi, type Abi, type AbiEvent } from "viem";
+import { erc20Abi, parseAbi, type Abi, type AbiEvent } from "viem";
 import { entryPoint07Abi } from "viem/account-abstraction";
 
 /**
  * Event ABIs, taken from the installed packages wherever one ships them, never restated from memory:
  * Kernel v3.1 from `@zerodev/sdk` 5.5.10 (`KernelV3_1AccountAbi`, the account version WalletsModule deploys) and
- * EntryPoint v0.7 from viem 2.56.9 (`entryPoint07Abi`). `AgentSpendPolicy` has no published ABI artifact, so its
+ * EntryPoint v0.7 from viem 2.56.9 (`entryPoint07Abi`), and the ERC-20 `Transfer` event from viem's `erc20Abi`. `AgentSpendPolicy` has no published ABI artifact, so its
  * events are parsed from the declarations in `contracts/src/IAgentSpendPolicy.sol`; a test reads that file and fails
  * if the two drift apart.
  */
@@ -26,3 +26,5 @@ export const spendPolicyEvents = parseAbi([
 export const kernelEvents = pickEvents(KernelV3_1AccountAbi as Abi, ["PermissionInstalled", "PermissionUninstalled", "NonceInvalidated"]);
 
 export const entryPointEvents = pickEvents(entryPoint07Abi as Abi, ["AccountDeployed"]);
+
+export const transferEvents = pickEvents(erc20Abi as Abi, ["Transfer"]);

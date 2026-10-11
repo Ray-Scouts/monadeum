@@ -170,6 +170,25 @@ export function conformance(name: string, harness: Harness): void {
       assert.deepEqual(await readModel.trackedAccounts(), []);
     });
 
+    it("reports a finalized bound only while every batch since it was empty was finalized, and keeps it across a rollback", async () => {
+      const { readModel } = await harness.fresh();
+      assert.equal(await readModel.finalizedThrough(), null);
+      await readModel.apply(batch(10, [chainEvent(8, 0, "spend.spent")], { finalized: true }));
+      assert.equal(await readModel.finalizedThrough(), 10n);
+      await readModel.apply(batch(20, [], { finalized: true }));
+      assert.equal(await readModel.finalizedThrough(), 20n);
+      await readModel.rollback(block(10));
+      assert.equal(await readModel.finalizedThrough(), 10n);
+      await readModel.apply(batch(30, []));
+      assert.equal(await readModel.finalizedThrough(), null, "a batch without the flag clears it");
+      await readModel.apply(batch(40, [], { finalized: true }));
+      assert.equal(await readModel.finalizedThrough(), null, "and it stays cleared");
+
+      const fresh = (await harness.fresh()).readModel;
+      await fresh.apply(batch(10, []));
+      assert.equal(await fresh.finalizedThrough(), null);
+    });
+
     it("prunes block hashes below the window but keeps the cursor block", async () => {
       const { readModel } = await harness.fresh();
       await readModel.apply(batch(10, [chainEvent(4, 0, "spend.spent")]));

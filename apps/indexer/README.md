@@ -18,7 +18,8 @@ The read path described in `ARCHITECTURE.md` sections 1, 9 and 10: a separately 
 ## Boundaries
 
 - **The indexer is the only writer of chain-sourced rows.** Nothing else inserts, updates, or deletes them. The schema in `libs/db` (migration 0004) grants writes to the `monadeum_indexer` role only.
-- **The worker never depends on the indexer.** Agent decisions read the chain or their own records, never this read-model, so an indexer outage or lag cannot change what an agent does. `apps/worker/test/boundary.test.ts` fails if `apps/worker` declares or imports this package.
+- **The worker never depends on the indexer.** Agent decisions read the chain or their own records, never this read-model, so an indexer outage or lag cannot change what an agent does. `apps/worker/test/boundary.test.ts` fails if `apps/worker` declares or imports this package. The one exception is the worker's principal job, which reads the funding rows through `@monadeum/read-model` (not this package), only up to the finalized bound, and writes each agent's principal to its record; an outage delays a principal change and changes nothing else (`ARCHITECTURE.md` sections 6.1 and 10).
+- **Funding rows.** Every `Transfer` of `INDEXER_SETTLEMENT_ASSET_ADDRESS` whose `to` is a followed account is stored as `settlement.transfer-in` and every one whose `from` is a followed account as `settlement.transfer-out`, with `from`, `to`, and `value`. Only that one contract is queried, so a token at any other address is never stored, whatever its symbol (`THREAT-MODEL.md` invariant 16). The rows are facts; `principalFrom` in `@monadeum/read-model` decides what counts as principal.
 - **Being followed is not ownership.** The factory rule keeps arbitrary addresses that call `setLimits` out of the followed set, but the Kernel factory is public: anyone can deploy a Kernel account through it and configure the policy in the same operation. The API must join the followed set against its own agent records (`THREAT-MODEL.md` boundary 10), never treat a row here as proof the platform created an account.
 - **Session key status here is derived.** `live` in the projection comes from indexed events. The authoritative revocation check reads the account directly (`WalletsService.revocationStatus`).
 
@@ -30,9 +31,10 @@ The read path described in `ARCHITECTURE.md` sections 1, 9 and 10: a separately 
 | `INDEXER_RPC_URL` | no | Monad RPC, http(s). Defaults to viem's Monad testnet RPC. |
 | `INDEXER_START_BLOCK` | yes | First block indexed when the store has no cursor: the spend policy's deployment block. |
 | `INDEXER_SPEND_POLICY_ADDRESS` | yes | Deployed `AgentSpendPolicy`. |
+| `INDEXER_SETTLEMENT_ASSET_ADDRESS` | yes | The USDC contract whose transfers to and from followed accounts are indexed. The worker's `WORKER_SETTLEMENT_ASSET_ADDRESS` must name the same contract. |
 | `INDEXER_ENTRY_POINT_ADDRESS` | no | Defaults to the EntryPoint v0.7 address from viem. |
 | `INDEXER_KERNEL_FACTORY_ADDRESS` | no | Factory an account must be deployed through to be followed. Defaults to Kernel v3.1's meta factory from `@zerodev/sdk` 5.5.10's address map (`0xd703...42d5`), the factory `createKernelAccount` names by default, as WalletsModule uses it. |
-| `INDEXER_SYNC_TO` | no | `finalized` (default) or `confirmations`. |
+| `INDEXER_SYNC_TO` | no | `finalized` (default) or `confirmations`. Only a read-model filled entirely under `finalized` reports a finalized bound, so under `confirmations` the worker never changes a principal. |
 | `INDEXER_BATCH_SIZE` | no | Blocks per batch, default 100. |
 | `INDEXER_CONFIRMATIONS` | no | With `INDEXER_SYNC_TO=confirmations`: blocks below the head before indexing, default 10. |
 | `INDEXER_REORG_WINDOW` | no | Blocks of stored hashes kept below the cursor, default 1000. Must exceed the confirmations. |
@@ -51,12 +53,12 @@ Checked against Monad's documentation on 2026-10-10 (`docs.monad.xyz`: Block Sta
 - FACT (observed): on 2026-10-10 `https://testnet-rpc.monad.xyz` answered `eth_getBlockByNumber("finalized")` with a block, and the opt-in testnet test synced one batch against it in `finalized` mode.
 - FACT (documented): `eth_getLogs` block-range limits depend on the provider: 100 blocks for QuickNode and the Monad Foundation endpoint, 1,000 for Alchemy (with 10,000 logs) and Ankr. The default batch of 100 fits all of them.
 - ASSUMPTION: every RPC provider the indexer is pointed at serves `finalized` with the documented meaning. The startup check does not test this; a provider that reports no finalized block makes every batch retry, and `INDEXER_SYNC_TO=confirmations` is the explicit alternative.
-- ASSUMPTION: Finalized, not Verified, is enough for this read-model, because nothing the indexer writes authorizes moving capital (`ARCHITECTURE.md` section 10). A consumer that settles value from this data would need Verified, which is not implemented.
+- ASSUMPTION: Finalized, not Verified, is enough for this read-model, because nothing the indexer writes authorizes moving capital (`ARCHITECTURE.md` section 10). An agent's principal is derived from these rows and decides whether the agent trades and how far reallocation may fill it (`slot_ceiling` times principal), but it moves no capital itself: an agent only ever trades the balance already in its own account, and reallocation never crosses owners. A consumer that settles value from this data would need Verified, which is not implemented.
 - ASSUMPTION: the `confirmations` default of 10 is a margin over the documented two-block finality, not a measured reorg depth.
 
 ## Running
 
-`bun run --filter @monadeum/indexer test` builds and runs the offline tests against an in-memory chain (`test/mock-chain.ts`), including a reorg that removes an indexed `Spent` event and a tracked account, and boot tests that run the service from its environment on PGlite, including a restart that resumes from the stored cursor. `test/testnet.test.ts` syncs one batch of Monad testnet and is skipped unless `INDEXER_TESTNET=1`; it needs `INDEXER_SPEND_POLICY_ADDRESS` (any address works for a sync check) and optionally `INDEXER_RPC_URL`.
+`bun run --filter @monadeum/indexer test` builds and runs the offline tests against an in-memory chain (`test/mock-chain.ts`), including a reorg that removes an indexed `Spent` event and a tracked account and one that removes a funding transfer, and boot tests that run the service from its environment on PGlite, including a restart that resumes from the stored cursor. `test/testnet.test.ts` syncs one batch of Monad testnet and is skipped unless `INDEXER_TESTNET=1`; it needs `INDEXER_SPEND_POLICY_ADDRESS` and `INDEXER_SETTLEMENT_ASSET_ADDRESS` (any address works for a sync check) and optionally `INDEXER_RPC_URL`.
 
 `node dist/src/main.js` runs the service after a build.
 

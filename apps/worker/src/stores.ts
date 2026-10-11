@@ -4,11 +4,13 @@ import {
   PgAgentWalletStore,
   PgDebitStore,
   PgPaymentLog,
+  PgReadModelStore,
   PgSponsorshipLedger,
   PgTickStore,
   PgTradeStore,
   type Database,
 } from "@monadeum/db";
+import { InMemoryReadModelStore, type ReadModelReader } from "@monadeum/read-model";
 import { MemoryTickStore, type TickStore } from "@monadeum/tick";
 import { MemoryTradeStore, type TradeStore } from "@monadeum/trading";
 import { MemoryAgentWalletStore, MemorySponsorshipLedger, type AgentWalletStore, type SponsorshipLedger } from "@monadeum/wallets";
@@ -35,6 +37,11 @@ export interface WorkerStores {
   payments: PaymentLog;
   wallets: AgentWalletStore;
   sponsorship: SponsorshipLedger;
+  /**
+   * The indexer's read-model, read only, for the principal job (migration 0009 grants `monadeum_worker` SELECT on it
+   * and nothing more). Ticks and evaluations never read it. In memory it stays empty, so no principal changes.
+   */
+  readModel: ReadModelReader;
 }
 
 /** For local development and tests only. */
@@ -48,6 +55,7 @@ export function memoryWorkerStores(): WorkerStores {
     payments: new MemoryPaymentLog(),
     wallets: new MemoryAgentWalletStore(),
     sponsorship: new MemorySponsorshipLedger(),
+    readModel: new InMemoryReadModelStore(),
   };
 }
 
@@ -61,5 +69,6 @@ export function postgresWorkerStores(db: Database): WorkerStores {
     payments: new PgPaymentLog(db),
     wallets: new PgAgentWalletStore(db),
     sponsorship: new PgSponsorshipLedger(db),
+    readModel: new PgReadModelStore(db),
   };
 }
