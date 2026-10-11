@@ -1,4 +1,5 @@
-import { median, nicheKey, sortinoParts, type CostedFill, type FitnessService } from "@monadeum/fitness";
+import type { EvaluationRecord, EvaluationStore } from "@monadeum/agent-registry";
+import { median, nicheKey, percentile, sortinoParts, type CostedFill, type FitnessService } from "@monadeum/fitness";
 import {
   EVALUATION_CADENCE,
   REALLOCATION_DISABLED,
@@ -32,6 +33,8 @@ export interface WorkerSettings {
 export interface WorkerDependencies {
   agents: AgentStore;
   ticks: TickStore;
+  /** Where each evaluation's per-agent outcome is recorded, after the evaluation's last step. */
+  evaluations: EvaluationStore;
   chain: ChainReader;
   market: MarketSource;
   strategy: StrategyService;
@@ -108,9 +111,15 @@ export class AgentWorker {
    * With the reallocation switch off (the default), the evaluation stops after retirement: no policy is read, nothing
    * is planned, and nothing reaches the settlement. Retirement still runs, because EVOLUTION.md section 6 makes it a
    * survival rule independent of reallocation, and it moves no capital (THREAT-MODEL.md invariant 15).
+   *
+   * Its last step, on both paths, records one `EvaluationRecord` per agent it evaluated: the capital it read, the
+   * fitness row, the niche percentile and starvation count the retirement check used, and the retirement. Recording
+   * comes after everything else, so it cannot change what the evaluation decides or moves; a failure to record
+   * propagates like any other store failure, and the job fails. A rerun keeps the first run's records (insert-if-absent).
    */
   async evaluate(tick: number): Promise<EvaluationResult> {
-    const { agents, fitness, reallocation, chain } = this.deps;
+    const { agents, fitness, reallocation, chain, evaluations, settings } = this.deps;
+    const evaluatedAt = settings.clock().getTime();
     const sequence = tick / EVALUATION_CADENCE;
     const decimals = await chain.decimals();
     const all = await agents.list();
@@ -134,15 +143,17 @@ export class AgentWorker {
     const balances = new Map(await Promise.all(all.map(async (a) => [a.agentId, await chain.balanceOf(a.account)] as const)));
     const niche = (a: AgentRecord) => nicheKey(a.genome.assetUniverse, a.genome.riskTolerance);
     const retired: EvaluationResult["retired"] = [];
+    const records: EvaluationRecord[] = [];
     for (const a of active) {
       const nicheFitness = active
         .filter((b) => niche(b) === niche(a))
         .map((b) => rowOf.get(b.agentId)!.adjustedFitness)
         .filter((f): f is number => f !== null);
       const s = states.get(a.agentId)!;
+      const row = rowOf.get(a.agentId)!;
       const decision = reallocation.retirement({
         capital: units(balances.get(a.agentId)!, decimals),
-        adjustedFitness: rowOf.get(a.agentId)!.adjustedFitness,
+        adjustedFitness: row.adjustedFitness,
         nicheFitness,
         lowFitnessWindows: s.lowFitnessWindows,
       });
@@ -151,9 +162,25 @@ export class AgentWorker {
         await agents.update({ ...a, status: "retired" });
         retired.push({ agentId: a.agentId, reason: decision.reason! });
       }
+      records.push({
+        sequence,
+        agentId: a.agentId,
+        evaluatedAt,
+        capital: balances.get(a.agentId)!,
+        adjustedFitness: row.adjustedFitness,
+        // The percentile the section 6 starvation check compares with the bottom decile (`evaluateRetirement`).
+        fitnessPercentile: row.adjustedFitness === null ? null : percentile(row.adjustedFitness, nicheFitness),
+        rawSortino: row.rawSortino,
+        zeroDownsideFlag: row.flaggedZeroDownside,
+        tradeCount: row.tradeCount,
+        lowWindows: decision.lowFitnessWindows,
+        retired: decision.retire,
+        retirementRule: decision.retire ? decision.reason : null,
+      });
     }
 
-    if (!(this.deps.settings.reallocation ?? REALLOCATION_DISABLED).enabled) {
+    if (!(settings.reallocation ?? REALLOCATION_DISABLED).enabled) {
+      await evaluations.record(records);
       return { sequence, fitness: rows, retired, reallocationEnabled: false, plan: NOTHING_PLANNED, settled: [] };
     }
 
@@ -168,6 +195,7 @@ export class AgentWorker {
     }));
     const plan = reallocation.plan(tick, population);
     const settled = await reallocation.settle(sequence, plan, decimals);
+    await evaluations.record(records);
     return { sequence, fitness: rows, retired, reallocationEnabled: true, plan, settled };
   }
 

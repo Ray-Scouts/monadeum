@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AgentStore } from "@monadeum/agent-registry";
+import type { AgentStore, EvaluationStore } from "@monadeum/agent-registry";
 import type { AuthService } from "@monadeum/auth";
 import type { ReallocationPolicyWriter } from "@monadeum/commitment";
 import type { ReadModelStore } from "@monadeum/indexer";
@@ -37,6 +37,11 @@ export interface ApiDependencies {
   policyWriter: ReallocationPolicyWriter | null;
   /** The indexer's read-model, read through `monadeum_reader` on Postgres. */
   readModel: ReadModelStore;
+  /**
+   * The worker's per-agent evaluation records, read through `monadeum_reader` on Postgres, which can only read them.
+   * Served per agent only to the agent's owner, and to everyone else only as the population aggregate.
+   */
+  evaluations: EvaluationStore;
   /** TradingModule's trade store, read for filled-trade counts, through `monadeum_reader` on Postgres. */
   trades: TradeCounts;
   /** X402Module's payment log, read for x402 spend, through `monadeum_reader` on Postgres. */

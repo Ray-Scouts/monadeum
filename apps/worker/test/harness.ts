@@ -48,6 +48,7 @@ import {
   type Hex,
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { MemoryEvaluationStore, type EvaluationStore } from "@monadeum/agent-registry";
 import { MemoryAgentStore, type AgentRecord, type AgentRegistry } from "../src/agents.js";
 import type { ChainReader, MarketReading, MarketSource } from "../src/ports.js";
 import { MemoryDebitStore, OwnerPolicies, RiskGatedSettlement, UnconfiguredReallocationExecutor, type ReallocationExecutor } from "../src/reallocation.js";
@@ -342,7 +343,7 @@ export async function world(options: WorldOptions = {}) {
     wallets: new MemoryAgentWalletStore() as AgentWalletStore, vault: new MemorySessionKeyVault(), sponsorship: new MemorySponsorshipLedger() as SponsorshipLedger,
     trades: new MemoryTradeStore() as TradeStore, positions: new MemoryPositionStore() as PositionStore, payments: new MemoryPaymentLog() as PaymentLog,
     ticks: new MemoryTickStore() as TickStore, agents: new MemoryAgentStore() as AgentRegistry,
-    debits: new MemoryDebitStore(),
+    debits: new MemoryDebitStore(), evaluations: new MemoryEvaluationStore() as EvaluationStore,
   };
   if (options.stores) Object.assign(stores, options.stores);
   const policies = new OwnerPolicies(DECIMALS);
@@ -437,7 +438,7 @@ export async function world(options: WorldOptions = {}) {
     const settlement = new RiskGatedSettlement(stores.agents, token, policies, risk, executor, stores.debits, { contract: REALLOC, settlementAsset: mk.quote });
     const reallocation = new ReallocationService(policies, settlement);
     const worker = new AgentWorker({
-      agents: stores.agents, ticks: stores.ticks, chain: token, market, strategy: new StrategyService(), risk, x402, trading,
+      agents: stores.agents, ticks: stores.ticks, evaluations: stores.evaluations, chain: token, market, strategy: new StrategyService(), risk, x402, trading,
       fitness: new FitnessService(), reallocation, settings,
     });
     return { worker, risk, trading };

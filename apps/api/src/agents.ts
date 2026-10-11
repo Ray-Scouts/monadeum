@@ -1,4 +1,4 @@
-import type { AgentRecord as WorkerAgentRecord } from "@monadeum/agent-registry";
+import type { EvaluationRecord, AgentRecord as WorkerAgentRecord } from "@monadeum/agent-registry";
 import type { Principal, UserRecord } from "@monadeum/auth";
 import { projectAccount, type AccountView, type ChainEvent } from "@monadeum/indexer";
 import type { AgentWalletRecord } from "@monadeum/wallets";
@@ -77,8 +77,10 @@ export interface GenomeView {
  * `apps/web/src/data/types.ts`, so the web's data source can switch to the API field by field; a field no service
  * produces yet is null rather than invented. `status`, `principal`, and `genome` come from the worker's record, which
  * agent creation writes: `principal` is in settlement-asset base units as a decimal string, not the web's dollars. The
- * second group is what the API can actually source today: its own registry, WalletsModule's record, and the indexer's
- * read-model of the account.
+ * evaluation fields (`capital`, `fitnessPercentile`, `lowWindows`, `zeroDownsideFlag`, `retirement`, `capitalHistory`)
+ * come from the worker's evaluation records: the latest one, and up to `CAPITAL_HISTORY_LIMIT` for the history, base
+ * units as decimal strings; all null before the worker has evaluated the agent. The second group is what the API can
+ * actually source today: its own registry, WalletsModule's record, and the indexer's read-model of the account.
  */
 export interface AgentView {
   id: string;
@@ -87,17 +89,18 @@ export interface AgentView {
   address: string | null;
   status: "active" | "retired" | null;
   principal: string | null;
-  capital: null;
+  capital: string | null;
   /** Filled trades in the worker's trade store (`TradeCounts`). Null only when no trade store answered. */
   tradeCount: number | null;
   /** x402 spend in the worker's payment log (`PaymentSpend`). Null only when no payment log answered. */
   x402: X402View | null;
-  fitnessPercentile: null;
-  lowWindows: null;
-  zeroDownsideFlag: null;
-  retirement: null;
+  /** Within the niche, 0 to 100, as the web's `Agent` type has it; the evaluation record stores it in [0, 1]. */
+  fitnessPercentile: number | null;
+  lowWindows: number | null;
+  zeroDownsideFlag: boolean | null;
+  retirement: { rule: string; evaluation: number } | null;
   genome: GenomeView | null;
-  capitalHistory: null;
+  capitalHistory: { evaluation: number; capital: string }[] | null;
 
   owner: Address;
   index: string;
@@ -130,7 +133,23 @@ function genomeView(agent: AgentRecord, worker: WorkerAgentRecord | undefined): 
   };
 }
 
-export function agentView(user: UserRecord, agent: AgentRecord, wallet: AgentWalletRecord | undefined, chain: AccountView | null, worker: WorkerAgentRecord | undefined, activity: AgentActivity | null = null): AgentView {
+/** How many of an agent's most recent evaluations `capitalHistory` carries. */
+export const CAPITAL_HISTORY_LIMIT = 50;
+
+/**
+ * `history` is the agent's most recent evaluation records, oldest first. A retired agent is never evaluated again, so
+ * the record that retired it is its latest.
+ */
+export function agentView(
+  user: UserRecord,
+  agent: AgentRecord,
+  wallet: AgentWalletRecord | undefined,
+  chain: AccountView | null,
+  worker: WorkerAgentRecord | undefined,
+  activity: AgentActivity | null = null,
+  history: readonly EvaluationRecord[] = [],
+): AgentView {
+  const latest = history.at(-1);
   return {
     id: agent.agentId,
     name: agent.name,
@@ -138,15 +157,16 @@ export function agentView(user: UserRecord, agent: AgentRecord, wallet: AgentWal
     address: wallet?.account ?? null,
     status: worker?.status ?? null,
     principal: worker ? worker.principal.toString() : null,
-    capital: null,
+    capital: latest ? latest.capital.toString() : null,
     tradeCount: activity?.tradeCount ?? null,
     x402: activity ? x402View(activity.x402) : null,
-    fitnessPercentile: null,
-    lowWindows: null,
-    zeroDownsideFlag: null,
-    retirement: null,
+    // Stored in [0, 1], as the retirement check computes it; served on the web's 0 to 100 scale.
+    fitnessPercentile: latest && latest.fitnessPercentile !== null ? latest.fitnessPercentile * 100 : null,
+    lowWindows: latest?.lowWindows ?? null,
+    zeroDownsideFlag: latest?.zeroDownsideFlag ?? null,
+    retirement: latest?.retired && latest.retirementRule ? { rule: latest.retirementRule, evaluation: latest.sequence } : null,
     genome: genomeView(agent, worker),
-    capitalHistory: null,
+    capitalHistory: latest ? history.map((r) => ({ evaluation: r.sequence, capital: r.capital.toString() })) : null,
     owner: getAddress(agent.owner),
     index: agent.index.toString(),
     registryId: agent.registryId,
@@ -158,6 +178,11 @@ export function agentView(user: UserRecord, agent: AgentRecord, wallet: AgentWal
       : null,
     chain: chain ? jsonSafe(chain) : null,
   };
+}
+
+/** The agent's most recent evaluation records, oldest first. Call only for an agent the caller owns. */
+export function evaluationsOf(deps: ApiDependencies, agentId: string): Promise<EvaluationRecord[]> {
+  return deps.evaluations.history(agentId, CAPITAL_HISTORY_LIMIT);
 }
 
 /** The read-model's view of the agent's account, or null when it has no account address yet. */

@@ -11,6 +11,7 @@ import {
   PgAgentStore,
   PgAgentWalletStore,
   PgDebitStore,
+  PgEvaluationStore,
   PgPaymentLog,
   PgX402SlotStore,
   PgPolicyVersions,
@@ -24,7 +25,7 @@ import {
   type Database,
   type Transaction,
 } from "../src/index.js";
-import { agentRecord, batch, chainEvent, debitRecord, operation, payment, slotClaim, tickRecord, trade, wallet } from "./conformance.js";
+import { agentRecord, batch, chainEvent, debitRecord, evaluationRecord, operation, payment, slotClaim, tickRecord, trade, wallet } from "./conformance.js";
 import { postgresHarness } from "./harness.js";
 
 const DENIED = (error: unknown) => (error as { code?: string }).code === "42501";
@@ -111,6 +112,17 @@ export function databaseRules(name: string, db: Database): void {
       await assert.rejects(raw("INSERT INTO wallet_accounts (agent_id, account_key, body) VALUES ('c', '0x00000000000000000000000000000000000000AB', '{}')"), /check constraint/);
       await raw("INSERT INTO wallet_tick_operations (agent_id, tick_key, body) VALUES ('a', 'a:1', '{}')");
       await assert.rejects(raw("INSERT INTO wallet_tick_operations (agent_id, tick_key, body) VALUES ('a', 'a:1', '{}')"), isUniqueViolation);
+    });
+
+    it("an evaluation record names a rule exactly when it retired, a percentile only with a fitness, and in [0, 1]", async () => {
+      await reset();
+      const store = new PgEvaluationStore(db);
+      await assert.rejects(store.record([evaluationRecord("a", 1, { retired: true, retirementRule: null })]), /check constraint/);
+      await assert.rejects(store.record([evaluationRecord("a", 1, { retired: false, retirementRule: "starvation" })]), /check constraint/);
+      await assert.rejects(store.record([evaluationRecord("a", 1, { adjustedFitness: null })]), /check constraint/);
+      await assert.rejects(store.record([evaluationRecord("a", 1, { fitnessPercentile: 1.5 })]), /check constraint/);
+      await assert.rejects(store.record([evaluationRecord("a", 1), evaluationRecord("b", 1, { capital: -1n })]), /check constraint/);
+      assert.deepEqual(await store.latest(), [], "a failing record stores none of its evaluation");
     });
 
     it("an indexer batch that fails part way stores nothing, not even its cursor", async () => {
@@ -273,6 +285,24 @@ export function databaseRules(name: string, db: Database): void {
       await assert.rejects(new PgPositionStore(asRole(db, "monadeum_indexer")).get("p"), DENIED);
       await assert.rejects(as(db, "monadeum_worker", "DELETE FROM trade_positions"), DENIED);
       await assert.rejects(as(db, "monadeum_worker", "TRUNCATE trade_positions"), DENIED);
+    });
+
+    it("the worker appends evaluation records, the reader only reads them, and nobody changes or deletes one", async () => {
+      await reset();
+      const worker = new PgEvaluationStore(asRole(db, "monadeum_worker"));
+      await worker.record([evaluationRecord("e", 1)]);
+      await worker.record([evaluationRecord("e", 1, { lowWindows: 2 })]);
+      assert.deepEqual(await worker.history("e", 10), [evaluationRecord("e", 1)]);
+      const reader = new PgEvaluationStore(asRole(db, "monadeum_reader"));
+      assert.deepEqual(await reader.latest(), [evaluationRecord("e", 1)]);
+      await assert.rejects(reader.record([evaluationRecord("e", 2)]), DENIED);
+      await assert.rejects(new PgEvaluationStore(asRole(db, "monadeum_indexer")).latest(), DENIED);
+      await assert.rejects(new PgEvaluationStore(asRole(db, "monadeum_api")).latest(), DENIED);
+      for (const role of ["monadeum_worker", "monadeum_reader", "monadeum_api"]) {
+        await assert.rejects(as(db, role, "UPDATE evaluation_records SET low_windows = 0"), DENIED, role);
+        await assert.rejects(as(db, role, "DELETE FROM evaluation_records"), DENIED, role);
+        await assert.rejects(as(db, role, "TRUNCATE evaluation_records"), DENIED, role);
+      }
     });
 
     it("no role updates or deletes an x402 nonce slot, so a slot is never reused", async () => {
