@@ -59,6 +59,7 @@ export class AuthController {
   async privySignIn(@Body() body: unknown) {
     const { accessToken, identityToken } = strings(body, "accessToken", "identityToken");
     const result = await this.deps.auth.signInWithPrivy({ accessToken, identityToken });
+    console.log(`privy sign-in: ${result.ok ? `ok, created ${result.created}, owner wallet ${result.user.ownerWallet ? "set" : "missing"}` : `refused, ${result.reason}`}`);
     if (!result.ok) fail(authStatus(result.reason), result.reason);
     return { user: userView(result.user), created: result.created };
   }

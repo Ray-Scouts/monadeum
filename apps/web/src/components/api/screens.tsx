@@ -14,7 +14,7 @@ import { ErrorNote, errorText } from "./ErrorNote";
 import { OperationSigner } from "./OperationSigner";
 import { StopAgent } from "./StopAgent";
 import { useApiData } from "./useApiData";
-import { AgentFacts, CapitalFlowView, ExplainerCard, NotServed, PopulationView, SpendsTable } from "./views";
+import { AgentFacts, AgentNotServed, ApiX402Split, CapitalFlowView, CapitalHistoryCard, ExplainerCard, PopulationView, SpendsTable } from "./views";
 
 const settlement = WEB_CONFIG.settlement;
 
@@ -155,13 +155,19 @@ export function ApiAgent({ id }: { id: string }) {
       <ErrorNote error={error} />
       <AgentFacts agent={agent} settlement={settlement} actions={<StopAgent agent={agent} onChanged={reload} />} />
       {agent.deployment !== "deployed" && <Redeploy agentId={agent.id} name={agent.name} onDone={reload} />}
-      <StrategyCard agent={agent} />
-      <ExplainerCard explainer={explainAgent(agent, owner)} owner={owner} />
+      <div className="grid gap-4 min-[900px]:grid-cols-2">
+        <CapitalHistoryCard agent={agent} settlement={settlement} />
+        <StrategyCard agent={agent} />
+      </div>
+      <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <ExplainerCard explainer={explainAgent(agent, owner)} owner={owner} />
+        <ApiX402Split x402={agent.x402} title="x402 spend" scope="this agent, by provider" settlement={settlement} />
+      </div>
       <Card>
         <CardHead title="Spends" />
         <SpendsTable spends={spends} settlement={settlement} />
       </Card>
-      <NotServed fields={["capital", "net earnings after costs", "fitness", "trades", "x402 purchases", "evaluation outcome"]} />
+      <AgentNotServed agent={agent} />
     </>
   );
 }
