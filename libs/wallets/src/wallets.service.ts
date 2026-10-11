@@ -18,8 +18,8 @@ import type { AgentWalletRecord, AgentWalletStore, SessionKeyVault, TickAttempt,
 
 /**
  * The x402 key and its validator (ARCHITECTURE.md section 16.3, x402 signature path). `maxValue` and
- * `paymentsPerEpoch` are deployment configuration; see `X402_PROPOSED_LIMITS` for the values proposed pending the
- * owner's decision.
+ * `paymentsPerEpoch` are deployment configuration; see `X402_LIMITS` for the decided values the configuration
+ * defaults to.
  */
 export interface X402WalletSettings {
   validator: Address;

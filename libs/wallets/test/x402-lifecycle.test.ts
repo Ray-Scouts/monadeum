@@ -7,7 +7,7 @@ import {
   MemorySessionKeyVault,
   MemorySponsorshipLedger,
   WalletsService,
-  X402_PROPOSED_LIMITS,
+  X402_LIMITS,
   buildScope,
   decodeX402ModuleCall,
   loadWalletsConfig,
@@ -36,7 +36,7 @@ function setup(options: FakeOptions = {}, withValidatorCode = true) {
   const store = new MemoryAgentWalletStore();
   const vault = new MemorySessionKeyVault();
   const x402Vault = new MemorySessionKeyVault();
-  const x402: X402WalletSettings = { validator: VALIDATOR, settlementAsset: USDC, ...X402_PROPOSED_LIMITS, payees: [NANSEN, DEFILLAMA], vault: x402Vault };
+  const x402: X402WalletSettings = { validator: VALIDATOR, settlementAsset: USDC, ...X402_LIMITS, payees: [NANSEN, DEFILLAMA], vault: x402Vault };
   const service = new WalletsService(chain, store, vault, new MemorySponsorshipLedger(), { scope, budget: { operations: 10, gasWei: 100_000n }, paymaster: true, x402 });
   return { chain, store, vault, x402Vault, service, owner: owner(), x402 };
 }
@@ -89,7 +89,7 @@ test("the two keys must live in separate vaults", () => {
   const vault = new MemorySessionKeyVault();
   assert.throws(() => new WalletsService(new FakeChain(), new MemoryAgentWalletStore(), vault, new MemorySponsorshipLedger(), {
     scope, budget: { operations: 1, gasWei: 1n }, paymaster: true,
-    x402: { validator: VALIDATOR, settlementAsset: USDC, ...X402_PROPOSED_LIMITS, payees: [NANSEN], vault },
+    x402: { validator: VALIDATOR, settlementAsset: USDC, ...X402_LIMITS, payees: [NANSEN], vault },
   }), /separate/);
 });
 
@@ -170,7 +170,7 @@ test("a deployment whose response was lost is confirmed from chain state on retr
   assert.equal(s.chain.submitted.length, 1);
 });
 
-test("configuration: x402 is off unless a validator is set, and defaults to the proposed limits", () => {
+test("configuration: x402 is off unless a validator is set, and defaults to the decided limits", () => {
   const env = {
     WALLETS_CHAIN_ID: "10143",
     WALLETS_BUNDLER_URL: "https://bundler.example",

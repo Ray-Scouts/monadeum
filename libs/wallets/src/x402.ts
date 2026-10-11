@@ -40,12 +40,12 @@ const KERNEL_DOMAIN = { name: "Kernel", version: "0.3.1" } as const;
 export class X402Error extends Error {}
 
 /**
- * PROPOSED defaults, pending the owner's decision (ARCHITECTURE.md section 16.3): not decided values. 0.05 USDC per
+ * The decided limits, accepted by the owner (ARCHITECTURE.md section 16.3), and the configuration defaults. 0.05 USDC per
  * payment (USDC has 6 decimals) and 4 payments per hour give a 24-hour worst case of 26 * 4 * 0.05 = 5.20 USDC per
  * agent through the x402 path, on top of the spend policy's dailyCap. A 300 second validity window is ample for a
  * facilitator round trip and well under the one-hour ceiling. Deployments override them through configuration.
  */
-export const X402_PROPOSED_LIMITS = { maxValue: 50_000n, paymentsPerEpoch: 4, maxValidity: 300 } as const;
+export const X402_LIMITS = { maxValue: 50_000n, paymentsPerEpoch: 4, maxValidity: 300 } as const;
 
 export interface X402ValidatorConfig {
   /** The x402 key's address: a key separate from the trading session key. */

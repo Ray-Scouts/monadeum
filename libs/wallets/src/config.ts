@@ -3,7 +3,7 @@ import { monadTestnet } from "viem/chains";
 import type { SponsorshipBudget } from "./budget.js";
 import { buildScope } from "./scope.js";
 import type { X402WalletSettings } from "./wallets.service.js";
-import { X402_PROPOSED_LIMITS } from "./x402.js";
+import { X402_LIMITS } from "./x402.js";
 import type { ZeroDevChainConfig } from "./zerodev.js";
 
 // Environment variables, documented in libs/wallets/README.md. None of them is a private key: the module generates
@@ -29,16 +29,16 @@ function positiveInteger(env: Env, name: string, fallback: bigint): bigint {
 }
 
 /**
- * The x402 validator settings. `maxValue`, `paymentsPerEpoch`, and `maxValidity` default to X402_PROPOSED_LIMITS,
- * which are proposals pending the owner, not decided values. Every value is checked again when install data is built.
+ * The x402 validator settings. `maxValue`, `paymentsPerEpoch`, and `maxValidity` default to X402_LIMITS,
+ * the values the owner decided. Every value is checked again when install data is built.
  */
 function x402Config(env: Env, settlementAsset: Address): X402WalletConfig | null {
   if (!env.WALLETS_X402_VALIDATOR_ADDRESS?.trim()) return null;
   const payees = required(env, "WALLETS_X402_PAYEES").split(",").map((s) => s.trim()).filter(Boolean);
   for (const p of payees) if (!isAddress(p)) throw new WalletsConfigError(`WALLETS_X402_PAYEES: ${p} is not an address`);
-  const maxValue = positiveInteger(env, "WALLETS_X402_MAX_VALUE", X402_PROPOSED_LIMITS.maxValue);
-  const paymentsPerEpoch = positiveInteger(env, "WALLETS_X402_PAYMENTS_PER_EPOCH", BigInt(X402_PROPOSED_LIMITS.paymentsPerEpoch));
-  const maxValidity = positiveInteger(env, "WALLETS_X402_MAX_VALIDITY", BigInt(X402_PROPOSED_LIMITS.maxValidity));
+  const maxValue = positiveInteger(env, "WALLETS_X402_MAX_VALUE", X402_LIMITS.maxValue);
+  const paymentsPerEpoch = positiveInteger(env, "WALLETS_X402_PAYMENTS_PER_EPOCH", BigInt(X402_LIMITS.paymentsPerEpoch));
+  const maxValidity = positiveInteger(env, "WALLETS_X402_MAX_VALIDITY", BigInt(X402_LIMITS.maxValidity));
   if (maxValue >= 2n ** 128n) throw new WalletsConfigError("WALLETS_X402_MAX_VALUE must fit uint128");
   if (paymentsPerEpoch >= 2n ** 32n) throw new WalletsConfigError("WALLETS_X402_PAYMENTS_PER_EPOCH must fit uint32");
   if (maxValidity > 3600n) throw new WalletsConfigError("WALLETS_X402_MAX_VALIDITY must be at most 3600 seconds");
