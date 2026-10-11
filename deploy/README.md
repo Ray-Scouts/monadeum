@@ -9,7 +9,7 @@ How to run Monadeum on Monad testnet (chain 10143) from a single VPS the owner c
 | `postgres` | `postgres:17.6-bookworm` | internal | no | All durable state. |
 | `redis` | `redis:8.2.2-bookworm` | internal | no | The worker's BullMQ queue and agent locks. |
 | `migrate` | `server` | internal | no | One-shot: applies migrations as `monadeum_owner`, creates the three login roles, exits. |
-| `api` | `server` | internal and outbound | `BIND_ADDRESS:3001` | HTTP API, WalletsModule on the session key vault. |
+| `api` | `server` | internal and outbound | `BIND_ADDRESS:3001` | HTTP API, WalletsModule on the session key vault, and the funding relayer on its own vault. |
 | `worker` | `server` | internal and outbound | no | BullMQ consumer, WalletsModule on the same vault. |
 | `indexer` | `server` | internal and outbound | no | Chain sync into the read-model. |
 | `web` | `web` | outbound | `BIND_ADDRESS:3000` | Next.js app built in `api` mode. |
@@ -27,6 +27,7 @@ The `backend` network is `internal`: Postgres and Redis have no route out and no
 ### What this deployment does, and does not do, today
 
 - Owners can sign in, create agents, sign the account deployment, and stop an agent. Session keys and x402 keys live in the local encrypted vault on the `vault` volume, shared by `api` and `worker`.
+- Owners can fund an agent from the agent page ("Fund this agent"): they sign an EIP-3009 authorization moving testnet USDC from their owner wallet to the agent's deployed account, and the API's relayer submits it and pays the gas in testnet MON. The relayer key lives in its own encrypted vault on the `relayer_vault` volume, mounted into `api` only. Until the relayer holds MON, every submission is refused with `503 relayer-balance-low` and nothing is sent (step 5).
 - The indexer indexes the spend policy, account deployments, session key events, and settlement-asset transfers of followed accounts, from `INDEXER_START_BLOCK`.
 - The worker runs its `sync`, `principal`, and `x402-reconcile` jobs. It runs no trading tick: TradingService, X402Client, and a market source are not wired into the worker process yet (`ARCHITECTURE.md` section 11, "Not yet wired"), so every tick and evaluation job is skipped and nothing is sent. This is the existing fail-closed state, not something this deployment changes.
 - The x402 payer is off (`WORKER_X402_PAYER_ENABLED=false`) and reallocation is off (`MONADEUM_REALLOCATION_ENABLED=false`), both decided.
@@ -164,17 +165,20 @@ Fill in every `CHANGE_ME`: the two domains, the passwords above, `PRIVY_APP_ID` 
 - **Privy keys.** Leave `PRIVY_VERIFICATION_KEY` empty. The API then verifies Privy tokens against the keys Privy publishes for the app (`https://auth.privy.io/api/v1/apps/<PRIVY_APP_ID>/jwks.json`), selected by each token's `kid`, so a key rotation at Privy needs no change on the VPS. That endpoint listed two ES256 keys for this project's app on 2026-10-11, so one static key may not verify both access and identity tokens. The API needs outbound HTTPS to `auth.privy.io` (it is on the `egress` network); if the key set cannot be fetched and no cached key is current, Privy sign-in fails closed. Setting `PRIVY_VERIFICATION_KEY` pins one PEM key and disables the fetch (`libs/auth/README.md`).
 - **ZeroDev bundler.** The bundler for chain 10143 lists EntryPoint 0.7 in `eth_supportedEntryPoints` (FACT, checked 2026-10-11), the EntryPoint Kernel v3.1 uses here. The bundler URL carries the project ID, so in the ZeroDev dashboard's Access Control, restrict the project to the VPS's public IP, so a leaked URL cannot be used from elsewhere. Neither the URL nor the project ID is committed anywhere.
 
-Create the two vault passphrases as files, owned by the container user (uid 1000), readable by nobody else, and different from each other:
+- **Funding.** `API_FUNDING_MAX_PER_TRANSFER`, `API_FUNDING_DAILY_TRANSFERS_PER_USER`, and `API_FUNDING_VALIDITY_SECONDS` hold proposed starting values (100 USDC, 3 relayed transfers per user per 24 hours, 600 seconds). The relayer uses `SETTLEMENT_ASSET` and `MONAD_RPC_URL`; on its first use it reads the token's name, version, and decimals and refuses to prepare anything unless the token's `DOMAIN_SEPARATOR` equals the one they define for chain 10143.
+
+Create the three vault passphrases as files, owned by the container user (uid 1000), readable by nobody else, and different from each other:
 
 ```bash
 mkdir -p deploy/secrets
 openssl rand -base64 48 > deploy/secrets/session_vault_passphrase
 openssl rand -base64 48 > deploy/secrets/x402_vault_passphrase
-sudo chown 1000:1000 deploy/secrets/session_vault_passphrase deploy/secrets/x402_vault_passphrase
-sudo chmod 400 deploy/secrets/session_vault_passphrase deploy/secrets/x402_vault_passphrase
+openssl rand -base64 48 > deploy/secrets/funding_relayer_vault_passphrase
+sudo chown 1000:1000 deploy/secrets/session_vault_passphrase deploy/secrets/x402_vault_passphrase deploy/secrets/funding_relayer_vault_passphrase
+sudo chmod 400 deploy/secrets/session_vault_passphrase deploy/secrets/x402_vault_passphrase deploy/secrets/funding_relayer_vault_passphrase
 ```
 
-Copy both passphrases into the owner's password manager now. Without them the vault cannot be opened, and a backup of the vault is useless.
+Copy all three passphrases into the owner's password manager now. Without them a vault cannot be opened, and a backup of it is useless. On an existing deployment, only the third file is new; create it before `dc up -d`, or Compose refuses to start the API.
 
 Check the configuration (Compose refuses a missing required variable by name):
 
@@ -207,7 +211,7 @@ With a proxy of your own instead, send `WEB_DOMAIN` to `127.0.0.1:3000` and `API
 ```bash
 dc ps                                   # postgres, redis, api, web healthy; worker, indexer running; migrate exited 0
 dc logs migrate | tail                   # "login role monadeum_api_login: member of monadeum_api, monadeum_reader" ...
-curl -s http://127.0.0.1:3001/health     # {"status":"ok","wallets":"configured"}
+curl -s http://127.0.0.1:3001/health     # {"status":"ok","wallets":"configured","funding":"configured","fundingRelayer":"0x..."}
 curl -s https://$API_DOMAIN/health       # the same, through the proxy
 dc logs api | tail                       # "migrations: verified, all applied", "wallet operations configured"
 dc logs worker | tail                    # "wallets: WalletsModule configured on the local file vault", "consumer running on Postgres stores"
@@ -218,6 +222,17 @@ dc exec api ls -la /var/lib/monadeum/vault /var/lib/monadeum/vault/session   # d
 ```
 
 Then open `https://$WEB_DOMAIN`, sign in, create an agent, and sign its deployment. The agent's account should appear in the indexer's rows within a few seconds of finality.
+
+**Fund the relayer.** The API creates the funding relayer's key on its first start and logs its address (`dc logs api | grep "funding relayer"`); `GET /health` serves the same address as `fundingRelayer`, and nothing else about it. Send it testnet MON from a faucet or another testnet wallet, and check the balance:
+
+```bash
+RELAYER=$(curl -s http://127.0.0.1:3001/health | sed -E 's/.*"fundingRelayer":"(0x[0-9a-fA-F]{40})".*/\1/')
+cast balance $RELAYER --ether --rpc-url https://testnet-rpc.monad.xyz
+```
+
+The relayer holds MON for gas only, never user funds. Each submission first estimates the transaction and refuses with `503 relayer-balance-low`, sending nothing and spending none of the user's daily relays, when the balance is below the gas limit times the maximum fee per gas (Monad charges the gas limit). How much MON one relayed transfer costs on testnet has not been measured; check the balance after the first transfers and top up from there. The key never leaves `relayer_vault`; it is not exported by any command here, so to move it, back up the volume (step 7).
+
+Then fund an agent: open its page, enter an amount under "Fund this agent", sign in the wallet, and wait for "confirmed" with the transaction's explorer link. The agent's principal changes once the worker's `principal` job reads the finalized, indexed transfer.
 
 ## 6. Operator transactions through the Safe
 
@@ -273,7 +288,9 @@ Back up three things, and keep them apart from each other:
 
    Restore: stop `api` and `worker`, then `docker run --rm -v monadeum_vault:/vault -v ~/backups:/backup debian:bookworm-slim sh -c 'tar xzf /backup/vault-YYYY-MM-DD.tgz -C /vault && chown -R 1000:1000 /vault && chmod 700 /vault /vault/*'`.
 
-3. **The two vault passphrases**, in the owner's password manager only, never next to a vault backup.
+3. **The three vault passphrases**, in the owner's password manager only, never next to a vault backup.
+
+The relayer vault (`relayer_vault`) is backed up the same way as the vault volume, with `monadeum_relayer_vault` in place of `monadeum_vault`. Losing it loses only the relayer's remaining testnet MON: the API creates a new key on its next start, which must then be funded.
 
 Copy backups off the VPS encrypted, for example `gpg --symmetric --cipher-algo AES256 ~/backups/monadeum-YYYY-MM-DD.dump`. Redis is not backed up: its queue and locks are rebuilt by the worker's `sync` job at start.
 
@@ -309,3 +326,4 @@ None of this is a mainnet deployment. Before one:
 3. **Testnet x402 providers.** `WALLETS_X402_VALIDATOR_ADDRESS` stays empty until there are pay-to addresses to list, although the validator is deployed (`0xCA918F53FFc7507Bd41602c0bD1ef72558705991`); the payer stays off regardless.
 4. **Explorer source verification** for the three contracts (the explorer's verification API and settings were not checked).
 5. **Who holds each Safe owner key** (see "Before mainnet").
+6. **A relayed transfer on testnet has not been executed yet.** The token's domain was read and checked on chain, and a relay of an unfunded authorization was refused in simulation as expected (`FUNDING_TESTNET=1`, `apps/api/test/testnet.test.ts`), but no `transferWithAuthorization` has been submitted by the relayer. The first funding through the app, or the opt-in test with test keys, is that check. Whether a Privy embedded wallet's `eth_signTypedData_v4` signature is accepted by the token is likewise not yet observed.

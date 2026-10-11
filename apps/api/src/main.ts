@@ -7,6 +7,7 @@ import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fa
 import { ApiModule, configureApp } from "./app.module.js";
 import { buildDependencies, memoryStores, postgresStores } from "./build.js";
 import { loadApiConfig } from "./config.js";
+import { loadFundingRuntime, type FundingRuntime, type FundingRuntimeOptions } from "./funding-runtime.js";
 
 export interface ApiBootOptions {
   /** The process environment: the API, AuthModule, and `@monadeum/db` variables. */
@@ -17,6 +18,8 @@ export interface ApiBootOptions {
   privy?: PrivyVerifier;
   /** Overrides WalletsModule's chain adapter and the vaults' scrypt parameters, for tests. */
   wallets?: WalletsRuntimeOptions;
+  /** Overrides the funding relayer's chain adapter and its vault's scrypt parameters, for tests. */
+  funding?: FundingRuntimeOptions;
   log?: (message: string) => void;
 }
 
@@ -35,11 +38,15 @@ export interface ApiBootOptions {
 export async function bootApi(options: ApiBootOptions) {
   const config = loadApiConfig(options.env);
   const wallets = await loadWalletsRuntime(options.env, options.wallets);
+  let funding: FundingRuntime | null = null;
   let database;
   try {
+    funding = await loadFundingRuntime(options.env, options.funding);
+    if (funding) options.log?.(`funding relayer ${funding.relayer} on chain ${funding.chain.chainId}: fund it with testnet MON to pay the gas of relayed transfers`);
     database = await openDatabase(config.database, { connect: options.connect, log: options.log });
   } catch (error) {
     wallets?.close();
+    funding?.close();
     throw error;
   }
   try {
@@ -49,6 +56,7 @@ export async function bootApi(options: ApiBootOptions) {
       authSettings: config.auth.settings,
       settings: config.settings,
       wallets: wallets ? (stores) => wallets.build(stores.walletStore, stores.ledger) : null,
+      funding: funding ? { chain: funding.chain, settings: funding.config.settings } : null,
     });
     const adapter = new FastifyAdapter({ trustProxy: config.trustProxy, bodyLimit: 64 * 1024 });
     const app = configureApp(await NestFactory.create<NestFastifyApplication>(ApiModule.forRoot(deps), adapter, { logger: ["error", "warn"] }), deps);
@@ -61,11 +69,13 @@ export async function bootApi(options: ApiBootOptions) {
         await app.close();
         await database?.close();
         wallets?.close();
+        funding?.close();
       },
     };
   } catch (error) {
     await database?.close();
     wallets?.close();
+    funding?.close();
     throw error;
   }
 }
@@ -75,7 +85,7 @@ async function main() {
   const booted = await bootApi({ env: process.env, log });
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => void booted.close());
   await booted.app.listen(booted.config.port, booted.config.host);
-  log(`api listening on ${booted.config.host}:${booted.config.port} on ${booted.durable ? "Postgres" : "in-memory"} stores; wallet operations ${booted.deps.wallets ? "configured" : "unavailable (WALLETS_CHAIN_ID is not set)"}`);
+  log(`api listening on ${booted.config.host}:${booted.config.port} on ${booted.durable ? "Postgres" : "in-memory"} stores; wallet operations ${booted.deps.wallets ? "configured" : "unavailable (WALLETS_CHAIN_ID is not set)"}; funding ${booted.deps.funding ? `relayed by ${booted.deps.funding.chain.relayer}` : "unavailable (API_FUNDING_RELAYER_VAULT_DIR is not set)"}`);
 }
 
 const entry = process.argv[1] ?? "";

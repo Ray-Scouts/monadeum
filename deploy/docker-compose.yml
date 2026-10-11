@@ -130,11 +130,21 @@ services:
       AUTH_CHAIN_ID: "10143"
       AUTH_SIWE_DOMAIN: ${WEB_DOMAIN:?set WEB_DOMAIN}
       AUTH_SIWE_URI: https://${WEB_DOMAIN}
+      # The relayed funding transfer (ARCHITECTURE.md section 7). The relayer key is created in its own vault on first
+      # boot; its address is logged and served by GET /health. Fund it with testnet MON (deploy/README.md, step 5).
+      API_FUNDING_RELAYER_VAULT_DIR: /var/lib/monadeum/relayer/vault
+      API_FUNDING_RELAYER_VAULT_PASSPHRASE_FILE: /run/secrets/funding_relayer_vault_passphrase
+      API_FUNDING_SETTLEMENT_ASSET: ${SETTLEMENT_ASSET:?set SETTLEMENT_ASSET}
+      API_FUNDING_RPC_URL: ${MONAD_RPC_URL:?set MONAD_RPC_URL}
+      API_FUNDING_MAX_PER_TRANSFER: ${API_FUNDING_MAX_PER_TRANSFER:?set API_FUNDING_MAX_PER_TRANSFER}
+      API_FUNDING_DAILY_TRANSFERS_PER_USER: ${API_FUNDING_DAILY_TRANSFERS_PER_USER:-3}
+      API_FUNDING_VALIDITY_SECONDS: ${API_FUNDING_VALIDITY_SECONDS:-600}
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:3001:3001"
     volumes:
       - vault:/var/lib/monadeum/vault
-    secrets: [session_vault_passphrase, x402_vault_passphrase]
+      - relayer_vault:/var/lib/monadeum/relayer
+    secrets: [session_vault_passphrase, x402_vault_passphrase, funding_relayer_vault_passphrase]
     networks: [backend, egress]
     depends_on:
       migrate: { condition: service_completed_successfully }
@@ -235,11 +245,15 @@ secrets:
     file: ./secrets/session_vault_passphrase
   x402_vault_passphrase:
     file: ./secrets/x402_vault_passphrase
+  funding_relayer_vault_passphrase:
+    file: ./secrets/funding_relayer_vault_passphrase
 
 volumes:
   pgdata:
   redisdata:
   vault:
+  # The funding relayer's key, mounted into the API only.
+  relayer_vault:
   caddy_data:
   caddy_config:
 

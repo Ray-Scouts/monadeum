@@ -94,6 +94,19 @@ describe("migration 0007 grants", () => {
   });
 });
 
+describe("migration 0014 grants", () => {
+  it("only monadeum_api touches funding authorizations, and it cannot delete one", async () => {
+    for (const role of ["monadeum_reader", "monadeum_worker", "monadeum_indexer", "monadeum_policy_operator"]) {
+      await assert.rejects(as(db, role, "SELECT * FROM api_funding_authorizations"), DENIED, role);
+    }
+    await as(db, "monadeum_api", "SELECT * FROM api_funding_authorizations");
+    await as(db, "monadeum_api", "UPDATE api_funding_authorizations SET error = error");
+    for (const sql of ["DELETE FROM api_funding_authorizations", "TRUNCATE api_funding_authorizations"]) {
+      await assert.rejects(as(db, "monadeum_api", sql), DENIED, sql);
+    }
+  });
+});
+
 describe("configuration", () => {
   const base = {
     AUTH_PRIVY_APP_ID: "app",

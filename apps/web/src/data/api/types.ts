@@ -215,7 +215,11 @@ export type SignatureRequest =
   | { id: string; expiresAt: number; kind: "message"; message: MessagePayload }
   | { id: string; expiresAt: number; kind: "typed-data"; typedData: TypedDataPayload };
 
-export type OperationKind = "deploy" | "revoke" | "policy" | "activate";
+/**
+ * `fund` is never an API operation: the funding card shows its EIP-3009 authorization through the same signature view
+ * as an operation, so the owner reads every signature request the same way (`fundingOperation` in `./funding`).
+ */
+export type OperationKind = "deploy" | "revoke" | "policy" | "activate" | "fund";
 export type OperationStatus = "awaiting-signature" | "running" | "succeeded" | "failed";
 
 export interface Operation {
@@ -276,4 +280,49 @@ export interface RevocationStatus {
   keyDestroyed: boolean;
   state: { installed: boolean; validatorNonce: number; currentNonce: number; validNonceFrom: number };
   enableNonce: number;
+}
+
+/** One relayed funding authorization as the API reports it. Integers are decimal strings. */
+export type FundingState = "prepared" | "expired" | "submitted" | "confirmed" | "failed";
+
+export interface FundingView {
+  nonce: string;
+  agentId: string;
+  status: FundingState;
+  from: string;
+  to: string;
+  value: string;
+  validAfter: string;
+  validBefore: string;
+  txHash: string | null;
+  blockNumber: string | null;
+  submittedAt: number | null;
+  error: string | null;
+}
+
+/** `GET /agents/:id/funding`: what the funding card shows. `ownerBalance` is read from chain by the API. */
+export interface FundingInfo {
+  asset: string;
+  decimals: number | null;
+  chainId: number;
+  owner: string;
+  account: string | null;
+  deployed: boolean;
+  retired: boolean;
+  ownerBalance: string | null;
+  maxPerTransfer: string;
+  daily: { limit: number; used: number; remaining: number };
+  relayer: string;
+  /** Set when the API could not read the chain; the balance and deployment are then unknown. */
+  chainError: string | null;
+  recent: FundingView[];
+}
+
+/** `POST /agents/:id/funding/prepare`. */
+export interface FundingPrepared {
+  funding: FundingView;
+  agent: { id: string; name: string };
+  decimals: number;
+  expiresAt: number;
+  typedData: TypedDataPayload;
 }

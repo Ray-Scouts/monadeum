@@ -10,8 +10,17 @@ import { API_DEPENDENCIES, type ApiDependencies } from "./dependencies.js";
 export class HealthController {
   constructor(@Inject(API_DEPENDENCIES) private readonly deps: ApiDependencies) {}
 
+  /**
+   * `fundingRelayer` is the relayer's address only, so the operator can fund it with testnet MON and anyone can check its
+   * transactions; its balance and key are not served.
+   */
   @Get("health")
   health() {
-    return { status: "ok", wallets: this.deps.wallets ? "configured" : "unavailable" };
+    return {
+      status: "ok",
+      wallets: this.deps.wallets ? "configured" : "unavailable",
+      funding: this.deps.funding ? "configured" : "unavailable",
+      fundingRelayer: this.deps.funding?.chain.relayer ?? null,
+    };
   }
 }

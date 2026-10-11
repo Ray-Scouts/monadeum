@@ -28,8 +28,9 @@ WORKDIR /app
 # Owned by root and read-only to the node user: the server processes write nothing under /app.
 COPY --from=build-server /app /app
 # The vault volume is mounted here. A named volume takes this directory's owner and mode on first use, so the vault
-# directory belongs to the node user (uid 1000) with mode 0700, which the file vault requires.
-RUN install -d -o node -g node -m 0700 /var/lib/monadeum/vault
+# directory belongs to the node user (uid 1000) with mode 0700, which the file vault requires. The funding relayer's
+# vault has its own volume, mounted only into the API, at /var/lib/monadeum/relayer.
+RUN install -d -o node -g node -m 0700 /var/lib/monadeum/vault /var/lib/monadeum/relayer
 USER node
 # The command is set per service in docker-compose.yml.
 CMD ["node", "apps/api/dist/src/main.js"]

@@ -6,6 +6,7 @@ import { ThrottlerModule } from "@nestjs/throttler";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { AgentsController } from "./agents.controller.js";
 import { AuthController } from "./auth.controller.js";
+import { FundingController } from "./funding.controller.js";
 import { HealthController } from "./health.controller.js";
 import { API_DEPENDENCIES, type ApiDependencies } from "./dependencies.js";
 import { OperationsController } from "./operations.controller.js";
@@ -28,7 +29,7 @@ export class ApiModule {
         RecoveryModule,
         ThrottlerModule.forRoot([{ name: "auth", ttl: deps.settings.authRateWindowMs, limit: deps.settings.authRateLimit }]),
       ],
-      controllers: [HealthController, AuthController, AgentsController, OperationsController, PolicyController],
+      controllers: [HealthController, AuthController, AgentsController, FundingController, OperationsController, PolicyController],
       providers: [{ provide: API_DEPENDENCIES, useValue: deps }, SessionGuard],
     };
   }
