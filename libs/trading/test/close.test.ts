@@ -2,20 +2,25 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { netEconomicPerformance } from "@monadeum/fitness";
 import type { ActionProposal, Decision } from "@monadeum/risk";
-import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, getAddress, parseAbiParameters, type Hex } from "viem";
+import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, parseAbiParameters, type Hex } from "viem";
 import {
+  KURU_MAINNET_WETH_USDC,
   KURU_TESTNET_MON_USDC,
   MemoryPositionStore,
   MemoryTradeStore,
   TradingService,
+  DEFAULT_MON_PRICE_LIMITS,
+  KuruBookMonPrice,
   applyFill,
   buildSellCall,
   emptyPosition,
+  fixedMonPrice,
   toCostedFill,
   unrealizedPnl,
   type Call,
   type KuruMarket,
   type LogEntry,
+  type MonPriceSource,
   type OperationReceipt,
   type SellFill,
   type SellOrder,
@@ -27,10 +32,11 @@ import { ERC20_ABI, ORDER_BOOK_ABI, ROUTER_ABI } from "../src/market.js";
 
 // Closing a position: the sell plan, its fill, the position it settles into, and the guard against selling twice.
 // The configured testnet market's base is native MON, which cannot be sold with a zero native value, so these tests
-// use the same market with an ERC-20 base that wraps MON one to one.
+// use the default WETH/USDC market, with abstract prices (1.00 and 1.10 USDC per base unit) so the arithmetic is easy
+// to follow, and a MON price for gas that tracks the book's mid.
 
-const WMON: Hex = getAddress("0x00000000000000000000000000000000000000a7");
-const W: KuruMarket = { ...KURU_TESTNET_MON_USDC, base: WMON, wrappedNativeBase: true };
+const W: KuruMarket = KURU_MAINNET_WETH_USDC;
+const WMON: Hex = W.base;
 const ACCOUNT: Hex = "0x00000000000000000000000000000000000000aa";
 const E16 = 10n ** 16n;
 const BUY_CALL: Call = { target: W.router, data: "0xffa5210a01" };
@@ -42,7 +48,7 @@ function proposal(tick: number, side: "long" | "flat", notional = side === "long
     schemaVersion: 1, tickKey: `agent-1:${tick}`, agentId: "agent-1", account: ACCOUNT, genomeHash: "0x01", strategyType: "trading",
     state: { capital: 10_000_000n, principal: 10_000_000n, ticksSinceTrade: 3, observedAt: "2026-10-10T00:00:00Z" },
     information: [],
-    action: { kind: "trade", pair: "MON/USDC", side, notional, maxSlippageBps: 100 },
+    action: { kind: "trade", pair: "WETH/USDC", side, notional, maxSlippageBps: 100 },
   };
 }
 
@@ -73,7 +79,7 @@ const BUY_RECEIPT = receipt([swapLog(W.quote, WMON, 1_000_000n, 99n * E16), trad
 const SELL_RECEIPT = receipt([swapLog(WMON, W.quote, 99n * E16, 1_070_000n)], "0x51");
 
 function world() {
-  const state = { book: { bid: 99n * E16, ask: 101n * E16 }, takerFeeBps: 0 };
+  const state = { book: { bid: 99n * E16, ask: 101n * E16 }, takerFeeBps: 0, monDown: false };
   const venue: Venue = {
     blockNumber: async () => 100n,
     book: async () => state.book,
@@ -102,8 +108,9 @@ function world() {
   };
   const trades = new MemoryTradeStore();
   const positions = new MemoryPositionStore();
-  const service = () => new TradingService(W, venue, signer, trades, positions);
-  return { state, sent, outcomes, receipts, trades, positions, service };
+  const mon: MonPriceSource = { quote: W.quote, monPrice: async () => (state.monDown ? null : { price: (state.book.bid + state.book.ask) / 2n, source: "test-mid", observedAt: 0n }) };
+  const service = () => new TradingService(W, venue, signer, trades, positions, mon);
+  return { state, sent, outcomes, receipts, trades, positions, service, venue, signer };
 }
 
 async function run(service: TradingService, p: ActionProposal): Promise<TradeRecord> {
@@ -237,4 +244,47 @@ test("average cost: a partial sell realizes against its share of the basis, and 
   assert.deepEqual([position.size, position.basis, position.realized], [3n * 10n ** 18n, 3_000_000n, 200_000n]);
   assert.equal(unrealizedPnl(W, position, { bid: 0n, ask: 101n * E16 }), null);
   assert.equal(unrealizedPnl(W, position, { bid: 120n * E16, ask: 0n }), 3_600_000n - 3_000_000n);
+});
+
+test("off a native-MON market, gas converts at the MON price, and no plan is built without one", async () => {
+  const stores = () => [new MemoryTradeStore(), new MemoryPositionStore()] as const;
+  assert.throws(() => new TradingService(W, {} as Venue, {} as TradeSigner, ...stores()), /MON price source/);
+  assert.throws(() => new TradingService(W, {} as Venue, {} as TradeSigner, ...stores(), fixedMonPrice(KURU_TESTNET_MON_USDC.quote)), /quote asset/);
+
+  const w = world();
+  w.receipts.set("agent-1:1", BUY_RECEIPT);
+  w.state.monDown = true;
+  assert.deepEqual(await w.service().prepare(proposal(1, "long")), { ok: false, reason: "gas-price" });
+  assert.equal(w.sent.length, 0);
+
+  const service = new TradingService(W, w.venue, w.signer, ...stores(), fixedMonPrice(W.quote, 25n * 10n ** 15n));
+  const prepared = await service.prepare(proposal(1, "long"));
+  assert.ok(prepared.ok);
+  assert.deepEqual(prepared.trade.order.monPrice, { price: 25n * 10n ** 15n, source: "fixed" });
+  const record = await service.submit(prepared.trade, approved(prepared.trade.plan.planHash));
+  assert.equal(record.costs!.gas, 1_075n, "0.043 MON at 0.025 USDC per MON, not at the base's 1.00 reference");
+});
+
+test("the Kuru book MON price fails closed on an empty, wide, or stale book, and on a read error", async () => {
+  const now = 1_790_000_000_000;
+  const head = BigInt(now / 1000);
+  const at = (book: { bid: bigint; ask: bigint }, blockTimestamp = head, fail = false) =>
+    new KuruBookMonPrice(
+      {
+        read: async () => {
+          if (fail) throw new Error("rpc");
+          return { book, blockTimestamp };
+        },
+      },
+      W.quote,
+      DEFAULT_MON_PRICE_LIMITS,
+      () => now,
+    );
+  const healthy = { bid: 24_930n * 10n ** 12n, ask: 24_975n * 10n ** 12n };
+  assert.deepEqual(await at(healthy).monPrice(), { price: (healthy.bid + healthy.ask) / 2n, source: "kuru-mon-usdc-mid", observedAt: head });
+  assert.equal(await at({ bid: 0n, ask: healthy.ask }).monPrice(), null, "no bid");
+  assert.equal(await at({ bid: healthy.bid, ask: 2n ** 256n - 1n }).monPrice(), null, "no ask");
+  assert.equal(await at({ bid: 24_000n * 10n ** 12n, ask: 25_000n * 10n ** 12n }).monPrice(), null, "about 408 bps wide");
+  assert.equal(await at(healthy, head - 61n).monPrice(), null, "a block more than 60 seconds old");
+  assert.equal(await at(healthy, head, true).monPrice(), null, "read error");
 });

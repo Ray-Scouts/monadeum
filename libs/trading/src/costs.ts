@@ -1,4 +1,4 @@
-import { baseToQuote, liveSide, referencePrice, type Book, type KuruMarket } from "./market.js";
+import { liveSide, monToQuote, nativeBase, referencePrice, type Book, type KuruMarket } from "./market.js";
 
 /**
  * Figures measured by the issue #20 spike (`spikes/kuru-testnet-trade`), dry run on Monad testnet, 2026-10-08,
@@ -41,10 +41,14 @@ export interface EstimateInput {
   book: Book;
   takerFeeBps?: number;
   gasPriceWei?: bigint;
+  /** Quote per MON at the 1e18 scale. Required when the base is not native MON, whose own price is used otherwise. */
+  monPrice?: bigint;
 }
 
 /**
- * Expected cost of one market buy of `notional` settlement-asset base units. Gas is the router swap only, from the
+ * Expected cost of one market buy of `notional` settlement-asset base units. Gas converts at the market's own price
+ * on a native-MON market, else at `monPrice`; without one the estimate is null. Gas for the WETH/USDC market is
+ * assumed to be of the same order as the MON/USDC measurement; it has not been measured. Gas is the router swap only, from the
  * issue #20 measurement: an ERC-4337 operation adds verification and pre-verification gas, and the exact-amount
  * approve adds its own call, neither of which has been measured, so this is a lower bound on gas. Price impact
  * beyond the top of book is not included; the quote taken at plan time covers it.
@@ -52,10 +56,11 @@ export interface EstimateInput {
 export function estimateTradeCost(market: KuruMarket, input: EstimateInput): CostEstimate | null {
   const reference = referencePrice(input.book);
   if (!reference || input.notional < 0n) return null;
+  const monPrice = nativeBase(market) ? reference.price : input.monPrice;
+  if (monPrice === undefined) return null;
   const takerFeeBps = BigInt(input.takerFeeBps ?? ISSUE_20.takerFeeBps);
   const gasWei = chargedGasWei(ISSUE_20.routerSwapGas, input.gasPriceWei ?? ISSUE_20.gasPriceWei);
-  // Native MON is the base asset, so wei are base units and convert at the market's own price.
-  const gas = baseToQuote(gasWei, reference.price, market);
+  const gas = monToQuote(gasWei, monPrice, market);
   const fees = (input.notional * takerFeeBps) / 10_000n;
   const halfSpread = liveSide(input.book.bid)
     ? (input.notional * (input.book.ask - input.book.bid)) / (input.book.ask + input.book.bid)

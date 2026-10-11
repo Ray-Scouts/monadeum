@@ -62,6 +62,12 @@ interface OrderCommon {
   maxSlippageBps: number;
   /** What slippage and the position's basis are measured against: the mid, else the side of the book this order takes. */
   reference: { kind: "mid" | "ask" | "bid"; price: bigint };
+  /**
+   * Quote per MON at the 1e18 scale that this order's gas converts at, and where it came from: "market" when the base
+   * is native MON (the reference itself), else the MON price source. Absent on records written before it existed,
+   * which were all on a native-MON market, so the reference stands in.
+   */
+  monPrice?: { price: bigint; source: string };
   takerFeeBps: number;
   preparedAtBlock: bigint;
 }

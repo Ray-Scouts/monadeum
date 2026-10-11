@@ -1,8 +1,9 @@
 import { hashExecutionPlan } from "@monadeum/commitment";
 import { type ActionProposal, type Decision, type ExecutionPlan } from "@monadeum/risk";
-import { encodeFunctionData, zeroAddress, type Hex } from "viem";
+import { encodeFunctionData, type Hex } from "viem";
 import { costsOf, decodeFill } from "./fills.js";
-import { ERC20_ABI, referencePrice, type KuruMarket } from "./market.js";
+import { ERC20_ABI, nativeBase, referencePrice, type KuruMarket } from "./market.js";
+import type { MonPriceSource } from "./mon-price.js";
 import { applyFill, emptyPosition, unrealizedPnl } from "./positions.js";
 import {
   SignerRejected,
@@ -26,6 +27,7 @@ export interface PreparedTrade {
 /**
  * Why no plan was built. For a close: `no-position` when nothing is open, `close-pending` while an earlier close may
  * still be in flight, and `native-sell` on a native-MON base market, which cannot be sold with a zero native value.
+ * For either side, `gas-price` when the MON price source cannot vouch for a price (empty, wide, or stale book).
  */
 export type PrepareResult =
   | { ok: true; trade: PreparedTrade }
@@ -33,7 +35,7 @@ export type PrepareResult =
       ok: false;
       reason:
         | "no-action" | "pair" | "notional" | "slippage" | "no-liquidity" | "no-quote" | "network"
-        | "no-position" | "close-pending" | "native-sell";
+        | "no-position" | "close-pending" | "native-sell" | "gas-price";
     };
 
 /** What reconciliation found for a tick. `resubmittable` means nothing for this tick exists anywhere it can look. */
@@ -65,10 +67,20 @@ export class TradingService {
     private readonly signer: TradeSigner,
     private readonly store: TradeStore,
     private readonly positions: PositionStore,
+    /** Required unless the base is native MON, whose own price converts gas. */
+    private readonly mon?: MonPriceSource,
   ) {
-    if (market.base !== zeroAddress && !market.wrappedNativeBase) {
-      throw new Error("the base must be native MON or wrap it one to one: gas converts at the market price");
+    if (!nativeBase(market)) {
+      if (!mon) throw new Error("a market whose base is not MON needs a MON price source to convert gas");
+      if (mon.quote.toLowerCase() !== market.quote.toLowerCase()) throw new Error("the MON price must be in the market's quote asset");
     }
+  }
+
+  /** The MON price gas converts at for this order, or null when it cannot be vouched for (the plan is not built). */
+  private async monPriceFor(reference: { price: bigint }): Promise<OrderSnapshot["monPrice"] | null> {
+    if (nativeBase(this.market)) return { price: reference.price, source: "market" };
+    const read = await this.mon!.monPrice();
+    return read ? { price: read.price, source: read.source } : null;
   }
 
   async prepare(proposal: ActionProposal): Promise<PrepareResult> {
@@ -92,6 +104,8 @@ export class TradingService {
     if (!reference) return { ok: false, reason: "no-liquidity" };
     const minBaseOut = (expected * BigInt(10_000 - slip)) / 10_000n;
     if (minBaseOut <= 0n) return { ok: false, reason: "no-quote" };
+    const monPrice = await this.monPriceFor(reference);
+    if (!monPrice) return { ok: false, reason: "gas-price" };
 
     // Approve exactly the notional, never an unbounded amount (ARCHITECTURE.md section 16.3 counting rule).
     const approve = {
@@ -116,6 +130,7 @@ export class TradingService {
       minBaseOut,
       maxSlippageBps: slip,
       reference,
+      monPrice,
       takerFeeBps,
       preparedAtBlock: block,
     };
@@ -127,7 +142,7 @@ export class TradingService {
    * `minAmountOut` set to the SDK quote less `maxSlippageBps`. Refused while an earlier close may be in flight.
    */
   private async prepareClose(proposal: ActionProposal, slip: number): Promise<PrepareResult> {
-    if (this.market.base === zeroAddress) return { ok: false, reason: "native-sell" };
+    if (nativeBase(this.market)) return { ok: false, reason: "native-sell" };
     const position = await this.openPosition(proposal.agentId);
     if (position === "close-pending") return { ok: false, reason: "close-pending" };
     if (position.size <= 0n) return { ok: false, reason: "no-position" };
@@ -144,6 +159,8 @@ export class TradingService {
     if (!reference) return { ok: false, reason: "no-liquidity" };
     const minQuoteOut = (expected * BigInt(10_000 - slip)) / 10_000n;
     if (minQuoteOut <= 0n) return { ok: false, reason: "no-quote" };
+    const monPrice = await this.monPriceFor(reference);
+    if (!monPrice) return { ok: false, reason: "gas-price" };
 
     const approve = {
       target: this.market.base,
@@ -167,6 +184,7 @@ export class TradingService {
       minQuoteOut,
       maxSlippageBps: slip,
       reference,
+      monPrice,
       takerFeeBps,
       preparedAtBlock: block,
     };

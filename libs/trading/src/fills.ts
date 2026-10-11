@@ -1,6 +1,6 @@
 import type { CostedFill } from "@monadeum/fitness";
 import { formatUnits, parseEventLogs } from "viem";
-import { baseToQuote, ORDER_BOOK_ABI, priceOf, ROUTER_ABI, type KuruMarket } from "./market.js";
+import { baseToQuote, monToQuote, ORDER_BOOK_ABI, priceOf, ROUTER_ABI, type KuruMarket } from "./market.js";
 import type { Fill, OperationReceipt, OrderSnapshot, TradeCosts, TradeRecord } from "./types.js";
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
@@ -60,14 +60,15 @@ export function decodeFill(market: KuruMarket, order: OrderSnapshot, receipt: Op
 }
 
 /**
- * Costs against the reference price captured at plan time. Gas is in MON, which the base is or wraps one to one, so
- * it converts at the same reference. Slippage excludes the fee and includes the half-spread and price impact: for a
+ * Costs against the prices captured at plan time. Gas is in MON and converts at the order's MON price (the reference
+ * itself on a native-MON market). Slippage excludes the fee and includes the half-spread and price impact: for a
  * buy, what was paid above the reference for the gross amount filled; for a sell, what was received below the
  * reference for the amount sold, before the fee.
  */
 export function costsOf(market: KuruMarket, order: OrderSnapshot, gasCostWei: bigint, fill: Fill | null): TradeCosts {
   const price = order.reference.price;
-  const gas = baseToQuote(gasCostWei, price, market);
+  // Gas is paid in MON: on a native-MON market the reference is its price, otherwise the price captured at plan time.
+  const gas = monToQuote(gasCostWei, order.monPrice?.price ?? price, market);
   if (!fill) return { gasWei: gasCostWei, gas, fees: 0n, slippage: 0n };
   if (fill.side === "sell") {
     return { gasWei: gasCostWei, gas, fees: fill.feeQuote, slippage: baseToQuote(fill.baseIn, price, market) - fill.grossQuoteOut };
