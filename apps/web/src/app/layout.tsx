@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
+import { ApiRoot } from "@/components/api/ApiRoot";
 import { THEME_SCRIPT } from "@/components/ThemeToggle";
+import { USES_API } from "@/data/config";
 import "./globals.css";
 
 const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["500", "700", "800"], variable: "--nf-display" });
@@ -18,7 +20,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
-      <body>{children}</body>
+      {/* In api mode the session is mounted once, above every route, so it survives navigation between sign-in and the app. */}
+      <body>{USES_API ? <ApiRoot>{children}</ApiRoot> : children}</body>
     </html>
   );
 }
