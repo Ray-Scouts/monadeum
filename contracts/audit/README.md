@@ -286,7 +286,7 @@ This is a draft for issue #46. It has not been sent to any auditor.
 
 **Project**: monadeum, an agent economy on Monad in which each agent trades through a ZeroDev Kernel v3.1 smart account under a session key.
 
-**Scope**: `AgentSpendPolicy` and its interfaces, 261 nSLOC in three files (section 1), and `X402PaymentValidator` (section 12), at a pinned commit. Planned addition before engagement if ready: the owner-scoped reallocation contract (issue #31), size to be stated when merged.
+**Scope**: `AgentSpendPolicy` and its interfaces, 261 nSLOC in three files (section 1), and `X402PaymentValidator`, 196 nSLOC (section 12), at a pinned commit. Planned addition before engagement if ready: the owner-scoped reallocation contract (issue #31), size to be stated when merged.
 
 **What we ask the auditor to focus on**:
 
@@ -320,7 +320,7 @@ This is a draft for issue #46. It has not been sent to any auditor.
 | --- | --- | --- |
 | `contracts/src/X402PaymentValidator.sol` | 196 | Kernel v3.1 validator (module type 1) that approves ERC-1271 signatures only for bounded EIP-3009 `transferWithAuthorization` payments, plus its local `IValidator`, Kernel-view, and domain-separator interfaces |
 
-Lines are non-blank, non-comment lines from a plain line filter, not Aderyn's nSLOC; rerun Aderyn for the engagement figure. Same compiler, settings, and toolchain as section 1. No owner, admin, upgradeability, or pause; the settlement asset is an immutable constructor argument; configuration is keyed by account.
+196 is also Aderyn 0.6.8's nSLOC for the file (run 2026-10-10), so the package now totals 457 nSLOC (261 in section 1 plus 196). Same compiler, settings, and toolchain as section 1. No owner, admin, upgradeability, or pause; the settlement asset is an immutable constructor argument; configuration is keyed by account.
 
 Each agent account has two keys besides the owner: the trading session key (a permission with `AgentSpendPolicy` as policy and hook) and an x402 key, which only this validator trusts. The owner installs the validator through the root validator with `abi.encode(signer, maxValue, paymentsPerEpoch, maxValidity, payees)`.
 
@@ -361,19 +361,29 @@ What it enforces, in `isValidSignatureWithSender(sender, hash, data)` called by 
 | V8 | Uninstalling stops every signature, including ones made earlier, and drops the payee list | `test_uninstallKillsOutstandingAuthorizationsAndDropsPayees`; `test_fork_uninstallKillsOutstandingAuthorization` |
 | V9 | Configuration is validated and per account | `test_installValidatesConfiguration`; `test_configurationIsPerAccount`; `test_installFromANonKernelCallerReverts` |
 
-The invariant handler acts as a fully compromised x402 key and, separately, as a session key that reaches the validator from the account: in-bounds and out-of-bounds payments, random nonces, lying fields, permits, and direct `onInstall`/`onUninstall` calls with a widened configuration, with time jumps across hours. Suites: `test/X402PaymentValidator.t.sol` (unit and fuzz), `test/X402PaymentValidator.invariant.t.sol`, and `test/fork/X402MainnetFork.t.sol` (opt-in, `--fork-url` at Monad mainnet; 6 tests passed on 2026-10-10 at block 112242207, including `test_fork_skipSignatureFlagWouldLetASessionKeyPermitTheWholeBalance`, which shows the risk behind section 8, item 5). Coverage of `src/X402PaymentValidator.sol` from `forge coverage` with forge 1.8.5: 100% of statements and branches; `coverage.sh` does not include it yet.
+The invariant handler acts as a fully compromised x402 key and, separately, as a session key that reaches the validator from the account: in-bounds and out-of-bounds payments, random nonces, lying fields, permits, and direct `onInstall`/`onUninstall` calls with a widened configuration, with time jumps across hours. Suites: `test/X402PaymentValidator.t.sol` (unit and fuzz), `test/X402PaymentValidator.invariant.t.sol`, and `test/fork/X402MainnetFork.t.sol` (opt-in, `--fork-url` at Monad mainnet; 7 tests passed on 2026-10-10, including the exact install and uninstall calls `libs/wallets` builds, including `test_fork_skipSignatureFlagWouldLetASessionKeyPermitTheWholeBalance`, which shows the risk behind section 8, item 5). Coverage of `src/X402PaymentValidator.sol` from `forge coverage` with forge 1.8.5: 100% of statements and branches; `coverage.sh` does not include it yet.
 
 ### 12.4 Static analysis
 
-`forge lint` (Foundry 1.8.5) on this file, 2026-10-10; Slither and Aderyn not yet rerun on it.
+Run on 2026-10-10 against this file, with the same tools, versions, and commands as section 6: Slither 0.11.4 (`slither . --filter-paths "lib/|test/"`, 100 detectors), Aderyn 0.6.8 (`aderyn . --src src`, 88 detectors), and `forge lint` (Foundry 1.8.5). Every finding that names this file is listed; none is dropped. Slither's first run also reported `shadowing-local` twice (a local named `config` shadowed the `config` view in `isValidSignatureWithSender` and `_boundedDigest`); the locals were renamed to `cfg`, with no change in behavior or tests, and the rerun no longer reports it.
 
-| # | Finding | Location | Triage |
-| --- | --- | --- | --- |
-| XL1 | `locked-ether` | contract | Same as S2: `onInstall`, `onUninstall`, and `validateUserOp` are `payable` because Kernel's interfaces declare them so; Kernel sends no value |
-| XL2 | `missing-events-access-control` | `onUninstall`, `delete _config[...]` | **False positive.** `Uninstalled` is emitted on the next line |
-| XL3 | `require-revert-in-loop` | `onInstall` payee loop | **False positive.** One bad payee must reject the whole install |
-| XL4 | `unused-return` | `kernelWrappedHash`, `eip712Domain()` | **False positive.** Only `name`, `version`, `chainId`, and `verifyingContract` enter the domain hash; Kernel's `fields` is `0x0f` (those four) |
-| XL5 | `unsafe-typecast` | `_listedByKernel`, `bytes21(abi.encodePacked(...))` | **False positive.** The packed value is exactly 21 bytes |
+| # | Tool | Finding | Location | Triage |
+| --- | --- | --- | --- | --- |
+| XS1 | Slither | `locked-ether` | `onInstall`, `onUninstall`, `validateUserOp` | Same as XL1 |
+| XS2 | Slither | `unused-return` | `kernelWrappedHash`, `eip712Domain()` | Same as XL4 |
+| XS3 | Slither | `pragma`: two version constraints | all `src/` files | **Accepted, informational.** Same as D7: implementations pin `0.8.24`, the interface files keep `^0.8.24` |
+| XS4 | Slither | `naming-convention` | `IEIP712DomainSeparator.DOMAIN_SEPARATOR()` | **False positive.** The name is fixed by EIP-2612 and FiatToken; renaming it would call a function the token does not have |
+| XD1 | Aderyn H-1 | Contract locks Ether without a withdraw function | contract | Same as XL1 |
+| XD2 | Aderyn L-1 | Costly operations (`SSTORE`) inside a loop | `onInstall` payee loop | **Accepted.** One store per listed payee, at most 8, only at install, an owner operation |
+| XD3 | Aderyn L-2 | `ecrecover` signature malleability | `_recover` | **False positive.** `_recover` refuses `s` above secp256k1n / 2 and any `v` other than 27 or 28 before calling `ecrecover`, the same rule as OpenZeppelin's ECDSA (`test_validator_highSOrBadVIsInvalid`); replay is also prevented by the token's nonce registry |
+| XD4 | Aderyn L-4 | Literal instead of constant (2) | `_recover`, the `32` and `64` slice offsets | **Accepted, informational.** Same as D3: ABI offsets next to the slice they bound |
+| XD5 | Aderyn L-5 | `PUSH0` opcode | file | Same as D4 |
+| XD6 | Aderyn L-6 | Loop contains `revert` | `onInstall` payee loop | Same as XL3 |
+| XL1 | forge lint | `locked-ether` | contract | Same as S2: `onInstall`, `onUninstall`, and `validateUserOp` are `payable` because Kernel's interfaces declare them so; Kernel sends no value |
+| XL2 | forge lint | `missing-events-access-control` | `onUninstall`, `delete _config[...]` | **False positive.** `Uninstalled` is emitted on the next line |
+| XL3 | forge lint | `require-revert-in-loop` | `onInstall` payee loop | **False positive.** One bad payee must reject the whole install |
+| XL4 | forge lint | `unused-return` | `kernelWrappedHash`, `eip712Domain()` | **False positive.** Only `name`, `version`, `chainId`, and `verifyingContract` enter the domain hash; Kernel's `fields` is `0x0f` (those four) |
+| XL5 | forge lint | `unsafe-typecast` | `_listedByKernel`, `bytes21(abi.encodePacked(...))` | **False positive.** The packed value is exactly 21 bytes |
 
 ### 12.5 Known limitations
 
@@ -383,4 +393,4 @@ The invariant handler acts as a fully compromised x402 key and, separately, as a
 4. **Exhausted slots fail closed**: once an hour's slots are used, the agent cannot pay until the next hour.
 5. **Relies on Kernel v3.1 storage semantics** for the self-protection rule (X3). A different account implementation, or a Kernel version that changes install ordering, needs this rule rechecked; a caller that is not a Kernel account reverts on `validationConfig`.
 6. **Facilitator acceptance is unverified** (X8). If the facilitator refuses ERC-1271 signatures, agents cannot pay x402; nothing fails open.
-7. **Not wired**: WalletsModule does not yet install or uninstall the validator, and the x402 key has no vault implementation (`SECURITY.md` section 11).
+7. **Wired, off by default**: WalletsModule installs the validator in the deployment operation and uninstalls it on revocation, and the worker's payer is disabled until a facilitator on Monad is confirmed to accept ERC-1271 (`ARCHITECTURE.md` section 16.3). The x402 key has no production vault implementation yet (`SECURITY.md` section 11).

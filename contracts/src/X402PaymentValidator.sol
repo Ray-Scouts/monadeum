@@ -203,14 +203,14 @@ contract X402PaymentValidator is IValidator {
         override
         returns (bytes4)
     {
-        Config memory config = _config[msg.sender];
-        if (!config.live) revert NotLive(msg.sender);
+        Config memory cfg = _config[msg.sender];
+        if (!cfg.live) revert NotLive(msg.sender);
         if (data.length != DATA_LENGTH) revert MalformedAuthorization();
 
-        bytes32 expected = kernelWrappedHash(msg.sender, _boundedDigest(config, data[0:FIELDS_LENGTH]));
+        bytes32 expected = kernelWrappedHash(msg.sender, _boundedDigest(cfg, data[0:FIELDS_LENGTH]));
         if (expected != hash) revert DigestMismatch(hash, expected);
 
-        return _recover(hash, data[FIELDS_LENGTH:]) == config.signer ? ERC1271_MAGIC : ERC1271_INVALID;
+        return _recover(hash, data[FIELDS_LENGTH:]) == cfg.signer ? ERC1271_MAGIC : ERC1271_INVALID;
     }
 
     function isModuleType(uint256 moduleTypeId) external pure override returns (bool) {
@@ -280,15 +280,15 @@ contract X402PaymentValidator is IValidator {
 
     /// Applies every bound to the authorization's fields and returns the settlement asset's digest they describe,
     /// with `from` fixed to the calling account and the nonce derived from the slot.
-    function _boundedDigest(Config memory config, bytes calldata fields) internal view returns (bytes32) {
+    function _boundedDigest(Config memory cfg, bytes calldata fields) internal view returns (bytes32) {
         (address to, uint256 value, uint256 validAfter, uint256 validBefore, uint256 slot) =
             abi.decode(fields, (address, uint256, uint256, uint256, uint256));
         if (!_payee[_generation[msg.sender]][to][msg.sender]) revert PayeeNotAllowed(to);
-        if (value == 0 || value > config.maxValue) revert ValueOutOfBounds(value, config.maxValue);
-        if (validBefore <= validAfter || validBefore - validAfter > config.maxValidity) {
+        if (value == 0 || value > cfg.maxValue) revert ValueOutOfBounds(value, cfg.maxValue);
+        if (validBefore <= validAfter || validBefore - validAfter > cfg.maxValidity) {
             revert ValidityOutOfBounds(validAfter, validBefore);
         }
-        if (slot >= config.paymentsPerEpoch) revert SlotOutOfRange(slot, config.paymentsPerEpoch);
+        if (slot >= cfg.paymentsPerEpoch) revert SlotOutOfRange(slot, cfg.paymentsPerEpoch);
         return authorizationDigest(
             msg.sender, to, value, validAfter, validBefore, nonceFor(msg.sender, validAfter / EPOCH, slot)
         );
