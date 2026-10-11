@@ -89,9 +89,9 @@ export class AgentsController {
       rootWallet: user.ownerWallet,
       policy: policy
         ? {
-            agentIds: policy.document.agents,
-            reallocationCap: policy.document.reallocationCap ?? null,
-            slotCeiling: policy.document.slotCeiling ?? null,
+            agentIds: policy.document.agentIds,
+            reallocationCap: Number(policy.document.capBps) / 10_000,
+            slotCeiling: Number(policy.document.slotCeilingBps) / 10_000,
             signedAtEvaluation: null,
             sequence: policy.sequence,
             policyHash: policy.policyHash,

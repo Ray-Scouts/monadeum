@@ -74,7 +74,10 @@ export interface RecoveryLog {
 export interface SignedPolicy {
   owner: Address;
   sequence: number;
-  /** The normalized ReallocationPolicyV1 document, with base-unit fields as decimal strings. */
+  /**
+   * The signed EIP-712 policy fields (ARCHITECTURE.md section 16.5), base units as decimal strings, with the
+   * contract address and the agent IDs the named accounts belong to.
+   */
   document: Record<string, unknown>;
   policyHash: Hex;
   signature: Hex;

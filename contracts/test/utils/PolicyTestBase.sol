@@ -6,7 +6,9 @@ import {AgentSpendPolicy} from "../../src/AgentSpendPolicy.sol";
 import {IAgentSpendPolicy} from "../../src/IAgentSpendPolicy.sol";
 
 /// Shared fixture: one policy, one configured account with the MVP allowlist shape (settlement asset transfer and
-/// approve, one router selector, one selector on the owner-scoped reallocation contract, the allowlist entry labeled `reproduction` in ARCHITECTURE.md 16.1).
+/// approve, one router selector, one selector on the owner-scoped reallocation contract, the allowlist entry labeled
+/// `reallocation` in ARCHITECTURE.md 16.1). The selector here is a placeholder; ReallocationSpendPolicy.t.sol uses
+/// AgentReallocation's real `reallocate` selector.
 abstract contract PolicyTestBase is Test {
     bytes4 internal constant TRANSFER = 0xa9059cbb;
     bytes4 internal constant APPROVE = 0x095ea7b3;

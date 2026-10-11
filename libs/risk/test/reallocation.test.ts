@@ -38,7 +38,7 @@ async function policy(overrides: Partial<PolicyDocument> = {}): Promise<Verified
       { target: USDC, selector: toFunctionSelector("approve(address,uint256)"), label: "settlement-asset" },
       { target: USDC, selector: toFunctionSelector("transfer(address,uint256)"), label: "settlement-asset" },
       { target: ROUTER, selector: "0xffa5210a", label: "kuru-router" },
-      { target: REALLOC, selector: REALLOCATE_SELECTOR, label: "reproduction" },
+      { target: REALLOC, selector: REALLOCATE_SELECTOR, label: "reallocation" },
     ],
     allowedPairs: ["MON/USDC"], perActionCap: 5n * UNIT, sessionDailyCap: 20n * UNIT,
     perTickInformationCap: 100_000n, dailyInformationCap: UNIT, maxPositionFraction: 0.25, ...overrides,

@@ -37,7 +37,7 @@ export class MemoryPolicyStore implements PolicySource {
 
 /**
  * One source's debit at one evaluation: every credit the plan gives that source's sinks, in settlement-asset base
- * units rounded down. The reallocation contract (issue #31) accepts exactly one `reallocate` call per source per
+ * units rounded down. The reallocation contract (contracts/src/AgentReallocation.sol) accepts exactly one `reallocate` call per source per
  * evaluation, so a source's moves are submitted together as one atomic operation, never one per (source, sink) pair.
  */
 export interface SourceDebit {
@@ -57,7 +57,7 @@ export interface ReallocationSettlement {
   debit(request: SourceDebit): Promise<void>;
 }
 
-/** Fail-closed default until the reallocation contract (issue #31) is deployed and wired in: nothing is submitted. */
+/** Fail-closed default until the reallocation contract (contracts/src/AgentReallocation.sol) is deployed and wired in: nothing is submitted. */
 @Injectable()
 export class UnconfiguredSettlement implements ReallocationSettlement {
   async debit(): Promise<void> {
