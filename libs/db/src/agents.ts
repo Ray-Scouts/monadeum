@@ -1,4 +1,13 @@
-import { initialState, type AgentRecord, type AgentRegistry, type AgentState, type DebitRecord, type DebitStore } from "@monadeum/agent-registry";
+import {
+  initialState,
+  type AgentRecord,
+  type AgentRegistry,
+  type AgentState,
+  type DebitRecord,
+  type DebitStore,
+  type EvaluationRecord,
+  type EvaluationStore,
+} from "@monadeum/agent-registry";
 import type { Hex } from "viem";
 import { decode, encode } from "./codec.js";
 import { isUniqueViolation, type Database } from "./database.js";
@@ -87,5 +96,82 @@ export class PgDebitStore implements DebitStore {
        ON CONFLICT (key) DO UPDATE SET status = EXCLUDED.status, body = EXCLUDED.body`,
       [record.key, record.status, encode(record)],
     );
+  }
+}
+
+interface EvaluationRow {
+  agent_id: string;
+  sequence: number;
+  evaluated_at: string;
+  capital: string;
+  adjusted_fitness: number | null;
+  fitness_percentile: number | null;
+  raw_sortino: number | null;
+  zero_downside: boolean;
+  trade_count: number;
+  low_windows: number;
+  retired: boolean;
+  retirement_rule: string | null;
+}
+
+const EVALUATION_COLUMNS = `agent_id, sequence, evaluated_at::text AS evaluated_at, capital::text AS capital, adjusted_fitness,
+  fitness_percentile, raw_sortino, zero_downside, trade_count, low_windows, retired, retirement_rule`;
+
+const num = (v: number | string | null) => (v === null ? null : Number(v));
+
+function evaluationFrom(row: EvaluationRow): EvaluationRecord {
+  return {
+    sequence: Number(row.sequence),
+    agentId: row.agent_id,
+    evaluatedAt: Number(row.evaluated_at),
+    capital: BigInt(row.capital),
+    adjustedFitness: num(row.adjusted_fitness),
+    fitnessPercentile: num(row.fitness_percentile),
+    rawSortino: num(row.raw_sortino),
+    zeroDownsideFlag: row.zero_downside,
+    tradeCount: Number(row.trade_count),
+    lowWindows: Number(row.low_windows),
+    retired: row.retired,
+    retirementRule: row.retirement_rule,
+  };
+}
+
+/**
+ * `EvaluationStore` on Postgres (migration 0013). One evaluation's records are inserted in one transaction, each
+ * `ON CONFLICT DO NOTHING` on (agent, sequence), so a rerun keeps what the first run recorded and needs no UPDATE grant.
+ */
+export class PgEvaluationStore implements EvaluationStore {
+  constructor(private readonly db: Database) {}
+
+  async record(records: readonly EvaluationRecord[]): Promise<void> {
+    if (records.length === 0) return;
+    await this.db.transaction(async (tx) => {
+      for (const r of records) {
+        await tx.query(
+          `INSERT INTO evaluation_records (agent_id, sequence, evaluated_at, capital, adjusted_fitness, fitness_percentile, raw_sortino,
+             zero_downside, trade_count, low_windows, retired, retirement_rule)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (agent_id, sequence) DO NOTHING`,
+          [r.agentId, r.sequence, r.evaluatedAt, r.capital.toString(), r.adjustedFitness, r.fitnessPercentile, r.rawSortino,
+            r.zeroDownsideFlag, r.tradeCount, r.lowWindows, r.retired, r.retirementRule],
+        );
+      }
+    });
+  }
+
+  async history(agentId: string, limit: number): Promise<EvaluationRecord[]> {
+    if (limit <= 0) return [];
+    const { rows } = await this.db.query<EvaluationRow>(
+      `SELECT ${EVALUATION_COLUMNS} FROM evaluation_records WHERE agent_id = $1 ORDER BY sequence DESC LIMIT $2`,
+      [agentId, limit],
+    );
+    return rows.map(evaluationFrom).reverse();
+  }
+
+  async latest(): Promise<EvaluationRecord[]> {
+    const { rows } = await this.db.query<EvaluationRow>(
+      `SELECT ${EVALUATION_COLUMNS} FROM evaluation_records
+       WHERE sequence = (SELECT max(sequence) FROM evaluation_records) ORDER BY agent_id COLLATE "C"`,
+    );
+    return rows.map(evaluationFrom);
   }
 }

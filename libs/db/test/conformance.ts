@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { AgentRecord, AgentRegistry, AgentState, DebitRecord, DebitStore } from "@monadeum/agent-registry";
+import type { AgentRecord, AgentRegistry, AgentState, DebitRecord, DebitStore, EvaluationRecord, EvaluationStore } from "@monadeum/agent-registry";
 import type { ChallengeStore, SessionStore, UserRecord, UserStore, WalletChallenge } from "@monadeum/auth";
 import type { TickRecord, TickStore } from "@monadeum/tick";
 import { SettlementAssetMismatchError, type BlockHash, type ChainEvent, type ReadModelStore, type SyncBatch } from "@monadeum/read-model";
@@ -26,6 +26,7 @@ export interface Stores {
   agents: AgentRegistry;
   debits: DebitStore;
   positions: PositionStore;
+  evaluations: EvaluationStore;
 }
 
 /** `fresh` returns stores over empty storage. Called once per test. */
@@ -114,6 +115,14 @@ export function agentRecord(agentId: string, overrides: Partial<AgentRecord> = {
     agentId, owner: mixed(addr(30)) as Hex, account: addr(31) as Hex, genomeHash: hash(32),
     genome: { riskTolerance: 0.25, executionFrequency: 4, informationBudget: BIG, informationSources: ["nansen", "defillama"], pair: "MON/USDC", assetUniverse: ["MON/USDC"] },
     principal: BIG, status: "active", ...overrides,
+  };
+}
+
+export function evaluationRecord(agentId: string, sequence: number, overrides: Partial<EvaluationRecord> = {}): EvaluationRecord {
+  return {
+    sequence, agentId, evaluatedAt: 1_790_000_000_000 + sequence, capital: BIG + BigInt(sequence), adjustedFitness: 0.125 + sequence,
+    fitnessPercentile: 0.75, rawSortino: -0.5e-7, zeroDownsideFlag: false, tradeCount: 17, lowWindows: 0, retired: false, retirementRule: null,
+    ...overrides,
   };
 }
 
@@ -698,6 +707,45 @@ export function conformance(name: string, harness: Harness): void {
       read.size = 0n;
       read.applied["a:9"] = 1n;
       assert.deepEqual(await positions.get("a"), position("a"));
+    });
+  });
+  describe(`${name}: EvaluationStore`, () => {
+    it("records every field exactly, nulls and bigints included, and returns nothing before any evaluation", async () => {
+      const { evaluations } = await harness.fresh();
+      assert.deepEqual(await evaluations.latest(), []);
+      assert.deepEqual(await evaluations.history("a", 50), []);
+      const unranked = evaluationRecord("b", 1, { adjustedFitness: null, fitnessPercentile: null, rawSortino: null, zeroDownsideFlag: true, tradeCount: 0 });
+      const retired = evaluationRecord("a", 1, { capital: 0n, lowWindows: 3, retired: true, retirementRule: "starvation" });
+      await evaluations.record([retired, unranked]);
+      assert.deepEqual(await evaluations.history("a", 50), [retired]);
+      assert.deepEqual(await evaluations.latest(), [retired, unranked]);
+      await evaluations.record([]);
+    });
+
+    it("keeps the first record of an (agent, sequence) when an evaluation is recorded again", async () => {
+      const { evaluations } = await harness.fresh();
+      await evaluations.record([evaluationRecord("a", 1)]);
+      await evaluations.record([evaluationRecord("a", 1, { lowWindows: 2, capital: 5n }), evaluationRecord("b", 1)]);
+      assert.deepEqual(await evaluations.history("a", 50), [evaluationRecord("a", 1)]);
+      assert.deepEqual((await evaluations.latest()).map((r) => r.agentId), ["a", "b"]);
+    });
+
+    it("returns the most recent records oldest first, bounded, and only the highest sequence as latest", async () => {
+      const { evaluations } = await harness.fresh();
+      for (const sequence of [3, 1, 2, 4]) await evaluations.record([evaluationRecord("a", sequence)]);
+      await evaluations.record([evaluationRecord("b", 2)]);
+      assert.deepEqual((await evaluations.history("a", 3)).map((r) => r.sequence), [2, 3, 4]);
+      assert.deepEqual((await evaluations.history("a", 50)).map((r) => r.sequence), [1, 2, 3, 4]);
+      assert.deepEqual(await evaluations.history("a", 0), []);
+      assert.deepEqual(await evaluations.latest(), [evaluationRecord("a", 4)]);
+    });
+
+    it("returns copies: changing what it returned changes nothing stored", async () => {
+      const { evaluations } = await harness.fresh();
+      await evaluations.record([evaluationRecord("a", 1)]);
+      const [read] = await evaluations.history("a", 1);
+      read!.capital = 0n;
+      assert.deepEqual(await evaluations.history("a", 1), [evaluationRecord("a", 1)]);
     });
   });
 }

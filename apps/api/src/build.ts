@@ -10,9 +10,9 @@ import {
   type SessionStore,
   type UserStore,
 } from "@monadeum/auth";
-import { MemoryAgentStore, type AgentStore } from "@monadeum/agent-registry";
+import { MemoryAgentStore, MemoryEvaluationStore, type AgentStore, type EvaluationStore } from "@monadeum/agent-registry";
 import type { ReallocationPolicyWriter } from "@monadeum/commitment";
-import { PgAgentStore, PgAgentWalletStore, PgChallengeStore, PgReadModelStore, PgSessionStore, PgSponsorshipLedger, PgUserStore, type Database } from "@monadeum/db";
+import { PgAgentStore, PgAgentWalletStore, PgChallengeStore, PgEvaluationStore, PgReadModelStore, PgSessionStore, PgSponsorshipLedger, PgUserStore, type Database } from "@monadeum/db";
 import { InMemoryReadModelStore, type ReadModelStore } from "@monadeum/indexer";
 import { MemoryAgentWalletStore, MemorySponsorshipLedger, type AgentWalletStore, type SponsorshipLedger, type WalletsService } from "@monadeum/wallets";
 import type { ApiSettings } from "./config.js";
@@ -48,6 +48,8 @@ export interface ApiStores {
   recovery: RecoveryLog;
   policies: PolicyLedger;
   readModel: ReadModelStore;
+  /** The worker's evaluation records (migration 0013), read only. */
+  evaluations: EvaluationStore;
 }
 
 /** In-memory stores, for tests and local development only. Nothing survives a restart. */
@@ -66,16 +68,18 @@ export function memoryStores(): ApiStores {
     recovery: new MemoryRecoveryLog(),
     policies: new MemoryPolicyLedger(),
     readModel: new InMemoryReadModelStore(),
+    evaluations: new MemoryEvaluationStore(),
   };
 }
 
 /**
  * Postgres stores on one migrated database. The module stores and the API's own tables run as `monadeum_api`; the
- * indexer read-model runs as `monadeum_reader`, which can only read it. The API never runs migrations: the schema is
+ * indexer read-model and the worker's evaluation records run as `monadeum_reader`, which can only read them. The API never runs migrations: the schema is
  * applied by the owning role, and the API's login role holds only membership in the two group roles.
  */
 export function postgresStores(db: Database): ApiStores {
   const api = roleScoped(db, API_ROLE);
+  const reader = roleScoped(db, READER_ROLE);
   return {
     users: new PgUserStore(api),
     challenges: new PgChallengeStore(api),
@@ -87,7 +91,8 @@ export function postgresStores(db: Database): ApiStores {
     creation: new PgAgentCreation(api),
     recovery: new PgRecoveryLog(api),
     policies: new PgPolicyLedger(api),
-    readModel: new PgReadModelStore(roleScoped(db, READER_ROLE)),
+    readModel: new PgReadModelStore(reader),
+    evaluations: new PgEvaluationStore(reader),
   };
 }
 
@@ -119,6 +124,7 @@ export function buildDependencies(input: BuildInput): ApiDependencies {
     policies: stores.policies,
     policyWriter: input.policyWriter ?? null,
     readModel: stores.readModel,
+    evaluations: stores.evaluations,
     relay: new SignatureRelay(input.settings.signatureTimeoutMs, input.settings.operationWaitMs),
     settings: input.settings,
     now,

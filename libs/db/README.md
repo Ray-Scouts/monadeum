@@ -1,6 +1,6 @@
 # @monadeum/db
 
-Postgres storage for the module stores: `AgentWalletStore` and `SponsorshipLedger` (`@monadeum/wallets`), `UserStore`, `ChallengeStore` and `SessionStore` (`@monadeum/auth`), `TradeStore` and `PositionStore` (`@monadeum/trading`), `PaymentLog` (`@monadeum/x402`), `TickStore` (`@monadeum/tick`), `AgentStore` and `DebitStore` (`@monadeum/agent-registry`, used by `apps/worker`), and `ReadModelStore` (`@monadeum/read-model`, written by `apps/indexer`), plus the append-only policy-document table (`PgPolicyVersions`) and the database roles and grants. The decisions behind it are in `ARCHITECTURE.md` section 10, database layer entry.
+Postgres storage for the module stores: `AgentWalletStore` and `SponsorshipLedger` (`@monadeum/wallets`), `UserStore`, `ChallengeStore` and `SessionStore` (`@monadeum/auth`), `TradeStore` and `PositionStore` (`@monadeum/trading`), `PaymentLog` (`@monadeum/x402`), `TickStore` (`@monadeum/tick`), `AgentStore`, `DebitStore`, and `EvaluationStore` (`@monadeum/agent-registry`, written by `apps/worker`; `EvaluationStore` is also read by `apps/api`), and `ReadModelStore` (`@monadeum/read-model`, written by `apps/indexer`), plus the append-only policy-document table (`PgPolicyVersions`) and the database roles and grants. The decisions behind it are in `ARCHITECTURE.md` section 10, database layer entry.
 
 ## Use
 
@@ -27,13 +27,13 @@ const wallets = new PgAgentWalletStore(db);
 
 ## Roles
 
-Migrations 0004 to 0011 create the group roles and their grants. Each process's login role is made a member of one, except the API's, which is a member of `monadeum_api` and `monadeum_reader` and runs each statement under one of them; no process connects as the table owner.
+Migrations 0004 to 0013 create the group roles and their grants. Each process's login role is made a member of one, except the API's, which is a member of `monadeum_api` and `monadeum_reader` and runs each statement under one of them; no process connects as the table owner.
 
 | Role | Writes | Reads |
 |---|---|---|
 | `monadeum_indexer` | read-model tables | read-model tables, migration ledger |
-| `monadeum_worker` | wallet, trade, position (0011), x402, tick, agent state, and debit tables (`SELECT`, `INSERT`, `UPDATE`; no `DELETE`); agents (`UPDATE` only: it retires agents and writes their principal, but never creates one) | those tables, agents, policy versions, migration ledger, and the read-model's `chain_events` and `indexer_cursor` for the principal job (0009), and `indexer_settings`, the indexer's recorded settlement asset (0010) |
-| `monadeum_reader` | nothing | read-model tables and views, wallet, trade, position, x402, tick, agent, agent state, and debit tables, migration ledger |
+| `monadeum_worker` | wallet, trade, position (0011), x402, tick, agent state, and debit tables (`SELECT`, `INSERT`, `UPDATE`; no `DELETE`); agents (`UPDATE` only: it retires agents and writes their principal, but never creates one); evaluation records (`SELECT`, `INSERT` only, 0013: append-only) | those tables, agents, policy versions, migration ledger, and the read-model's `chain_events` and `indexer_cursor` for the principal job (0009), and `indexer_settings`, the indexer's recorded settlement asset (0010) |
+| `monadeum_reader` | nothing | read-model tables and views, wallet, trade, position, x402, tick, agent, agent state, debit, and evaluation record (0013) tables, migration ledger |
 | `monadeum_policy_operator` | policy versions (`INSERT` only) | nothing |
 | `monadeum_api` | auth tables; wallet accounts and sponsorship (`SELECT`, `INSERT`, `UPDATE`; no `DELETE`); the API tables of 0007 (recovery actions and signed policies `INSERT` only, holds also `UPDATE`) | those tables, agents (`SELECT` and `INSERT`: agent creation writes the record, never changes or deletes one, 0008), migration ledger |
 

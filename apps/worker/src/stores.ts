@@ -1,8 +1,9 @@
-import { MemoryAgentStore, MemoryDebitStore, type AgentRegistry, type DebitStore } from "@monadeum/agent-registry";
+import { MemoryAgentStore, MemoryDebitStore, MemoryEvaluationStore, type AgentRegistry, type DebitStore, type EvaluationStore } from "@monadeum/agent-registry";
 import {
   PgAgentStore,
   PgAgentWalletStore,
   PgDebitStore,
+  PgEvaluationStore,
   PgPaymentLog,
   PgReadModelStore,
   PgPositionStore,
@@ -23,7 +24,7 @@ export const WORKER_STORES = Symbol("WORKER_STORES");
 
 /**
  * The stores the worker reads and writes, as one bundle so the process picks Postgres or memory for all of them at
- * once, never a mix. Their Postgres tables are granted to `monadeum_worker` in libs/db migrations 0005, 0006, 0011, and 0012; on
+ * once, never a mix. Their Postgres tables are granted to `monadeum_worker` in libs/db migrations 0005, 0006, 0011, 0012, and 0013; on
  * `worker_agents` the worker may read and update (retire) but not insert, because agent creation is not the worker's.
  *
  * Not here: the owner reallocation policy source, which is still the in-memory `OwnerPolicies`, and the session key
@@ -34,6 +35,8 @@ export interface WorkerStores {
   durable: boolean;
   agents: AgentRegistry;
   debits: DebitStore;
+  /** Each evaluation's per-agent outcome (migration 0013), append-only: the worker inserts and reads, the API reads. */
+  evaluations: EvaluationStore;
   ticks: TickStore;
   trades: TradeStore;
   /** TradingModule's per-agent positions (migration 0011). */
@@ -56,6 +59,7 @@ export function memoryWorkerStores(): WorkerStores {
     durable: false,
     agents: new MemoryAgentStore(),
     debits: new MemoryDebitStore(),
+    evaluations: new MemoryEvaluationStore(),
     ticks: new MemoryTickStore(),
     trades: new MemoryTradeStore(),
     positions: new MemoryPositionStore(),
@@ -72,6 +76,7 @@ export function postgresWorkerStores(db: Database): WorkerStores {
     durable: true,
     agents: new PgAgentStore(db),
     debits: new PgDebitStore(db),
+    evaluations: new PgEvaluationStore(db),
     ticks: new PgTickStore(db),
     trades: new PgTradeStore(db),
     positions: new PgPositionStore(db),

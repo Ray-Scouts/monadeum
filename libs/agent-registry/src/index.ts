@@ -150,3 +150,70 @@ export class MemoryDebitStore implements DebitStore {
     return [...this.rows.values()].map((r) => structuredClone(r));
   }
 }
+
+/**
+ * One agent's outcome in one evaluation (ARCHITECTURE.md section 5), as the worker computed it. Written once per
+ * Active, funded agent per evaluation, after the evaluation's last step; never changed afterwards.
+ */
+export interface EvaluationRecord {
+  /** The evaluation sequence: the evaluation tick divided by the evaluation cadence. */
+  sequence: number;
+  agentId: string;
+  /** When the worker ran the evaluation, milliseconds since the Unix epoch, from the worker's clock. */
+  evaluatedAt: number;
+  /** The agent account's settlement-asset balance read during the evaluation, base units. */
+  capital: bigint;
+  /** Adjusted fitness (EVOLUTION.md section 2), or null when the agent has none this window. */
+  adjustedFitness: number | null;
+  /**
+   * The adjusted fitness percentile within the agent's niche, in [0, 1], computed exactly as the section 6 starvation
+   * check computes it: `percentile` of `@monadeum/fitness` over the adjusted fitness of every Active agent in the
+   * niche that has one, the agent's own included. Null when the agent has no adjusted fitness.
+   */
+  fitnessPercentile: number | null;
+  rawSortino: number | null;
+  zeroDownsideFlag: boolean;
+  /** Filled trades in the trailing window. */
+  tradeCount: number;
+  /** The starvation count carried out of this evaluation: consecutive bottom-decile windows within the niche. */
+  lowWindows: number;
+  retired: boolean;
+  /** The section 6 rule that retired the agent in this evaluation, or null when it was not retired. */
+  retirementRule: string | null;
+}
+
+/**
+ * The evaluation history the worker writes and the API reads. `record` is insert-if-absent per (agent, sequence): a
+ * record already present is kept unchanged, so a rerun of an evaluation does not rewrite what the first run recorded.
+ */
+export interface EvaluationStore {
+  record(records: readonly EvaluationRecord[]): Promise<void>;
+  /** The agent's most recent `limit` records, oldest first. */
+  history(agentId: string, limit: number): Promise<EvaluationRecord[]>;
+  /** Every record of the highest sequence recorded, ordered by agent ID; empty before any evaluation is recorded. */
+  latest(): Promise<EvaluationRecord[]>;
+}
+
+/** For tests and local development. Not durable. */
+export class MemoryEvaluationStore implements EvaluationStore {
+  private readonly rows = new Map<string, EvaluationRecord>();
+
+  async record(records: readonly EvaluationRecord[]) {
+    for (const r of records) {
+      const key = `${r.agentId}:${r.sequence}`;
+      if (!this.rows.has(key)) this.rows.set(key, structuredClone(r));
+    }
+  }
+  async history(agentId: string, limit: number) {
+    const mine = [...this.rows.values()].filter((r) => r.agentId === agentId).sort((a, b) => a.sequence - b.sequence);
+    return (limit > 0 ? mine.slice(-limit) : []).map((r) => structuredClone(r));
+  }
+  async latest() {
+    let top = -1;
+    for (const r of this.rows.values()) if (r.sequence > top) top = r.sequence;
+    return [...this.rows.values()]
+      .filter((r) => r.sequence === top)
+      .sort((a, b) => (a.agentId < b.agentId ? -1 : a.agentId > b.agentId ? 1 : 0))
+      .map((r) => structuredClone(r));
+  }
+}
