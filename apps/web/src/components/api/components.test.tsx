@@ -5,6 +5,7 @@ import { stopViewFromError, stopViewFromResponse } from "@/data/api/stop";
 import { ApiError } from "@/data/api/client";
 import { loadWebConfig } from "@/data/config";
 import type { Operation } from "@/data/api/types";
+import { CreateFormView } from "./CreateAgent";
 import { SignatureRequestView } from "./OperationSigner";
 import { SignInPanel } from "./SignIn";
 import { StopPanel, type StopPanelProps } from "./StopAgent";
@@ -139,5 +140,46 @@ describe("read views", () => {
     );
     expect(html).toContain("Reallocations are not indexed yet");
     expect(html).toContain("does not mean nothing moved");
+  });
+});
+
+describe("create in api mode", () => {
+  test("shows the preset in plain language, its genome hash, and that the agent will not trade until funded", () => {
+    const html = text(
+      renderToStaticMarkup(
+        <CreateFormView
+          presets={{
+            default: "conservative",
+            pair: "WETH/USDC",
+            presets: [
+              {
+                name: "conservative",
+                riskTolerance: 0.1,
+                executionFrequency: 24,
+                timeHorizon: 24,
+                entryThreshold: 0.0002,
+                exitThreshold: 0,
+                informationSources: [],
+                informationBudget: "0",
+                modelConfiguration: "low",
+                genomeHash: "0xfeed",
+              },
+            ],
+          }}
+          form={{ name: "", perTxCap: "", dailyCap: "", preset: "conservative" }}
+          settlement={settlement}
+          busy={false}
+          error="The platform is at its population cap"
+          onChange={noop}
+          onSubmit={noop}
+        />,
+      ),
+    );
+    expect(html).toContain("Trades WETH/USDC");
+    expect(html).toContain("Genome hash 0xfeed");
+    expect(html).toContain("will not trade until it is funded");
+    expect(html).toContain("Per-transaction cap (USDC)");
+    expect(html).toContain("population cap");
+    expect(html).not.toMatch(/riskTolerance|entryThreshold/);
   });
 });

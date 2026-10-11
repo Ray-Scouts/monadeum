@@ -9,6 +9,15 @@ import { WEB_CONFIG } from "@/data/config";
 /** Monad testnet, the only chain AuthModule accepts (`AUTH_CHAIN_ID` must be 10143). */
 export const CHAIN_ID = 10143;
 
+/**
+ * How long the page waits for the API and Privy to confirm or refuse a session before it shows the sign-in options
+ * with an error, so an unreachable API or a Privy SDK that never becomes ready cannot leave the page loading forever.
+ */
+export const SESSION_CHECK_TIMEOUT_MS = 10_000;
+
+export const SESSION_TIMEOUT_ERROR =
+  "Your session could not be confirmed in time: the API or the sign-in provider did not answer. You can try signing in again.";
+
 /** What the Privy SDK exposes to this app, so the rest of the code never imports Privy directly. */
 export interface PrivyBridge {
   ready: boolean;
@@ -129,6 +138,15 @@ export function AuthProvider({ privy, children }: { privy: PrivyBridge | null; c
       cancelled = true;
     };
   }, [client, privyCredential, privyReady, privyAuthenticated, identityToken]);
+
+  useEffect(() => {
+    if (state.status !== "loading") return;
+    const timer = setTimeout(
+      () => setState((s) => (s.status === "loading" ? { status: "signed-out", error: SESSION_TIMEOUT_ERROR } : s)),
+      SESSION_CHECK_TIMEOUT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [state.status]);
 
   const signInWithPrivy = useCallback(() => {
     if (!privyRef.current) return;

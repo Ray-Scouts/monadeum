@@ -68,6 +68,51 @@ export interface ChainAccountView {
   permissions: ChainPermission[];
 }
 
+/** The committed genome as the agent view serves it. Shown in plain language, never as raw parameters. */
+export interface ApiGenome {
+  strategyType: string;
+  assetUniverse: string[];
+  riskTolerance: number;
+  executionFrequency: number;
+  timeHorizon: number;
+  entryThreshold: number;
+  exitThreshold: number;
+  informationSources: string[];
+  informationBudget: string;
+  modelConfiguration: string;
+  hash: string;
+  preset: string | null;
+}
+
+/** One preset of `GET /genome/presets`, with the hash of the genome it would commit for the configured pair. */
+export interface GenomePresetView {
+  name: string;
+  riskTolerance: number;
+  executionFrequency: number;
+  timeHorizon: number;
+  entryThreshold: number;
+  exitThreshold: number;
+  informationSources: string[];
+  informationBudget: string;
+  modelConfiguration: string;
+  genomeHash: string;
+}
+
+export interface PresetsResponse {
+  default: string;
+  /** The trading pair every new agent's genome names, from the API's configuration. */
+  pair: string;
+  presets: GenomePresetView[];
+}
+
+/** `POST /agents` body. The genome is never sent: the server builds it from the preset. */
+export interface CreateAgentInput {
+  name: string;
+  perTxCap: string;
+  dailyCap: string;
+  preset?: string;
+}
+
 export type SessionStatus = "active" | "revoking" | "revoked";
 
 /**
@@ -79,15 +124,17 @@ export interface ApiAgent {
   name: string;
   ownerId: string;
   address: string | null;
+  /** The worker's status: `active` or `retired`. */
   status: string | null;
-  principal: string | number | null;
+  /** Owner deposits minus withdrawals, base units. 0 until funding is built, and an unfunded agent does not trade. */
+  principal: string | null;
   capital: string | number | null;
   tradeCount: number | null;
   fitnessPercentile: number | null;
   lowWindows: number | null;
   zeroDownsideFlag: boolean | null;
   retirement: { rule: string; evaluation: number } | null;
-  genome: unknown;
+  genome: ApiGenome | null;
   capitalHistory: unknown;
 
   owner: string;

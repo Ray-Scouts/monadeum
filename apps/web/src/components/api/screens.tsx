@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Card, CardHead } from "@/components/ui";
-import { explainAgent } from "@/data/api/present";
+import { FUNDING_NOTE, genomeSummary } from "@/data/api/create";
+import { amount, explainAgent } from "@/data/api/present";
+import type { ApiAgent } from "@/data/api/types";
 import type { Operation } from "@/data/api/types";
 import { WEB_CONFIG } from "@/data/config";
 import { useSession } from "./auth";
@@ -101,6 +103,39 @@ function Redeploy({ agentId, name, onDone }: { agentId: string; name: string; on
   );
 }
 
+/** The committed strategy in plain language, and whether the agent is funded. */
+function StrategyCard({ agent }: { agent: ApiAgent }) {
+  const unfunded = agent.principal === null || agent.principal === "0";
+  return (
+    <Card>
+      <CardHead title="Strategy and funding" />
+      {agent.genome ? (
+        <>
+          <ul className="m-0 grid list-disc gap-1 pl-5 text-sm">
+            {genomeSummary(agent.genome).map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
+          <p className="mt-2 font-mono text-xs text-faint">
+            {agent.genome.preset ? `Preset ${agent.genome.preset}, ` : ""}genome hash {agent.genome.hash}
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-muted">The API has no committed genome for this agent.</p>
+      )}
+      <p className="mt-3 text-sm">
+        Principal: {agent.principal === null ? "not recorded" : amount(agent.principal, settlement)}
+        {agent.status ? `. Worker status: ${agent.status}.` : "."}
+      </p>
+      {unfunded && (
+        <p role="note" className="mt-2 rounded-xl border border-warn bg-warn-wash px-4 py-3 text-sm text-warn">
+          {FUNDING_NOTE}
+        </p>
+      )}
+    </Card>
+  );
+}
+
 export function ApiAgent({ id }: { id: string }) {
   const { data, error, reload } = useApiData(async (s) => {
     const [detail, owner] = await Promise.all([s.agent(id), s.owner()]);
@@ -120,12 +155,13 @@ export function ApiAgent({ id }: { id: string }) {
       <ErrorNote error={error} />
       <AgentFacts agent={agent} settlement={settlement} actions={<StopAgent agent={agent} onChanged={reload} />} />
       {agent.deployment !== "deployed" && <Redeploy agentId={agent.id} name={agent.name} onDone={reload} />}
+      <StrategyCard agent={agent} />
       <ExplainerCard explainer={explainAgent(agent, owner)} />
       <Card>
         <CardHead title="Spends" />
         <SpendsTable spends={spends} settlement={settlement} />
       </Card>
-      <NotServed fields={["capital", "principal", "net earnings after costs", "fitness", "genome", "trades", "x402 purchases", "evaluation outcome"]} />
+      <NotServed fields={["capital", "net earnings after costs", "fitness", "trades", "x402 purchases", "evaluation outcome"]} />
     </>
   );
 }

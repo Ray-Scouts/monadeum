@@ -43,6 +43,7 @@ export function AgentsTable({ agents, settlement }: { agents: ApiAgent[]; settle
             <th className={TH}>Account</th>
             <th className={TH}>Per-transaction cap</th>
             <th className={TH}>Daily cap</th>
+            <th className={TH}>Principal</th>
             <th className={TH}>Spent, indexed</th>
           </tr>
         </thead>
@@ -62,6 +63,7 @@ export function AgentsTable({ agents, settlement }: { agents: ApiAgent[]; settle
                 <td className={`${TD} font-mono text-xs`}>{a.address ? shortAddress(a.address) : DEPLOYMENT_LABEL[a.deployment]}</td>
                 <td className={`${TD} tabular`}>{amount(a.limits.perTxCap, settlement)}</td>
                 <td className={`${TD} tabular`}>{amount(a.limits.dailyCap, settlement)}</td>
+                <td className={`${TD} tabular`}>{a.principal === null || a.principal === "0" ? <Pill tone="warn">Not funded, not trading</Pill> : amount(a.principal, settlement)}</td>
                 <td className={`${TD} tabular`}>{a.chain ? amount(a.chain.totalSpent, settlement) : "n/a"}</td>
               </tr>
             );
@@ -93,7 +95,7 @@ export function PopulationView({ population, agents, settlement }: { population:
         <CardHead title="Your agents" />
         <AgentsTable agents={agents} settlement={settlement} />
       </Card>
-      <NotServed fields={["capital", "principal", "net earnings after costs", "fitness", "trades", "x402 purchases", "evaluation outcomes"]} />
+      <NotServed fields={["capital", "net earnings after costs", "fitness", "trades", "x402 purchases", "evaluation outcomes"]} />
       <ReallocationOffNote />
     </>
   );

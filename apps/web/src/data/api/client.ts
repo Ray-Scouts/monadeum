@@ -1,5 +1,6 @@
 import type {
   AgentDetailResponse,
+  CreateAgentInput,
   ApiAgent,
   ApiUser,
   CapitalFlowResponse,
@@ -8,6 +9,7 @@ import type {
   Operation,
   OwnerResponse,
   PopulationResponse,
+  PresetsResponse,
   RevocationStatus,
   StopResponse,
   WalletChallenge,
@@ -52,6 +54,9 @@ export interface SessionClient {
   agents(): Promise<{ agents: ApiAgent[] }>;
   agent(id: string): Promise<AgentDetailResponse>;
   capitalFlow(): Promise<CapitalFlowResponse>;
+  presets(): Promise<PresetsResponse>;
+  /** Creates an agent from a preset and starts its owner-signed deployment. Sends only the four fields the API accepts. */
+  createAgent(input: CreateAgentInput): Promise<{ agent: ApiAgent; operation: Operation }>;
   /** "Stop this agent": revokes its session key. Answers 503 `wallets-unavailable` when the API has no vault. */
   stop(agentId: string): Promise<StopResponse>;
   revocation(agentId: string): Promise<RevocationStatus>;
@@ -137,6 +142,8 @@ export function createApiClient(baseUrl: string, fetchImpl: Fetch = (input, init
         agents: () => get("/agents"),
         agent: (id) => get(`/agents/${seg(id)}`),
         capitalFlow: () => get("/capital-flow"),
+        presets: () => get("/genome/presets"),
+        createAgent: ({ name, perTxCap, dailyCap, preset }) => post("/agents", preset === undefined ? { name, perTxCap, dailyCap } : { name, perTxCap, dailyCap, preset }),
         stop: (id) => post(`/agents/${seg(id)}/stop`),
         revocation: (id) => get(`/agents/${seg(id)}/revocation`),
         holds: () => get("/recovery/holds"),

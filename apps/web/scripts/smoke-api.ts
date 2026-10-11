@@ -54,6 +54,13 @@ check("GET /capital-flow says reallocations are not indexed", flow.reallocations
 const ownerView = await session.owner();
 check("GET /owners/me", ownerView.rootWallet === owner.address && ownerView.policy === null);
 
+const presets = await session.presets();
+check("GET /genome/presets", presets.presets.some((p) => p.name === presets.default), `default ${presets.default}, pair ${presets.pair}`);
+
+const created = await session.createAgent({ name: "smoke", perTxCap: "1000", dailyCap: "2000", preset: presets.default }).catch((e: unknown) => e);
+check("POST /agents without a vault answers 503 and creates nothing", created instanceof ApiError && created.status === 503, created instanceof ApiError ? created.reason : "created");
+check("no agent was created", (await session.agents()).agents.length === 0);
+
 const stop = await session.stop("smoke-agent").catch((e: unknown) => e);
 check("POST /agents/:id/stop without a vault answers 503", stop instanceof ApiError && stop.status === 503, stop instanceof ApiError ? stop.reason : String(stop));
 check("the stop control shows the unavailable message", stopViewFromError(stop).state === "unavailable");
