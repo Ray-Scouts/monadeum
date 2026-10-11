@@ -29,7 +29,8 @@ The `backend` network is `internal`: Postgres and Redis have no route out and no
 - Owners can sign in, create agents, sign the account deployment, and stop an agent. Session keys and x402 keys live in the local encrypted vault on the `vault` volume, shared by `api` and `worker`.
 - Owners can fund an agent from the agent page ("Fund this agent"): they sign an EIP-3009 authorization moving testnet USDC from their owner wallet to the agent's deployed account, and the API's relayer submits it and pays the gas in testnet MON. The relayer key lives in its own encrypted vault on the `relayer_vault` volume, mounted into `api` only. Until the relayer holds MON, every submission is refused with `503 relayer-balance-low` and nothing is sent (step 5).
 - The indexer indexes the spend policy, account deployments, session key events, and settlement-asset transfers of followed accounts, from `INDEXER_START_BLOCK`.
-- The worker runs its `sync`, `principal`, and `x402-reconcile` jobs. It runs no trading tick: TradingService, X402Client, and a market source are not wired into the worker process yet (`ARCHITECTURE.md` section 11, "Not yet wired"), so every tick and evaluation job is skipped and nothing is sent. This is the existing fail-closed state, not something this deployment changes.
+- The worker runs its `sync`, `principal`, and `x402-reconcile` jobs. It runs no trading tick: the production tick runner is not wired yet (`ARCHITECTURE.md` section 11, "Not yet wired"), so every tick and evaluation job is skipped and nothing is sent. This is the existing fail-closed state, not something this deployment changes. The worker does read and validate the trading market (`TRADING_*`) and logs it.
+- Agents trade WMON/USDC on testnet, on a market we create and seed (step 2b), not WETH/USDC as on mainnet. The liquidity is ours, so testnet prices and agents' P&L carry no economic meaning (`ARCHITECTURE.md` section 10, "Testnet market").
 - The x402 payer is off (`WORKER_X402_PAYER_ENABLED=false`) and reallocation is off (`MONADEUM_REALLOCATION_ENABLED=false`), both decided.
 - All services run with `MONADEUM_ENV=development`, deliberately: the file vault refuses `production`, and so does a worker without a tick runner. Every store is still on Postgres, because `DATABASE_URL` is set; `development` only lifts those two refusals. The production guards stay as they are for mainnet.
 
@@ -157,6 +158,51 @@ cast call "$REALLOC" "settlementAsset()(address)" --rpc-url $R
 ```
 
 Then copy the three addresses, the deployer, and the deployment block into `contracts/deployments/monad-testnet.json`, set `status` to `deployed`, and commit it through a pull request. Addresses are public; the committed file is the record of the deployment. Source verification on the explorer is not set up (open question below).
+
+## 2b. Create and seed the testnet WMON/USDC market (owner's workstation)
+
+The decision and its limits are in `ARCHITECTURE.md` section 10, "Testnet market". Two steps, each simulated first. Nothing below has been broadcast; the simulations of 2026-10-11 are recorded in `contracts/deployments/monad-testnet-wmon-market.json`.
+
+**What the deployer needs.** About 0.18 MON for `create` (one `deployProxy`, gas limit 1,620,368, which Monad charges in full; under 0.18 MON at the 110 gwei cap the wrapper sets), then, for `seed` with the defaults, 6 USDC, 45 MON to wrap into WMON for the asks, and about 0.24 MON of gas (six transactions, gas limit 2,127,815 in total). On 2026-10-11 the deployer held 0.2637 MON and 20 USDC, enough for `create` but not for `seed`: top it up from the Monad faucet (`https://faucet.monad.xyz`), or lower `SEED_ASK_WMON_PER_LEVEL` (each ask must be at least 0.1 WMON; at 15 WMON a level the three asks cover one 1 USDC buy). The seed script refuses before sending anything if the deployer cannot cover it.
+
+From the repository root, with the same keystore account as step 2:
+
+```bash
+# 1. Create the market (deployProxy on Kuru's testnet router). The simulation prints the predicted address,
+#    0x46b66f84317941eC371E7791753f35653341aeBC with the decided parameters, and the estimated cost.
+contracts/script/wmon-market.sh create simulate
+contracts/script/wmon-market.sh create broadcast
+cat contracts/deployments/monad-testnet-wmon-market.latest.json   # mode "broadcast", the market and AMM vault
+
+# 2. Seed it. The mid defaults to 0.026904 USDC per MON, a REFERENCE (Kuru's mainnet MON/USDC mid on 2026-10-11),
+#    not a testnet price; re-read it and pass SEED_MID_USDC to move it. Sizes are parameters:
+#    SEED_LEVELS (3), SEED_FIRST_OFFSET_BPS (25), SEED_STEP_BPS (25), SEED_BID_USDC_PER_LEVEL (2), SEED_ASK_WMON_PER_LEVEL (15).
+cast call 0x065C9d28E428A0db40191a54d33d5b7c71a9C394 "bestBidAsk()(uint256,uint256)" --rpc-url https://rpc.monad.xyz
+contracts/script/wmon-market.sh seed simulate
+contracts/script/wmon-market.sh seed broadcast
+cat contracts/deployments/monad-testnet-wmon-seed.latest.json     # best bid and ask, spread, what was wrapped and deposited
+
+# 3. Check the market on chain.
+M=0x46b66f84317941eC371E7791753f35653341aeBC
+R=https://testnet-rpc.monad.xyz
+cast call 0x7EFbE105Ca7415dE98F96622173458ac1c054630 "verifiedMarket(address)(uint32,uint96,address,uint256,address,uint256,uint32,uint96,uint96,uint256,uint256)" $M --rpc-url $R
+cast call $M "bestBidAsk()(uint256,uint256)" --rpc-url $R
+```
+
+Then copy the market, the transaction hashes, blocks, and gas from the receipts (`contracts/broadcast/CreateWmonMarket.s.sol/10143/run-latest.json` and `SeedWmonMarket.s.sol`) into `contracts/deployments/monad-testnet-wmon-market.json`, set `status`, and commit it through a pull request. If the market address differs from the one in `deploy/.env.testnet.example`, set `TRADING_KURU_MARKET` and `TRADING_MON_PRICE_MARKET` to it.
+
+A dry run of an agent's buy and close against the seeded market, read-only, quoting and building both calls through the pinned SDK from the configured pool list (after `bun run test` has built `libs/trading`):
+
+```bash
+set -a; . deploy/.env.testnet; set +a
+cd libs/trading && KURU_DRY_RUN=1 DRY_RUN_RPC_URL=$MONAD_RPC_URL TRADING_QUOTE=$SETTLEMENT_ASSET node --test dist/test/testnet.test.js
+```
+
+The same with `DRY_RUN_FORK_EXECUTE=1` and `DRY_RUN_TAKER=<an address holding USDC>` against an anvil fork (`anvil --fork-url $MONAD_RPC_URL`) also sends both calls there, impersonating the taker; it refuses any RPC that is not anvil. The book's MON price is refused when the fork's latest block is more than 60 seconds old, so mine a block first (`cast rpc anvil_mine`).
+
+The market is permissionless: anyone can trade on it or add orders, and its owner is Kuru's router. Re-seed with `seed broadcast` when agents have taken the asks or bids; it deposits only the shortfall in Kuru's margin account. Withdrawing unused seed from the margin account and cancelling resting orders are not scripted.
+
+**On a host already running (section 8).** The update by rsync never copies `deploy/.env.testnet`, so add the new values to it by hand from `deploy/.env.testnet.example`: the `TRADING_*` block, `API_AGENT_PAIR=WMON/USDC`, and `WALLETS_TRADED_ASSETS` set to WMON. Then `dc up -d api worker`. `WALLETS_TRADED_ASSETS` is read when an agent's account permissions are installed, so an agent created before the change has no WMON mark on the spend policy and cannot close a WMON position; whether to reissue its permissions or create a new agent is the owner's choice.
 
 ## 3. Configure the VPS
 
@@ -366,7 +412,7 @@ None of this is a mainnet deployment. Before one:
 
 ## Open questions
 
-1. **No Kuru WETH/USDC market on this USDC.** The decided pair is WETH/USDC, but Kuru's documented testnet market is MON/USDC with a native-MON base, quoted in a different token, `0x3bA3d39AFcf8bb994f7964B3e0171Ea2Ba361570` ("USD Coin", FACT on chain 2026-10-11), not in the testnet USDC the contracts are deployed against. No trade can run on testnet until a market on this USDC is chosen, or the settlement asset is changed (which means redeploying all three contracts).
+1. **Resolved (owner, 2026-10-11): testnet trades WMON/USDC on our own market.** Kuru's documented testnet market is MON/USDC with a native-MON base, quoted in another token, so the owner chose to create a WMON/USDC market on the deployed USDC (step 2b; `ARCHITECTURE.md` section 10, "Testnet market"; the options are in `docs/testnet-trading-options.md`). Still open: the deployer's MON for the seed (step 2b), and the production tick runner that would trade on it (`ARCHITECTURE.md` section 11, "Not yet wired").
 2. **ZeroDev sponsorship limit.** The project serving chain 10143 is set up ("Live testnet deployment"), and it sponsors all transactions; which per-chain limit to set is not decided.
 3. **Testnet x402 providers.** `WALLETS_X402_VALIDATOR_ADDRESS` stays empty until there are pay-to addresses to list, although the validator is deployed (`0xCA918F53FFc7507Bd41602c0bD1ef72558705991`); the payer stays off regardless.
 4. **Explorer source verification** for the three contracts (the explorer's verification API and settings were not checked).

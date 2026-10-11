@@ -1,6 +1,6 @@
 # Testnet trading options
 
-Status: research and recommendation, for the owner's decision. Nothing here changes a decision recorded in `ARCHITECTURE.md`, `ECONOMICS.md`, or `deploy/README.md` until the owner accepts an option; the accepted option is then written into those documents in the same pull request that implements it.
+Status: research and recommendation. The owner accepted option A on 2026-10-11; it is recorded in `ARCHITECTURE.md` section 10 ("Testnet market"), `ECONOMICS.md` section 1, and `deploy/README.md` (step 2b). Those documents, not this one, hold the decision.
 
 Every on-chain read below was made on 2026-10-11 against `https://testnet-rpc.monad.xyz` (chain 10143, around block 70201714) or `https://rpc.monad.xyz` (chain 143), with view calls and `eth_call` simulations only. No transaction was signed or sent on any network. FACT means read on chain or from the named official source on that date; ASSUMPTION means not verified. All of it is time-sensitive.
 

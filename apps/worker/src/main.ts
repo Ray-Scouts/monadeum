@@ -6,6 +6,7 @@ import { FitnessModule } from "@monadeum/fitness";
 import { ReallocationModule, loadReallocationSwitch, type ReallocationSwitch } from "@monadeum/reallocation";
 import { RiskModule } from "@monadeum/risk";
 import { TickModule } from "@monadeum/tick";
+import { TradingConfigError, loadTradingConfig, type TradingConfig } from "@monadeum/trading";
 import { loadWalletsRuntime, type WalletsRuntimeOptions, type WalletsService } from "@monadeum/wallets";
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
@@ -93,6 +94,12 @@ export interface WorkerBootOptions {
  */
 export async function bootWorker(options: WorkerBootOptions) {
   const reallocation = loadReallocationSwitch(options.env);
+  const trading = loadWorkerTrading(options.env);
+  options.log?.(
+    trading
+      ? `trading: ${trading.market.pair} on Kuru market ${trading.market.market}, MON price for gas from ${trading.monPrice ? `${trading.monPrice.source} (${trading.monPrice.market})` : "the market itself"}`
+      : "trading: TRADING_KURU_MARKET is not set, no market is configured",
+  );
   options.log?.(reallocation.enabled ? "reallocation is on: evaluations plan and settle owner-scoped reallocation" : "reallocation is off: evaluations compute fitness and apply retirement, and plan and settle nothing");
   const runtime = await loadWalletsRuntime(options.env, options.wallets);
   let database;
@@ -118,6 +125,7 @@ export async function bootWorker(options: WorkerBootOptions) {
     stores,
     reallocation,
     wallets,
+    trading,
     close: async () => {
       await app.close();
       await database?.close();
@@ -128,18 +136,19 @@ export async function bootWorker(options: WorkerBootOptions) {
 
 export interface WorkerRunOptions extends WorkerBootOptions {
   /**
-   * Builds what runs ticks and evaluations over the booted stores: an `AgentWorker` once TradingService, X402Client,
-   * WalletsService, and a market source are configured. Without it the consumer runs `UnconfiguredTickRunner`, which
-   * fails every job closed, and MONADEUM_ENV=production refuses to start. It receives the reallocation switch read from
-   * the environment, which it passes to `AgentWorker` as `settings.reallocation`, and WalletsModule when
-   * `WALLETS_CHAIN_ID` is set (null otherwise).
-   */
-  /**
    * Recent settlement-asset logs for the `x402-reconcile` job, e.g. `RpcSettlementLogSource` over a viem public
    * client. Without it the job runs and checks nothing; while the x402 payer is disabled it checks nothing anyway.
    */
   x402Settlements?: SettlementLogSource;
-  runner?: (stores: WorkerStores, reallocation: ReallocationSwitch, wallets: WalletsService | null) => TickRunner;
+  /**
+   * Builds what runs ticks and evaluations over the booted stores: an `AgentWorker` once TradingService, X402Client,
+   * WalletsService, and a market source are configured. Without it the consumer runs `UnconfiguredTickRunner`, which
+   * fails every job closed, and MONADEUM_ENV=production refuses to start. It receives the reallocation switch read from
+   * the environment, which it passes to `AgentWorker` as `settings.reallocation`, WalletsModule when
+   * `WALLETS_CHAIN_ID` is set (null otherwise), and the trading market from `TRADING_*` (null when unset), from which
+   * `buildKuruTrading` of `@monadeum/trading` builds TradingService.
+   */
+  runner?: (stores: WorkerStores, reallocation: ReallocationSwitch, wallets: WalletsService | null, trading: TradingConfig | null) => TickRunner;
   clock?: () => Date;
 }
 
@@ -178,7 +187,7 @@ export async function runWorker(options: WorkerRunOptions) {
   const connection = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
   const queue = new BullJobQueue(new Queue(QUEUE_NAME, { connection, prefix: config.prefix }));
   try {
-    const runner = options.runner ? options.runner(booted.stores, booted.reallocation, booted.wallets) : new UnconfiguredTickRunner(log);
+    const runner = options.runner ? options.runner(booted.stores, booted.reallocation, booted.wallets, booted.trading) : new UnconfiguredTickRunner(log);
     if (!options.runner) log("no tick runner is configured: every tick and evaluation job is skipped, nothing is sent");
     const locks = new RedisAgentLocks(connection, `${config.prefix}:agent-lock:`);
     const principal = config.principal
@@ -228,6 +237,26 @@ export async function runWorker(options: WorkerRunOptions) {
     await booted.close();
     throw error;
   }
+}
+
+/**
+ * The trading market from `TRADING_*` (`loadTradingConfig` of `@monadeum/trading`), null when unset. A configured
+ * market whose quote is not the settlement asset the worker counts (`WORKER_SETTLEMENT_ASSET_ADDRESS`) is refused:
+ * every buy approves the quote asset, and the spend policy counts only the settlement asset.
+ */
+export function loadWorkerTrading(env: Record<string, string | undefined>): TradingConfig | null {
+  let trading: TradingConfig | null;
+  try {
+    trading = loadTradingConfig(env);
+  } catch (error) {
+    if (error instanceof TradingConfigError) throw new WorkerConfigError(error.message);
+    throw error;
+  }
+  const settlement = env.WORKER_SETTLEMENT_ASSET_ADDRESS?.trim().toLowerCase();
+  if (trading && settlement && trading.market.quote.toLowerCase() !== settlement) {
+    throw new WorkerConfigError("TRADING_QUOTE is not WORKER_SETTLEMENT_ASSET_ADDRESS: the market must be quoted in the settlement asset");
+  }
+  return trading;
 }
 
 /** Runs the consumer until SIGINT or SIGTERM, then shuts down gracefully. */
