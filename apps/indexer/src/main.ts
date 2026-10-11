@@ -8,7 +8,7 @@ import type { IndexerChain } from "./types.js";
 
 /** Builds the indexer over a given chain and store. `bootIndexer` picks the store from the environment. */
 export function createIndexer(config: IndexerConfig, chain: IndexerChain = new ViemIndexerChain(config.rpcUrl), store: ReadModelStore = new InMemoryReadModelStore()) {
-  const registry = defaultRegistry({ spendPolicy: config.spendPolicy, entryPoint: config.entryPoint, kernelFactory: config.kernelFactory });
+  const registry = defaultRegistry({ spendPolicy: config.spendPolicy, entryPoint: config.entryPoint, kernelFactory: config.kernelFactory, settlementAsset: config.settlementAsset });
   return { indexer: new Indexer(chain, store, registry, config.sync), store, registry };
 }
 

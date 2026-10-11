@@ -12,6 +12,8 @@ export interface IndexerConfig {
   spendPolicy: Address;
   entryPoint: Address;
   kernelFactory: Address;
+  /** The settlement asset (USDC) whose transfers to and from followed accounts are indexed. No default. */
+  settlementAsset: Address;
   pollIntervalMs: number;
   sync: SyncOptions;
 }
@@ -68,6 +70,7 @@ export function loadIndexerConfig(env: Env = process.env): IndexerConfig {
     spendPolicy: address(required(env, "INDEXER_SPEND_POLICY_ADDRESS"), "INDEXER_SPEND_POLICY_ADDRESS"),
     entryPoint: address(env.INDEXER_ENTRY_POINT_ADDRESS?.trim() || entryPoint07Address, "INDEXER_ENTRY_POINT_ADDRESS"),
     kernelFactory: address(env.INDEXER_KERNEL_FACTORY_ADDRESS?.trim() || DEFAULT_KERNEL_FACTORY, "INDEXER_KERNEL_FACTORY_ADDRESS"),
+    settlementAsset: address(required(env, "INDEXER_SETTLEMENT_ASSET_ADDRESS"), "INDEXER_SETTLEMENT_ASSET_ADDRESS"),
     pollIntervalMs: Number(integer(env, "INDEXER_POLL_INTERVAL_MS", 1000n, 100n)),
     sync: {
       startBlock: integer(env, "INDEXER_START_BLOCK", null, 0n),

@@ -19,7 +19,7 @@ const FACTORY = "0xd703aae79538628d27099b8c4f621be4ccd142d5" as Address;
 const USDC = "0x4444444444444444444444444444444444444444" as Address;
 
 const options: SyncOptions = { startBlock: 1n, batchSize: 100n, syncTo: "confirmations", confirmations: 0n, reorgWindow: 50n };
-const registryInput = { spendPolicy: POLICY, entryPoint: ENTRY_POINT, kernelFactory: FACTORY };
+const registryInput = { spendPolicy: POLICY, entryPoint: ENTRY_POINT, kernelFactory: FACTORY, settlementAsset: USDC };
 
 function event(events: readonly AbiEvent[], name: string): AbiEvent {
   return events.find((e) => e.name === name)!;

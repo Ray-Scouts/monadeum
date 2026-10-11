@@ -3,7 +3,10 @@ import { test } from "node:test";
 import { entryPoint07Address } from "viem/account-abstraction";
 import { DEFAULT_KERNEL_FACTORY, IndexerConfigError, loadIndexerConfig } from "../src/config.js";
 
-const base = { INDEXER_CHAIN_ID: "10143", INDEXER_SPEND_POLICY_ADDRESS: "0x1111111111111111111111111111111111111111", INDEXER_START_BLOCK: "100" };
+const base = {
+  INDEXER_CHAIN_ID: "10143", INDEXER_SPEND_POLICY_ADDRESS: "0x1111111111111111111111111111111111111111", INDEXER_START_BLOCK: "100",
+  INDEXER_SETTLEMENT_ASSET_ADDRESS: "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
+};
 
 test("loads defaults and lowercases addresses", () => {
   const config = loadIndexerConfig(base);
@@ -15,6 +18,7 @@ test("loads defaults and lowercases addresses", () => {
   assert.equal(loadIndexerConfig({ ...base, INDEXER_SYNC_TO: "confirmations" }).sync.syncTo, "confirmations");
   assert.equal(config.pollIntervalMs, 1000);
   assert.equal(config.rpcUrl, undefined);
+  assert.equal(config.settlementAsset, "0x754704bc059f8c67012fed69bc8a327a5aafb603");
 });
 
 test("rejects missing, malformed, or unsupported values", () => {
@@ -28,6 +32,8 @@ test("rejects missing, malformed, or unsupported values", () => {
     { ...base, INDEXER_RPC_URL: "ws://node" },
     { ...base, INDEXER_SYNC_TO: "latest" },
     { ...base, INDEXER_KERNEL_FACTORY_ADDRESS: "0x1234" },
+    { ...base, INDEXER_SETTLEMENT_ASSET_ADDRESS: "" },
+    { ...base, INDEXER_SETTLEMENT_ASSET_ADDRESS: "0x12" },
   ]) {
     assert.throws(() => loadIndexerConfig(env), IndexerConfigError, JSON.stringify(env));
   }

@@ -123,7 +123,9 @@ export class Indexer {
     events.sort(chainOrder);
 
     const cursorBlock = blocks.get(to)!;
-    await this.store.apply({ events, blocks: [...blocks.values()], discovered, cursor: cursorBlock, pruneBelow: to - this.options.reorgWindow });
+    await this.store.apply({
+      events, blocks: [...blocks.values()], discovered, cursor: cursorBlock, pruneBelow: to - this.options.reorgWindow, finalized: this.options.syncTo === "finalized",
+    });
     return { status: "indexed", from, to, events: events.length, caughtUp: to === target };
   }
 
