@@ -3,7 +3,7 @@ import { Module, type DynamicModule } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { loadDatabaseSettings, openDatabase, type Connect } from "@monadeum/db";
 import { FitnessModule } from "@monadeum/fitness";
-import { ReallocationModule } from "@monadeum/reallocation";
+import { ReallocationModule, loadReallocationSwitch, type ReallocationSwitch } from "@monadeum/reallocation";
 import { RiskModule } from "@monadeum/risk";
 import { TickModule } from "@monadeum/tick";
 import { Queue } from "bullmq";
@@ -65,7 +65,7 @@ export async function createWorker(stores: WorkerStores = memoryWorkerStores()) 
 }
 
 export interface WorkerBootOptions {
-  /** The process environment: the database variables of `@monadeum/db`. */
+  /** The process environment: the database variables of `@monadeum/db` and the reallocation switch of `@monadeum/reallocation`. */
   env: Record<string, string | undefined>;
   /** Overrides how DATABASE_URL is opened, for tests. */
   connect?: Connect;
@@ -77,8 +77,13 @@ export interface WorkerBootOptions {
  * provides the Postgres stores; it should connect through a role that is a member of `monadeum_worker`. Without it,
  * it provides the in-memory stores and says that state is not durable, which it refuses to do with
  * MONADEUM_ENV=production.
+ *
+ * It reads the reallocation switch (`loadReallocationSwitch`) before opening anything, so an invalid value, or
+ * MONADEUM_REALLOCATION_ENABLED=true in production without the study acknowledgement, refuses to start.
  */
 export async function bootWorker(options: WorkerBootOptions) {
+  const reallocation = loadReallocationSwitch(options.env);
+  options.log?.(reallocation.enabled ? "reallocation is on: evaluations plan and settle owner-scoped reallocation" : "reallocation is off: evaluations compute fitness and apply retirement, and plan and settle nothing");
   const database = await openDatabase(loadDatabaseSettings(options.env), { connect: options.connect, log: options.log });
   const stores = database ? postgresWorkerStores(database.db) : memoryWorkerStores();
   let app;
@@ -91,6 +96,7 @@ export async function bootWorker(options: WorkerBootOptions) {
   return {
     app,
     stores,
+    reallocation,
     close: async () => {
       await app.close();
       await database?.close();
@@ -102,9 +108,10 @@ export interface WorkerRunOptions extends WorkerBootOptions {
   /**
    * Builds what runs ticks and evaluations over the booted stores: an `AgentWorker` once TradingService, X402Client,
    * WalletsService, and a market source are configured. Without it the consumer runs `UnconfiguredTickRunner`, which
-   * fails every job closed, and MONADEUM_ENV=production refuses to start.
+   * fails every job closed, and MONADEUM_ENV=production refuses to start. It receives the reallocation switch read from
+   * the environment, which it passes to `AgentWorker` as `settings.reallocation`.
    */
-  runner?: (stores: WorkerStores) => TickRunner;
+  runner?: (stores: WorkerStores, reallocation: ReallocationSwitch) => TickRunner;
   clock?: () => Date;
 }
 
@@ -142,7 +149,7 @@ export async function runWorker(options: WorkerRunOptions) {
   const connection = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
   const queue = new BullJobQueue(new Queue(QUEUE_NAME, { connection, prefix: config.prefix }));
   try {
-    const runner = options.runner ? options.runner(booted.stores) : new UnconfiguredTickRunner(log);
+    const runner = options.runner ? options.runner(booted.stores, booted.reallocation) : new UnconfiguredTickRunner(log);
     if (!options.runner) log("no tick runner is configured: every tick and evaluation job is skipped, nothing is sent");
     const locks = new RedisAgentLocks(connection, `${config.prefix}:agent-lock:`);
     const principal = config.principal

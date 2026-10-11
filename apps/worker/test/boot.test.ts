@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { DatabaseConfigError, PgTickStore, PgTradeStore, pgliteDatabase, type Connect } from "@monadeum/db";
-import { ReallocationService } from "@monadeum/reallocation";
+import { REALLOCATION_PRODUCTION_ACK, ReallocationService, ReallocationSwitchError } from "@monadeum/reallocation";
 import { MemoryTickStore } from "@monadeum/tick";
 import { WORKER_STORES, bootWorker, createWorker, type WorkerStores } from "../src/main.js";
 import { world } from "./harness.js";
@@ -35,6 +35,33 @@ test("without DATABASE_URL, the worker runs on in-memory stores and says state i
   assert.match(logs.join("\n"), /not durable/);
   await booted.close();
   await assert.rejects(bootWorker({ env: { MONADEUM_ENV: "production" } }), DatabaseConfigError);
+});
+
+test("the worker reads the reallocation switch at boot: off by default and said so, on only when set", async () => {
+  const logs: string[] = [];
+  const off = await bootWorker({ env: {}, log: (m) => logs.push(m) });
+  assert.equal(off.reallocation.enabled, false);
+  assert.match(off.reallocation.reason ?? "", /pre-registered study/);
+  assert.match(logs.join("\n"), /reallocation is off/);
+  await off.close();
+  const on = await bootWorker({ env: { MONADEUM_REALLOCATION_ENABLED: "true" } });
+  assert.equal(on.reallocation.enabled, true);
+  await on.close();
+  await assert.rejects(bootWorker({ env: { MONADEUM_REALLOCATION_ENABLED: "yes" } }), ReallocationSwitchError);
+});
+
+test("in production the worker refuses reallocation on without the study acknowledgement, before opening the database", async () => {
+  let connected = false;
+  const connect: Connect = () => {
+    connected = true;
+    throw new Error("must not connect");
+  };
+  const prod = { MONADEUM_ENV: "production", DATABASE_URL: "postgres://test", MONADEUM_REALLOCATION_ENABLED: "true" };
+  await assert.rejects(bootWorker({ env: prod, connect }), /refusing to start without MONADEUM_REALLOCATION_PRODUCTION_ACK/);
+  assert.equal(connected, false);
+  // With the acknowledgement the switch passes and boot proceeds to the database.
+  await assert.rejects(bootWorker({ env: { ...prod, MONADEUM_REALLOCATION_PRODUCTION_ACK: REALLOCATION_PRODUCTION_ACK }, connect }), /must not connect/);
+  assert.equal(connected, true);
 });
 
 test("in verify mode, the worker refuses to start on an unmigrated database", async () => {

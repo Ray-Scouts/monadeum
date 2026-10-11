@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Card, CardHead, Kpi, Pill, ScreenHead } from "@/components/ui";
-import { amount, DEPLOYMENT_LABEL, REALLOCATION_OFF, sessionLabel, type Explainer } from "@/data/api/present";
+import { amount, DEPLOYMENT_LABEL, reallocationEnabled, reallocationNote, sessionLabel, type Explainer } from "@/data/api/present";
 import type { AgentSpend, ApiAgent, CapitalFlowResponse, OwnerResponse, PopulationResponse } from "@/data/api/types";
 import type { WebConfig } from "@/data/config";
 import { shortAddress } from "@/lib/format";
@@ -17,10 +17,11 @@ export function LiveBadge() {
   return <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-wash px-2.5 py-1 text-xs text-accent-hi">Live from the API</span>;
 }
 
-export function ReallocationOffNote() {
+/** The deployment's reallocation switch as the API reports it in `GET /owners/me`; without an answer, off. */
+export function ReallocationOffNote({ owner = null }: { owner?: OwnerResponse | null }) {
   return (
     <p role="note" className="rounded-xl border border-line-soft bg-surface-2 px-4 py-3 text-[13px] text-muted">
-      {REALLOCATION_OFF}
+      {reallocationNote(owner)}
     </p>
   );
 }
@@ -74,7 +75,17 @@ export function AgentsTable({ agents, settlement }: { agents: ApiAgent[]; settle
   );
 }
 
-export function PopulationView({ population, agents, settlement }: { population: PopulationResponse; agents: ApiAgent[]; settlement: Settlement }) {
+export function PopulationView({
+  population,
+  agents,
+  owner = null,
+  settlement,
+}: {
+  population: PopulationResponse;
+  agents: ApiAgent[];
+  owner?: OwnerResponse | null;
+  settlement: Settlement;
+}) {
   return (
     <>
       <ScreenHead title="Population" aside={<LiveBadge />}>
@@ -96,12 +107,12 @@ export function PopulationView({ population, agents, settlement }: { population:
         <AgentsTable agents={agents} settlement={settlement} />
       </Card>
       <NotServed fields={["capital", "net earnings after costs", "fitness", "trades", "x402 purchases", "evaluation outcomes"]} />
-      <ReallocationOffNote />
+      <ReallocationOffNote owner={owner} />
     </>
   );
 }
 
-export function ExplainerCard({ explainer }: { explainer: Explainer }) {
+export function ExplainerCard({ explainer, owner = null }: { explainer: Explainer; owner?: OwnerResponse | null }) {
   return (
     <Card>
       <CardHead title="Reallocation and retirement">
@@ -113,7 +124,7 @@ export function ExplainerCard({ explainer }: { explainer: Explainer }) {
         ))}
       </ul>
       <div className="mt-3">
-        <ReallocationOffNote />
+        <ReallocationOffNote owner={owner} />
       </div>
     </Card>
   );
@@ -201,14 +212,18 @@ export function CapitalFlowView({ flow, agents, owner, settlement }: { flow: Cap
       <ScreenHead title="Capital flow" aside={<LiveBadge />}>
         Your capital: what moved between your agents through reallocation, and what each agent spent on chain.
       </ScreenHead>
-      <ReallocationOffNote />
+      <ReallocationOffNote owner={owner} />
       <section aria-label="Summary" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Kpi label="Your agents" value={agents.length} />
-        <Kpi
-          label="Policy"
-          value={owner?.policy ? <Pill tone="accent">Signed, sequence {owner.policy.sequence}</Pill> : <Pill tone="off">None</Pill>}
-          detail={owner?.policy ? "Recorded by the API" : "Reallocation is off for you"}
-        />
+        {reallocationEnabled(owner) ? (
+          <Kpi
+            label="Policy"
+            value={owner?.policy ? <Pill tone="accent">Signed, sequence {owner.policy.sequence}</Pill> : <Pill tone="off">None</Pill>}
+            detail={owner?.policy ? "Recorded by the API" : "Reallocation is off for you"}
+          />
+        ) : (
+          <Kpi label="Reallocation" value={<Pill tone="off">Off</Pill>} detail="Off for every agent on this deployment" />
+        )}
         <Kpi label="Spent, indexed" value={<span className="text-[19px]">{amount(total.toString(), settlement)}</span>} detail={`${flow.spends.length} spends across your agents`} />
       </section>
       <Card>

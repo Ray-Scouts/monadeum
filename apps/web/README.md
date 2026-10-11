@@ -19,6 +19,10 @@ One configuration switch, read at build time (`src/data/config.ts`):
 
 The data source is a build-time choice, not a runtime toggle: a build serves either sample data or API data, never a mix.
 
+## Reallocation is off unless the API says otherwise
+
+The deployment's reallocation switch (`MONADEUM_REALLOCATION_ENABLED`, `ARCHITECTURE.md` section 5) is not a web setting: in `api` mode the screens read it from `reallocation` in `GET /owners/me`. Unless that says `enabled: true`, including when the field is missing, every agent's explainer reads "Reallocation is off" with the study result as the reason, a policy recorded earlier is stated to have no effect, the capital-flow summary shows reallocation off for every agent instead of the policy state, and no policy step is offered. With it on, the screens show the policy state as before, with a note that promises no returns. In `sample` mode the reallocation screens keep the sample's policies and moves, which illustrate the design, and say that they do not describe a running deployment and that reallocation is off there. The reason text comes from `@monadeum/reallocation/switch`, the same text the API reports.
+
 ## Sign-in and sessions
 
 - **Primary path, email or Google through Privy.** After Privy's login, the client sends the access token and the identity token to `POST /auth/privy/sign-in`, then sends the access token as `Authorization: Bearer` on every request, with `credentials: "omit"` so a leftover wallet session cookie can never make a request carry both credentials (the API refuses that as `ambiguous-credentials`).

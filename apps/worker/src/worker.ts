@@ -1,5 +1,13 @@
 import { median, nicheKey, sortinoParts, type CostedFill, type FitnessService } from "@monadeum/fitness";
-import { EVALUATION_CADENCE, type AgentState as PlannerAgent, type EvaluationPlan, type ReallocationService, type SettledDebit } from "@monadeum/reallocation";
+import {
+  EVALUATION_CADENCE,
+  REALLOCATION_DISABLED,
+  type AgentState as PlannerAgent,
+  type EvaluationPlan,
+  type ReallocationService,
+  type ReallocationSwitch,
+  type SettledDebit,
+} from "@monadeum/reallocation";
 import type { RiskService } from "@monadeum/risk";
 import type { StrategyService } from "@monadeum/strategy";
 import { runTick, type Observation, type TickMeasurement, type TickPorts, type TickResult, type TickStore } from "@monadeum/tick";
@@ -13,6 +21,11 @@ export interface WorkerSettings {
   maxSlippageBps: number;
   /** The x402 resource for a pair, and the most the worker offers for it per tick, base units; null buys nothing. */
   information: { resource(pair: string): string; maxPrice: bigint } | null;
+  /**
+   * The reallocation switch (`loadReallocationSwitch` of `@monadeum/reallocation`). Omitted means off: the evaluation
+   * then computes fitness and applies retirement, and plans and settles nothing.
+   */
+  reallocation?: ReallocationSwitch;
   clock(): Date;
 }
 
@@ -43,11 +56,16 @@ export interface EvaluationResult {
   sequence: number;
   fitness: FitnessRow[];
   retired: { agentId: string; reason: string }[];
+  /** Whether this evaluation planned reallocation. When false, `plan` is empty and `settled` is empty. */
+  reallocationEnabled: boolean;
   plan: EvaluationPlan;
   settled: SettledDebit[];
 }
 
 const units = (amount: bigint, decimals: number) => Number(amount) / 10 ** decimals;
+
+/** The plan of an evaluation with reallocation off: nothing moves. */
+const NOTHING_PLANNED: EvaluationPlan = { owners: [], moves: [], moved: 0 };
 
 /** Active, with principal above 0. Agent creation writes principal 0; funding raises it (EVOLUTION.md section 1.1). */
 const funded = (agent: AgentRecord) => agent.status === "active" && agent.principal > 0n;
@@ -56,8 +74,8 @@ const funded = (agent: AgentRecord) => agent.status === "active" && agent.princi
  * The agent worker loop over the real modules (ARCHITECTURE.md sections 4, 5, 11): StrategyService decides,
  * X402Client buys information within the RiskModule's caps, TradingService builds the plan, RiskService checks the
  * plan, TradingService submits the approved plan hash through WalletsTradeSigner by tick key, and fills feed
- * FitnessModule cost accounting. On the evaluation cadence it computes fitness, applies retirement, plans
- * reallocation, and settles each source's debit through the RiskModule-gated settlement.
+ * FitnessModule cost accounting. On the evaluation cadence it computes fitness, applies retirement, and, only while the
+ * reallocation switch is on, plans reallocation and settles each source's debit through the RiskModule-gated settlement.
  *
  * Every piece of state lives behind a store, so a restarted worker is a new instance over the same stores.
  */
@@ -86,6 +104,10 @@ export class AgentWorker {
    * One evaluation (ARCHITECTURE.md section 5): fitness for every Active agent, population-wide; retirement; then the
    * owner-scoped reallocation plan, settled as one debit per source. Rerunning the same tick does not submit a debit
    * twice: the settlement refuses a key it has already seen.
+   *
+   * With the reallocation switch off (the default), the evaluation stops after retirement: no policy is read, nothing
+   * is planned, and nothing reaches the settlement. Retirement still runs, because EVOLUTION.md section 6 makes it a
+   * survival rule independent of reallocation, and it moves no capital (THREAT-MODEL.md invariant 15).
    */
   async evaluate(tick: number): Promise<EvaluationResult> {
     const { agents, fitness, reallocation, chain } = this.deps;
@@ -131,6 +153,10 @@ export class AgentWorker {
       }
     }
 
+    if (!(this.deps.settings.reallocation ?? REALLOCATION_DISABLED).enabled) {
+      return { sequence, fitness: rows, retired, reallocationEnabled: false, plan: NOTHING_PLANNED, settled: [] };
+    }
+
     const population: PlannerAgent[] = (await agents.list()).map((a) => ({
       id: a.agentId,
       owner: a.owner,
@@ -142,7 +168,7 @@ export class AgentWorker {
     }));
     const plan = reallocation.plan(tick, population);
     const settled = await reallocation.settle(sequence, plan, decimals);
-    return { sequence, fitness: rows, retired, plan, settled };
+    return { sequence, fitness: rows, retired, reallocationEnabled: true, plan, settled };
   }
 
   private ports(agent: AgentRecord): TickPorts {

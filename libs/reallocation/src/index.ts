@@ -28,3 +28,14 @@ export { MemoryPolicyStore, NoPolicies, UnconfiguredSettlement } from "./ports.j
 export type { PolicySource, ReallocationSettlement, SourceDebit } from "./ports.js";
 export { belowCapitalFloor, evaluateRetirement } from "./retirement.js";
 export type { RetirementDecision, RetirementInput, RetirementReason } from "./retirement.js";
+export {
+  REALLOCATION_DISABLED,
+  REALLOCATION_ENABLED,
+  REALLOCATION_ENABLED_VAR,
+  REALLOCATION_OFF_REASON,
+  REALLOCATION_PRODUCTION_ACK,
+  REALLOCATION_PRODUCTION_ACK_VAR,
+  ReallocationSwitchError,
+  loadReallocationSwitch,
+} from "./switch.js";
+export type { ReallocationSwitch } from "./switch.js";

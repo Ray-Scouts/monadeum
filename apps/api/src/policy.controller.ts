@@ -42,6 +42,10 @@ export function capitalFloorBaseUnits(decimals: number): bigint {
  * The nonce is the ledger's next sequence. It equals the contract's `policyNonce(owner)` only while every commit and
  * revocation for this owner goes through this ledger; a writer must read the on-chain nonce before committing, and the
  * contract refuses a mismatch with `BadNonce` (fails closed).
+ *
+ * While the reallocation switch is off (the default, `settings.reallocation`), no policy is built, relayed, or recorded:
+ * the proposal answers `409 reallocation-disabled` with the reason, before anything else is read. The read endpoint
+ * reports the switch alongside any policy recorded earlier.
  */
 @Controller("policies")
 @UseGuards(SessionGuard)
@@ -52,12 +56,14 @@ export class PolicyController {
   async current(@Caller() principal: Principal) {
     const user = await callerUser(this.deps, principal);
     const policy = user.ownerWallet ? await this.deps.policies.latest(user.ownerWallet) : undefined;
-    return { policy: policy ?? null };
+    return { policy: policy ?? null, reallocation: this.deps.settings.reallocation };
   }
 
   @Post("reallocation")
   @HttpCode(202)
   async propose(@Body() body: unknown, @Caller() principal: Principal) {
+    const { reallocation } = this.deps.settings;
+    if (!reallocation.enabled) fail(409, "reallocation-disabled", reallocation.reason ?? undefined);
     const b = (body ?? {}) as Record<string, unknown>;
     if (!Array.isArray(b.agentIds) || b.agentIds.length < MIN_POLICY_AGENTS || b.agentIds.length > MAX_POLICY_AGENTS || !b.agentIds.every((a) => typeof a === "string")) {
       fail(400, "invalid-body", `agentIds must list ${MIN_POLICY_AGENTS} to ${MAX_POLICY_AGENTS} agent IDs`);

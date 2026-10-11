@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { DatabaseConfigError, migrate, pgliteDatabase, type Connect } from "@monadeum/db";
-import { bootApi } from "../src/index.js";
+import { REALLOCATION_PRODUCTION_ACK, ReallocationSwitchError } from "@monadeum/reallocation/switch";
+import { bootApi, loadApiConfig } from "../src/index.js";
 import { FakePrivy, newWallet } from "./harness.js";
 
 // The process boot, by the same database rules as the worker and the indexer (`@monadeum/db` config).
@@ -74,4 +75,20 @@ test("on a migrated database the API serves from Postgres, and a restarted proce
   } finally {
     await pg.close();
   }
+});
+
+test("the reallocation switch is off unless set, and production refuses it on without the study acknowledgement", async () => {
+  assert.equal(loadApiConfig(env).settings.reallocation.enabled, false);
+  assert.match(loadApiConfig(env).settings.reallocation.reason ?? "", /pre-registered study/);
+  assert.equal(loadApiConfig({ ...env, MONADEUM_REALLOCATION_ENABLED: "true" }).settings.reallocation.enabled, true);
+  assert.throws(() => loadApiConfig({ ...env, MONADEUM_REALLOCATION_ENABLED: "maybe" }), ReallocationSwitchError);
+  const prod = { ...env, MONADEUM_ENV: "production", DATABASE_URL: "postgres://test", MONADEUM_REALLOCATION_ENABLED: "true" };
+  let connected = false;
+  const connect: Connect = () => {
+    connected = true;
+    throw new Error("must not connect");
+  };
+  await assert.rejects(bootApi({ env: prod, privy: new FakePrivy(), connect }), /refusing to start without MONADEUM_REALLOCATION_PRODUCTION_ACK/);
+  assert.equal(connected, false, "refused before the database is opened");
+  assert.equal(loadApiConfig({ ...prod, MONADEUM_REALLOCATION_PRODUCTION_ACK: REALLOCATION_PRODUCTION_ACK }).settings.reallocation.enabled, true);
 });

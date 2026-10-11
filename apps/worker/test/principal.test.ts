@@ -11,6 +11,7 @@ import {
   type ChainEvent,
   type SyncBatch,
 } from "@monadeum/read-model";
+import { REALLOCATION_DISABLED } from "@monadeum/reallocation";
 import { KURU_TESTNET_MON_USDC as M } from "@monadeum/trading";
 import type { Address, Hex } from "viem";
 import { WorkerJobHandlers } from "../src/consumer/handlers.js";
@@ -130,7 +131,9 @@ test("a locked agent is left for the next run", async () => {
 });
 
 test("end to end: an unfunded agent does not trade; a finalized owner deposit, through the principal job, makes it trade", async () => {
-  const w = await world({ agents: [{ agentId: "1", owner: "a", capital: 0n }] });
+  // With the reallocation switch off, the default: principal is the owner's deposits minus withdrawals, needed for
+  // funding, ticking, and retirement, so the principal job runs whatever the switch says.
+  const w = await world({ agents: [{ agentId: "1", owner: "a", capital: 0n }], reallocation: REALLOCATION_DISABLED });
   const created = (await w.stores.agents.get("1"))!;
   await w.stores.agents.update({ ...created, principal: 0n });
   const { worker } = await w.boot();

@@ -3,6 +3,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { PrivyTokenError, type AuthSettings, type PrivyIdentity, type PrivySession, type PrivyVerifier } from "@monadeum/auth";
 import type { ReallocationPolicyWriter } from "@monadeum/commitment";
 import { migrate, pgliteDatabase, PgReadModelStore, type Database } from "@monadeum/db";
+import { REALLOCATION_ENABLED } from "@monadeum/reallocation/switch";
 import type { ChainEvent, ReadModelStore } from "@monadeum/indexer";
 import { buildScope, MemorySessionKeyVault, WalletsService, type OwnerSigner } from "@monadeum/wallets";
 import { FakeChain } from "@monadeum/wallets/testing";
@@ -31,6 +32,8 @@ export function settings(overrides: Partial<ApiSettings> = {}): ApiSettings {
     agentPair: "WETH/USDC",
     populationCap: 50,
     reallocationContract: "0x000000000000000000000000000000000000A110",
+    // On here, so the policy tests exercise the endpoint; the process default is off (loadApiConfig).
+    reallocation: REALLOCATION_ENABLED,
     ...overrides,
   };
 }

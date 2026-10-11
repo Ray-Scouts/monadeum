@@ -1,5 +1,6 @@
 import { loadAuthConfig, type AuthConfig } from "@monadeum/auth";
 import { loadDatabaseSettings, type DatabaseSettings } from "@monadeum/db";
+import { loadReallocationSwitch, type ReallocationSwitch } from "@monadeum/reallocation/switch";
 import { PAIR } from "./genome.js";
 import { getAddress, isAddress, type Address } from "viem";
 
@@ -43,6 +44,11 @@ export interface ApiSettings {
    * owner signs, so without it no policy can be proposed. Null until the contract is deployed.
    */
   reallocationContract: Address | null;
+  /**
+   * The reallocation switch, `MONADEUM_REALLOCATION_ENABLED` read by `loadReallocationSwitch` as in the worker. Off by
+   * default: `POST /policies/reallocation` answers `409 reallocation-disabled`, and the read endpoints report it.
+   */
+  reallocation: ReallocationSwitch;
 }
 
 export interface ApiConfig {
@@ -122,6 +128,7 @@ export function loadApiConfig(env: Env = process.env): ApiConfig {
       agentPair,
       populationCap: integer(env, "API_POPULATION_CAP", DEFAULT_POPULATION_CAP, 1, 1_000_000),
       reallocationContract: optionalAddress(env, "API_REALLOCATION_CONTRACT"),
+      reallocation: loadReallocationSwitch(env),
     },
   };
 }

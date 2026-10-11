@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
+import { SampleReallocationNote } from "@/components/SampleReallocationNote";
 import { Card, CardHead, Pill } from "@/components/ui";
 import { boundsFor } from "@/data/evaluate";
 import { explain, proximity, type Counterpart } from "@/data/explain";
@@ -57,6 +58,9 @@ export function ReallocationPanel({
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
+      <div className="lg:col-span-2">
+        <SampleReallocationNote />
+      </div>
       <Card>
         <CardHead title={evaluation ? `Evaluation ${evaluation.evaluation}` : "Last evaluation"}>{x && <Pill tone={x.tone}>{x.label}</Pill>}</CardHead>
         {x ? (

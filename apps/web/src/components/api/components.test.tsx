@@ -10,6 +10,8 @@ import { SignatureRequestView } from "./OperationSigner";
 import { SignInPanel } from "./SignIn";
 import { StopPanel, type StopPanelProps } from "./StopAgent";
 import { CapitalFlowView, PopulationView } from "./views";
+import { SampleReallocationNote } from "@/components/SampleReallocationNote";
+import { REALLOCATION_OFF_REASON } from "@monadeum/reallocation/switch";
 
 // Component states rendered to markup from the props an API answer produces.
 
@@ -129,6 +131,29 @@ describe("read views", () => {
     expect(html).toContain("2.5 USDC");
     expect(html).toContain("alpha");
     expect(html).toContain("Not served by the API yet");
+    expect(html).toContain("Reallocation is off by default");
+    expect(html).toContain("adds nothing measurable");
+  });
+
+  test("capital flow with reallocation off shows it off for every agent and no policy state", () => {
+    const owner = { id: "u1", name: null, rootWallet: "0x1", reallocation: { enabled: false, reason: REALLOCATION_OFF_REASON }, policy: { agentIds: ["a"], reallocationCap: null, slotCeiling: null, signedAtEvaluation: null, sequence: 3, policyHash: "0x" } };
+    const html = text(renderToStaticMarkup(<CapitalFlowView flow={{ ownerId: "u1", reallocations: [], reallocationsIndexed: false, spends: [] }} agents={[]} owner={owner} settlement={settlement} />));
+    expect(html).toContain("Off for every agent on this deployment");
+    expect(html).toContain("adds nothing measurable");
+    expect(html).not.toContain("Signed, sequence 3");
+  });
+
+  test("capital flow with reallocation on shows the recorded policy, as before", () => {
+    const owner = { id: "u1", name: null, rootWallet: "0x1", reallocation: { enabled: true, reason: null }, policy: { agentIds: ["a"], reallocationCap: null, slotCeiling: null, signedAtEvaluation: null, sequence: 3, policyHash: "0x" } };
+    const html = text(renderToStaticMarkup(<CapitalFlowView flow={{ ownerId: "u1", reallocations: [], reallocationsIndexed: false, spends: [] }} agents={[]} owner={owner} settlement={settlement} />));
+    expect(html).toContain("Signed, sequence 3");
+    expect(html).toContain("Reallocation is on for this deployment");
+    expect(html).not.toContain("Off for every agent");
+  });
+
+  test("the sample screens say the sample shows the design and that a deployment runs with reallocation off", () => {
+    const html = text(renderToStaticMarkup(<SampleReallocationNote />));
+    expect(html).toContain("does not describe a running deployment");
     expect(html).toContain("Reallocation is off by default");
   });
 

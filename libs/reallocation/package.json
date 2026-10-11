@@ -6,7 +6,8 @@
     ".": "./dist/src/index.js",
     "./constants": "./dist/src/constants.js",
     "./plan": "./dist/src/plan.js",
-    "./retirement": "./dist/src/retirement.js"
+    "./retirement": "./dist/src/retirement.js",
+    "./switch": "./dist/src/switch.js"
   },
   "scripts": {
     "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js"
