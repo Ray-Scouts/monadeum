@@ -74,7 +74,7 @@ The agent view carries the field names of `Agent` in `apps/web/src/data/types.ts
 | Field | Type | Source |
 |---|---|---|
 | `capital` | `string \| null` | the account's settlement-asset balance at the latest evaluation, base units |
-| `fitnessPercentile` | `number \| null` | adjusted fitness percentile within the agent's niche at the latest evaluation, in [0, 1]; null when the agent had no adjusted fitness |
+| `fitnessPercentile` | `number \| null` | adjusted fitness percentile within the agent's niche at the latest evaluation, on a 0 to 100 scale (stored in [0, 1] and multiplied by 100); null when the agent had no adjusted fitness |
 | `lowWindows` | `number \| null` | the starvation count (consecutive bottom-decile windows) carried out of the latest evaluation |
 | `zeroDownsideFlag` | `boolean \| null` | the zero-downside flag at the latest evaluation |
 | `retirement` | `{ rule: string; evaluation: number } \| null` | the section 6 rule and evaluation sequence, when an evaluation retired the agent |

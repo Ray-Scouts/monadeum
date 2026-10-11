@@ -90,6 +90,7 @@ export interface AgentView {
   principal: string | null;
   capital: string | null;
   tradeCount: null;
+  /** Within the niche, 0 to 100, as the web's `Agent` type has it; the evaluation record stores it in [0, 1]. */
   fitnessPercentile: number | null;
   lowWindows: number | null;
   zeroDownsideFlag: boolean | null;
@@ -153,7 +154,8 @@ export function agentView(
     principal: worker ? worker.principal.toString() : null,
     capital: latest ? latest.capital.toString() : null,
     tradeCount: null,
-    fitnessPercentile: latest?.fitnessPercentile ?? null,
+    // Stored in [0, 1], as the retirement check computes it; served on the web's 0 to 100 scale.
+    fitnessPercentile: latest && latest.fitnessPercentile !== null ? latest.fitnessPercentile * 100 : null,
     lowWindows: latest?.lowWindows ?? null,
     zeroDownsideFlag: latest?.zeroDownsideFlag ?? null,
     retirement: latest?.retired && latest.retirementRule ? { rule: latest.retirementRule, evaluation: latest.sequence } : null,

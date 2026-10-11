@@ -50,14 +50,14 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
     it("serves the latest evaluation and the capital history to the owner", async () => {
       await writer(b).record([record(first, 1), record(second, 1, { capital: 7n })]);
       await writer(b).record([
-        record(first, 2, { fitnessPercentile: 1 / 6, lowWindows: 1, zeroDownsideFlag: true }),
+        record(first, 2, { fitnessPercentile: 0.25, lowWindows: 1, zeroDownsideFlag: true }),
         record(second, 2, { capital: 3n, adjustedFitness: null, fitnessPercentile: null, lowWindows: 3, retired: true, retirementRule: "starvation" }),
       ]);
       const detail = await call(b.app, "GET", `/agents/${first}`, { auth: aliceAuth });
       assert.equal(detail.status, 200);
       const agent = detail.body.agent;
       assert.equal(agent.capital, "100000002");
-      assert.equal(agent.fitnessPercentile, 1 / 6);
+      assert.equal(agent.fitnessPercentile, 25, "stored as 0.25, served on a 0 to 100 scale");
       assert.equal(agent.lowWindows, 1);
       assert.equal(agent.zeroDownsideFlag, true);
       assert.equal(agent.retirement, null);
