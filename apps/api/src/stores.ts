@@ -1,10 +1,12 @@
-import { decode, encode, isUniqueViolation, type Database } from "@monadeum/db";
+import type { AgentRecord as WorkerAgentRecord, AgentRegistry as WorkerAgentRegistry } from "@monadeum/agent-registry";
+import { decode, encode, isUniqueViolation, PgAgentStore, type Database, type Transaction } from "@monadeum/db";
 import type { PriorRecovery, RecoveryHold } from "@monadeum/recovery";
 import { getAddress, type Address, type Hex } from "viem";
 
-// Stores the API owns: the agent registry (AgentsModule's record of which owner wallet an agent belongs to), the
-// recovery log behind the bulk recovery hold (SECURITY.md section 9), and the owner-signed reallocation policies.
-// Each has an in-memory implementation for tests and local development and a Postgres one on migration 0007.
+// Stores the API owns: the agent registry (AgentsModule's record of which owner wallet an agent belongs to), agent
+// creation (that record and the worker's agent record, written together), the recovery log behind the bulk recovery
+// hold (SECURITY.md section 9), and the owner-signed reallocation policies. Each has an in-memory implementation for
+// tests and local development and a Postgres one on migrations 0007 and 0008.
 
 export interface AgentRecord {
   agentId: string;
@@ -13,6 +15,8 @@ export interface AgentRecord {
   /** Kernel account index. One owner has one index per agent account. */
   index: bigint;
   name: string;
+  /** The genome preset the agent was created from (EVOLUTION.md section 1.1); null on a record written before presets. */
+  preset: string | null;
   /** The on-chain limits the agent's account is deployed with, settlement-asset base units. */
   limits: { perTxCap: bigint; dailyCap: bigint };
   /** Identity registry token ID (ARCHITECTURE.md section 9), a canonical decimal string; null until the registry exists. */
@@ -32,6 +36,18 @@ export interface AgentRegistry {
   /** One more than the owner's highest index, or 0. */
   nextIndex(owner: Address): Promise<bigint>;
   count(): Promise<number>;
+}
+
+export type CreationOutcome = "created" | "conflict" | "population-cap";
+
+/**
+ * Agent creation's write: the API's creation record and the worker's agent record (`@monadeum/agent-registry`), both
+ * or neither. `create` answers `population-cap`, and writes nothing, when `populationCap` Active agents already exist
+ * (EVOLUTION.md section 4), and `conflict` when the agent ID or the (owner, index) pair is taken. Creations are
+ * serialized, so two concurrent ones cannot both take the last place under the cap.
+ */
+export interface AgentCreation {
+  create(record: AgentRecord, worker: WorkerAgentRecord, populationCap: number): Promise<CreationOutcome>;
 }
 
 export interface StoredHold {
@@ -73,6 +89,7 @@ export interface PolicyLedger {
 
 const lower = (a: string) => a.toLowerCase();
 const copyAgent = (r: AgentRecord): AgentRecord => ({ ...r, limits: { ...r.limits } });
+const activeCount = (agents: readonly WorkerAgentRecord[]) => agents.filter((a) => a.status === "active").length;
 const copyHold = (h: StoredHold): StoredHold => ({ ...h, hold: { ...h.hold, agentIds: [...h.hold.agentIds] } });
 
 export class MemoryAgentRegistry implements AgentRegistry {
@@ -105,6 +122,28 @@ export class MemoryAgentRegistry implements AgentRegistry {
 
   async count() {
     return this.rows.size;
+  }
+}
+
+/** Agent creation over the in-memory registries, serialized in process. */
+export class MemoryAgentCreation implements AgentCreation {
+  private tail: Promise<unknown> = Promise.resolve();
+
+  constructor(
+    private readonly agents: AgentRegistry,
+    private readonly workers: WorkerAgentRegistry,
+  ) {}
+
+  create(record: AgentRecord, worker: WorkerAgentRecord, populationCap: number): Promise<CreationOutcome> {
+    const run = this.tail.then(async (): Promise<CreationOutcome> => {
+      if (activeCount(await this.workers.list()) >= populationCap) return "population-cap";
+      if (record.agentId !== worker.agentId || (await this.workers.get(worker.agentId))) return "conflict";
+      if (!(await this.agents.create(record))) return "conflict";
+      await this.workers.add(worker);
+      return "created";
+    });
+    this.tail = run.catch(() => undefined);
+    return run;
   }
 }
 
@@ -161,6 +200,7 @@ export class MemoryPolicyLedger implements PolicyLedger {
 
 interface AgentBody {
   name: string;
+  preset?: string;
   limits: { perTxCap: bigint; dailyCap: bigint };
   owner: Address;
 }
@@ -182,6 +222,7 @@ function agentFrom(row: AgentRow): AgentRecord {
     owner: getAddress(body.owner),
     index: BigInt(row.agent_index),
     name: body.name,
+    preset: body.preset ?? null,
     limits: body.limits,
     registryId: row.registry_id,
     createdAt: Number(row.created_at),
@@ -192,7 +233,7 @@ export class PgAgentRegistry implements AgentRegistry {
   constructor(private readonly db: Database) {}
 
   async create(record: AgentRecord) {
-    const body: AgentBody = { name: record.name, limits: record.limits, owner: record.owner };
+    const body: AgentBody = { name: record.name, limits: record.limits, owner: record.owner, ...(record.preset !== null ? { preset: record.preset } : {}) };
     try {
       const { rows } = await this.db.query(
         `INSERT INTO api_agents (agent_id, owner_key, agent_index, registry_id, created_at, body) VALUES ($1, $2, $3, $4, $5, $6::jsonb)
@@ -224,6 +265,40 @@ export class PgAgentRegistry implements AgentRegistry {
   async count() {
     const { rows } = await this.db.query<{ n: string }>("SELECT count(*)::text AS n FROM api_agents");
     return Number(rows[0]!.n);
+  }
+}
+
+/** Key of the transaction-scoped advisory lock that serializes agent creation across API instances. */
+const CREATION_LOCK = 0x6d6f6e61;
+
+/** One open transaction as a `Database`, so the stores below run their statements inside it. */
+function within(tx: Transaction): Database {
+  return {
+    query: (text, params) => tx.query(text, params),
+    transaction: (fn) => fn(tx),
+  };
+}
+
+/**
+ * Agent creation on Postgres: one transaction, under `monadeum_api` when `db` is role-scoped, that takes the creation
+ * lock, counts Active worker agents, inserts the `api_agents` row, and inserts the `worker_agents` row (0008). Any
+ * failure rolls both back. A lost race on the (owner, index) pair is `ON CONFLICT DO NOTHING`, so it never aborts
+ * the transaction; it answers `conflict` and the transaction writes nothing.
+ */
+export class PgAgentCreation implements AgentCreation {
+  constructor(private readonly db: Database) {}
+
+  create(record: AgentRecord, worker: WorkerAgentRecord, populationCap: number): Promise<CreationOutcome> {
+    if (record.agentId !== worker.agentId) return Promise.resolve("conflict");
+    return this.db.transaction(async (tx): Promise<CreationOutcome> => {
+      await tx.query("SELECT pg_advisory_xact_lock($1)", [CREATION_LOCK]);
+      const { rows } = await tx.query<{ n: string }>("SELECT count(*)::text AS n FROM worker_agents WHERE status = 'active'");
+      if (Number(rows[0]!.n) >= populationCap) return "population-cap";
+      const scoped = within(tx);
+      if (!(await new PgAgentRegistry(scoped).create(record))) return "conflict";
+      await new PgAgentStore(scoped).add(worker);
+      return "created";
+    });
   }
 }
 

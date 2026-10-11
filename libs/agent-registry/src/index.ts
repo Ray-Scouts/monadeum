@@ -1,3 +1,4 @@
+import type { GenomeV1 } from "@monadeum/commitment";
 import type { Decision } from "@monadeum/risk";
 import type { Provider } from "@monadeum/x402";
 import type { Hex } from "viem";
@@ -22,7 +23,17 @@ export interface AgentRecord {
     pair: string;
     assetUniverse: readonly string[];
   };
-  /** Owner deposits minus owner withdrawals, base units. Reallocation never changes it. */
+  /**
+   * The full genome document `genomeHash` commits to, normalized as `libs/commitment` hashes it (ARCHITECTURE.md
+   * sections 9 and 16.4). `genome` above is the part the worker reads, derived from it. Written by agent creation;
+   * absent only on records written before creation stored it, which cannot be verified against their hash.
+   */
+  genomeDocument?: GenomeV1;
+  /**
+   * Owner deposits minus owner withdrawals, base units. Reallocation never changes it. 0 at creation, until funding
+   * is recomputed from indexed transfers (EVOLUTION.md section 1.1); the worker neither ticks nor evaluates an agent
+   * whose principal is 0.
+   */
   principal: bigint;
   status: "active" | "retired";
 }

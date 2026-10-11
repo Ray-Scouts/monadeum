@@ -15,6 +15,7 @@
         "@monadeum/indexer": "workspace:*",
         "@monadeum/reallocation": "workspace:*",
         "@monadeum/recovery": "workspace:*",
+        "@monadeum/strategy": "workspace:*",
         "@monadeum/wallets": "workspace:*",
         "@nestjs/common": "^11.1.6",
         "@nestjs/core": "^11.1.6",
@@ -98,6 +99,7 @@
     "libs/agent-registry": {
       "name": "@monadeum/agent-registry",
       "dependencies": {
+        "@monadeum/commitment": "workspace:*",
         "@monadeum/risk": "workspace:*",
         "@monadeum/x402": "workspace:*",
         "viem": "2.56.9",

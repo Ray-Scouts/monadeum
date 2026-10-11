@@ -28,6 +28,8 @@ export function settings(overrides: Partial<ApiSettings> = {}): ApiSettings {
     maxPerTxCap: 1_000_000_000n,
     maxDailyCap: 5_000_000_000n,
     settlementDecimals: 6,
+    agentPair: "WETH/USDC",
+    populationCap: 50,
     ...overrides,
   };
 }

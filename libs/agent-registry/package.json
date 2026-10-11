@@ -9,6 +9,7 @@
     "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js"
   },
   "dependencies": {
+    "@monadeum/commitment": "workspace:*",
     "@monadeum/risk": "workspace:*",
     "@monadeum/x402": "workspace:*",
     "viem": "2.56.9"
