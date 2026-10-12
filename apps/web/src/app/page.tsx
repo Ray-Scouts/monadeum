@@ -1,6 +1,6 @@
-import { USES_API } from "@/data/config";
-import { Home } from "./_landing/Home";
+import { Landing } from "./_landing/Landing";
 
+/** `/`: the marketing landing in both modes. Its figures are labeled as samples, and its app links go through the session gate in `api` mode. */
 export default function HomePage() {
-  return <Home api={USES_API} />;
+  return <Landing />;
 }

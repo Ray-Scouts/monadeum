@@ -9,13 +9,13 @@ import { AppFrame } from "@/components/AppFrame";
 import { USES_API } from "@/data/config";
 import { AuthContext, PENDING_PRIVY, type Auth, type AuthState, type PrivyBridge } from "./auth";
 import { AppGate } from "./gate";
-import { HOME_PATH, LOGIN_PATH, gateDecision, homeDecision, loginDecision, loginHref, safeNext } from "./navigation";
+import { HOME_PATH, LOGIN_PATH, gateDecision, loginDecision, loginHref, safeNext } from "./navigation";
 import { PRIVY_FAILED_ERROR } from "./ApiRoot";
 import { LoginScreen, SignInPanel } from "./SignIn";
 
 // The landing's CSS module is a build artifact Bun does not produce; class names stand in for it.
 mock.module("@/app/_landing/landing.module.css", () => ({ default: new Proxy({}, { get: (_, key) => String(key) }) }));
-const { Home } = await import("@/app/_landing/Home");
+const { Landing } = await import("@/app/_landing/Landing");
 
 // Session gating of `api` mode. Effects (the redirects themselves) do not run in a static render, so the redirect
 // targets are tested on the decision functions the components call, and the components on what they render.
@@ -125,11 +125,6 @@ describe("redirects", () => {
     expect(gateDecision({ status: "signed-out", error: null, byUser: true }, "/capital-flow", "")).toEqual({ kind: "redirect", to: LOGIN_PATH });
   });
 
-  test("/ goes to the population when signed in, to the sign-in page otherwise", () => {
-    expect(homeDecision(signedIn)).toEqual({ kind: "redirect", to: HOME_PATH });
-    expect(homeDecision(signedOut)).toEqual({ kind: "redirect", to: LOGIN_PATH });
-    expect(homeDecision(loading)).toEqual({ kind: "pending" });
-  });
 
   test("after sign-in, the page goes to next, or the population, and refuses an open redirect", () => {
     expect(loginDecision(signedIn, "?next=%2Fagents%2Fag1")).toEqual({ kind: "redirect", to: "/agents/ag1" });
@@ -198,15 +193,8 @@ describe("sign-in page", () => {
 });
 
 describe("landing", () => {
-  test("does not render in api mode", () => {
-    const html = text(render(<Home api />, signedOut));
-    expect(html).not.toContain("Before you create your agent");
-    expect(html).not.toContain("illustrative samples");
-    expect(html).toContain("Checking your session");
-  });
-
-  test("renders in sample mode, unchanged", () => {
-    const html = text(render(<Home api={false} />));
+  test("renders at / in both modes, labeled as samples", () => {
+    const html = text(render(<Landing />));
     expect(html).toContain("Before you create your agent");
     expect(html).toContain("illustrative samples");
   });
