@@ -33,6 +33,16 @@ The `backend` network is `internal`: Postgres and Redis have no route out and no
 - The x402 payer is off (`WORKER_X402_PAYER_ENABLED=false`) and reallocation is off (`MONADEUM_REALLOCATION_ENABLED=false`), both decided.
 - All services run with `MONADEUM_ENV=development`, deliberately: the file vault refuses `production`, and so does a worker without a tick runner. Every store is still on Postgres, because `DATABASE_URL` is set; `development` only lifts those two refusals. The production guards stay as they are for mainnet.
 
+## Live testnet deployment
+
+The deployment this runbook produced, as of 2026-10-11. Every item is FACT, checked that day by the owner. No secret, project ID, or URL carrying one is recorded here.
+
+- **Hosts.** The web app at `https://app.monadeum.xyz` and the API at `https://api.monadeum.xyz`, both served from one VPS by the `proxy` profile (Caddy), with certificates from Let's Encrypt. DNS has one A record for `app` and one for `api`, both pointing at the VPS.
+- **Contracts.** Monad testnet only, not audited, not on mainnet: `AgentSpendPolicy` `0xe54512401B8fCD0DCc3f4Aa4929b99F05AbA3f05`, `AgentReallocation` `0x4e7500415e81017670a9cFb8763f873EE6694A7f`, `X402PaymentValidator` `0xCA918F53FFc7507Bd41602c0bD1ef72558705991`, deployed in blocks 70167444 to 70167461 (`contracts/deployments/monad-testnet.json`).
+- **Privy.** The app is in development mode, with email and Google sign-in enabled and identity tokens turned on (the API reads the embedded wallet only from the identity token). Privy's embedded wallets appear in that token as `privy-v2`; the API accepts them since PR #130.
+- **ZeroDev.** One project for chain 10143. The bundler and the paymaster use the same v3 endpoint, so `WALLETS_BUNDLER_URL` and `WALLETS_PAYMASTER_URL` hold the same value. Gas sponsorship is set to sponsor all transactions, which is acceptable on testnet only. Recommended: set a sponsorship limit for the chain in the ZeroDev dashboard, so a loop or a leaked endpoint cannot drain the testnet gas balance (`ARCHITECTURE.md` section 7).
+- **First agent.** Created through the web app; its Kernel account was deployed with sponsored gas, and the indexer recorded `account.deployed`, `spend.limits-set`, and `spend.call-allowed` for it.
+
 ## 1. Prepare the VPS
 
 Ubuntu 24.04 LTS, at least 2 vCPU, 4 GB RAM, and 40 GB disk (the server image holds the whole compiled workspace and is large). Create two DNS A records pointing at the VPS: `WEB_DOMAIN` (for example `app.example.com`) and `API_DOMAIN` (for example `api.example.com`). They must be same-site, because the session cookie is `SameSite=Strict`.
@@ -298,13 +308,48 @@ A vault backup holds every key that existed when it was taken. Restoring it brin
 
 ## 8. Upgrades and operations
 
+The checkout on the VPS, `/opt/monadeum`, holds two things that exist nowhere else and are not in the repository: `deploy/.env.testnet` (every password and the provider configuration) and `deploy/secrets/` (the two vault passphrases). An update must never overwrite or remove them.
+
+**Update by rsync (the procedure used on 2026-10-11).** From an up-to-date `main` checkout on the owner's machine:
+
+```bash
+git switch main && git pull --ff-only
+rsync -az \
+  --exclude deploy/.env.testnet \
+  --exclude deploy/secrets \
+  --exclude node_modules \
+  --exclude .git \
+  --exclude .next \
+  --exclude dist \
+  --exclude '*.tsbuildinfo' \
+  --exclude contracts/out \
+  --exclude contracts/cache \
+  --exclude contracts/broadcast \
+  ./ <user>@<vps>:/opt/monadeum/
+```
+
+Then, on the VPS, rebuild and restart only the services whose code changed (`web`, `api`, `worker`, or `indexer`):
+
 ```bash
 cd /opt/monadeum
-git pull
+dc build <service>
+dc run --rm migrate        # when the change includes a migration; harmless otherwise
+dc up -d <service>
+```
+
+**Warning.** Do not add `--delete` to that rsync unless every exclude above is kept. `--delete` removes from the VPS every file that is absent from the source checkout, and `deploy/.env.testnet` and `deploy/secrets/` are never in a checkout, so a `--delete` without those excludes destroys the environment file and the vault passphrases. Without the passphrases the session and x402 vaults cannot be opened, and every agent key in them is lost (sections 3 and 7). Without `--delete`, files removed from the repository stay on the VPS; that is harmless for the build, because `.dockerignore` and the Dockerfile decide what enters an image. If `--delete` is wanted, run it first with `--dry-run` and read the list of deletions.
+
+**Alternative: a git deploy key.** Instead of pushing files, the VPS pulls. Create a key on the VPS (`ssh-keygen -t ed25519 -f ~/.ssh/monadeum_deploy -N ''`), add its public half to the GitHub repository as a deploy key with read access only, and clone with it (`GIT_SSH_COMMAND='ssh -i ~/.ssh/monadeum_deploy' git clone git@github.com:Ray-Scouts/monadeum.git /opt/monadeum`, then `git config core.sshCommand 'ssh -i ~/.ssh/monadeum_deploy'` in the checkout). An update is then:
+
+```bash
+cd /opt/monadeum
+git pull --ff-only
 dc build
 dc run --rm migrate
 dc up -d
 ```
+
+`.gitignore` covers `deploy/.env.testnet` and `deploy/secrets/`, so git neither tracks nor removes them; never run `git clean -x` in this checkout, which would delete both. The key is read-only and scoped to this one repository, but it sits on the VPS, so whoever holds the VPS can read the repository; remove it from GitHub when the VPS is retired.
 
 `WORKER_TICK_INTERVAL_MS` is fixed for the life of a deployment: changing it renumbers ticks. Rotating a database password: change it in `deploy/.env.testnet`, then `dc run --rm migrate` (which sets it again) and `dc up -d`. Logs are capped at 5 x 20 MB per container.
 
@@ -322,7 +367,7 @@ None of this is a mainnet deployment. Before one:
 ## Open questions
 
 1. **No Kuru WETH/USDC market on this USDC.** The decided pair is WETH/USDC, but Kuru's documented testnet market is MON/USDC with a native-MON base, quoted in a different token, `0x3bA3d39AFcf8bb994f7964B3e0171Ea2Ba361570` ("USD Coin", FACT on chain 2026-10-11), not in the testnet USDC the contracts are deployed against. No trade can run on testnet until a market on this USDC is chosen, or the settlement asset is changed (which means redeploying all three contracts).
-2. **Which ZeroDev project** serves chain 10143 for the bundler and, optionally, the paymaster.
+2. **ZeroDev sponsorship limit.** The project serving chain 10143 is set up ("Live testnet deployment"), and it sponsors all transactions; which per-chain limit to set is not decided.
 3. **Testnet x402 providers.** `WALLETS_X402_VALIDATOR_ADDRESS` stays empty until there are pay-to addresses to list, although the validator is deployed (`0xCA918F53FFc7507Bd41602c0bD1ef72558705991`); the payer stays off regardless.
 4. **Explorer source verification** for the three contracts (the explorer's verification API and settings were not checked).
 5. **Who holds each Safe owner key** (see "Before mainnet").

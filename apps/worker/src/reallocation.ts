@@ -98,8 +98,8 @@ export interface ReallocationExecutor {
 }
 
 /**
- * Fail-closed default. The reallocation contract (contracts/src/AgentReallocation.sol) is not deployed, so nothing is submitted. Once it is,
- * the executor sends the plan through `WalletsService.executeForTick` with the debit's key as the tick key.
+ * Fail-closed default: nothing is submitted. The reallocation contract (contracts/src/AgentReallocation.sol) is deployed on Monad testnet only,
+ * with reallocation off there. Once an executor is wired, it sends the plan through `WalletsService.executeForTick` with the debit's key as the tick key.
  */
 export class UnconfiguredReallocationExecutor implements ReallocationExecutor {
   async execute(): Promise<{ ok: false; submitted: false; reason: string }> {

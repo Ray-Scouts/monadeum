@@ -30,10 +30,16 @@ export function safeNext(raw: string | null | undefined): string {
   return path;
 }
 
-/** The sign-in page, remembering where the visitor was going when that is a valid `next`. */
+/**
+ * The sign-in page, remembering where the visitor was going when that is a valid `next`. `HOME_PATH` is a valid
+ * `next` like any other screen: `safeNext` also returns it for a refused target, so its return value alone cannot tell
+ * "the visitor was on the population" from "the target was refused", and only the refused case drops `next`.
+ */
 export function loginHref(pathname: string, search: string): string {
-  const next = safeNext(`${pathname}${search}`);
-  return next === HOME_PATH ? LOGIN_PATH : `${LOGIN_PATH}?next=${encodeURIComponent(next)}`;
+  const target = `${pathname}${search}`;
+  const next = safeNext(target);
+  if (next === HOME_PATH && target !== HOME_PATH) return LOGIN_PATH;
+  return `${LOGIN_PATH}?next=${encodeURIComponent(next)}`;
 }
 
 export type Decision = { kind: "pending" } | { kind: "render" } | { kind: "redirect"; to: string };
