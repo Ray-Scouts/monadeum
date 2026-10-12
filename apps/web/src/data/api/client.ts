@@ -4,6 +4,9 @@ import type {
   ApiAgent,
   ApiUser,
   CapitalFlowResponse,
+  FundingInfo,
+  FundingPrepared,
+  FundingView,
   HoldView,
   MeResponse,
   Operation,
@@ -72,6 +75,13 @@ export interface SessionClient {
   operation(id: string, wait: boolean): Promise<{ operation: Operation }>;
   /** Posts the owner wallet's signature. Only the signature leaves the browser, never a key. */
   submitSignature(operationId: string, requestId: string, signature: string): Promise<{ operation: Operation }>;
+  /** The funding card's data: limits, today's relays, and the owner wallet's balance read from chain. 503 without a relayer. */
+  fundingInfo(agentId: string): Promise<FundingInfo>;
+  /** Asks the API to build the EIP-3009 authorization for `value` base units. Sends only the value. */
+  prepareFunding(agentId: string, value: string): Promise<FundingPrepared>;
+  /** Posts the owner's signature over the prepared authorization; the platform relayer submits it. */
+  submitFunding(agentId: string, nonce: string, signature: string): Promise<{ funding: FundingView }>;
+  fundingStatus(agentId: string, nonce: string): Promise<{ funding: FundingView }>;
 }
 
 export interface ApiClient {
@@ -159,6 +169,10 @@ export function createApiClient(baseUrl: string, fetchImpl: Fetch = (input, init
         redeploy: (id) => post(`/agents/${seg(id)}/deploy`),
         operation: (id, wait) => get(`/operations/${seg(id)}${wait ? "?wait=true" : ""}`),
         submitSignature: (id, requestId, signature) => post(`/operations/${seg(id)}/signature`, { requestId, signature }),
+        fundingInfo: (id) => get(`/agents/${seg(id)}/funding`),
+        prepareFunding: (id, value) => post(`/agents/${seg(id)}/funding/prepare`, { value }),
+        submitFunding: (id, nonce, signature) => post(`/agents/${seg(id)}/funding/submit`, { nonce, signature }),
+        fundingStatus: (id, nonce) => get(`/agents/${seg(id)}/funding/${seg(nonce)}`),
       };
     },
   };

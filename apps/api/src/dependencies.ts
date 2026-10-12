@@ -8,6 +8,9 @@ import type { AgentWalletStore, WalletsService } from "@monadeum/wallets";
 import type { PaymentTotals } from "@monadeum/x402";
 import { HttpException } from "@nestjs/common";
 import type { ApiSettings } from "./config.js";
+import type { FundingChain } from "./funding-chain.js";
+import type { FundingSettings } from "./funding-runtime.js";
+import type { FundingStore } from "./funding-store.js";
 import type { SignatureRelay } from "./relay.js";
 import type { AgentCreation, AgentRegistry, PolicyLedger, RecoveryLog } from "./stores.js";
 
@@ -47,9 +50,18 @@ export interface ApiDependencies {
   /** X402Module's payment log, read for x402 spend, through `monadeum_reader` on Postgres. */
   payments: PaymentTotals;
   relay: SignatureRelay;
+  /** The relayed funding transfer. Null when no relayer is configured: the funding endpoints answer 503. */
+  funding: FundingDependencies | null;
   settings: ApiSettings;
   now: () => number;
   newId: () => string;
+}
+
+/** The funding relayer's chain adapter (which holds its key), its limits, and the authorization store. */
+export interface FundingDependencies {
+  chain: FundingChain;
+  settings: FundingSettings;
+  store: FundingStore;
 }
 
 export const defaultClock = { now: Date.now, newId: randomUUID };

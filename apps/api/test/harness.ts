@@ -11,7 +11,7 @@ import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fa
 import { Test } from "@nestjs/testing";
 import { getAddress, keccak256, toHex, verifyMessage, verifyTypedData, type Address, type Hex, type LocalAccount } from "viem";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
-import { ApiModule, buildDependencies, configureApp, memoryStores, postgresStores, roleScoped, type ApiDependencies, type ApiSettings, type ApiStores } from "../src/index.js";
+import { ApiModule, buildDependencies, configureApp, memoryStores, postgresStores, roleScoped, type ApiDependencies, type ApiSettings, type ApiStores, type FundingChain, type FundingSettings } from "../src/index.js";
 
 export const ORIGIN = "https://app.example.test";
 
@@ -117,7 +117,7 @@ export interface Booted {
 
 export type Backend = "memory" | "pglite";
 
-export async function boot(backend: Backend, options: { settings?: Partial<ApiSettings>; wallets?: boolean; policyWriter?: ReallocationPolicyWriter } = {}): Promise<Booted> {
+export async function boot(backend: Backend, options: { settings?: Partial<ApiSettings>; wallets?: boolean; policyWriter?: ReallocationPolicyWriter; funding?: (chain: SigningFakeChain, clock: { now: number }) => { chain: FundingChain; settings: FundingSettings } } = {}): Promise<Booted> {
   let pg: PGlite | null = null;
   let db: Database | null = null;
   let stores: ApiStores;
@@ -142,6 +142,7 @@ export async function boot(backend: Backend, options: { settings?: Partial<ApiSe
     settings: settings(options.settings),
     wallets: options.wallets === false ? null : (s) => new WalletsService(chain, s.walletStore, vault, s.ledger, { scope, budget: { operations: 100, gasWei: 10n ** 18n }, paymaster: true }, () => clock.now),
     policyWriter: options.policyWriter ?? null,
+    funding: options.funding ? options.funding(chain, clock) : null,
     now: () => clock.now,
   });
   const moduleRef = await Test.createTestingModule({ imports: [ApiModule.forRoot(deps)] }).compile();

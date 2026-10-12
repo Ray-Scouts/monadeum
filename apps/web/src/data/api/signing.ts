@@ -75,6 +75,7 @@ const KIND_SUMMARY: Record<Operation["kind"], (names: string) => string> = {
   policy: (names) => `Sign a reallocation policy covering ${names}. It allows capital to move only between these agents of yours, within the protocol bounds.`,
   activate: (names) =>
     `Activate ${names}: approve a session key that can make only the allowlisted calls from the agent's account, within the spending limits set on chain. You can revoke it at any time with "Stop this agent".`,
+  fund: (names) => `Move USDC from your owner wallet to ${names}'s account.`,
 };
 
 const listNames = (names: string[]) => (names.length <= 1 ? (names[0] ?? "this agent") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);

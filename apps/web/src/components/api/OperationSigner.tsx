@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { explain, rawPayload, signWith } from "@/data/api/signing";
+import { explain, rawPayload, signWith, type Explanation } from "@/data/api/signing";
 import type { Operation } from "@/data/api/types";
 import { useAuth } from "./auth";
 import { errorText } from "./ErrorNote";
@@ -13,15 +13,17 @@ export interface SignatureRequestViewProps {
   busy: boolean;
   error: string | null;
   onSign(): void;
+  /** Replaces the generic explanation, for a request whose meaning the caller can state more precisely. */
+  explanation?: Explanation;
 }
 
 /**
  * What the owner is about to sign: a plain-language summary first, then the exact payload in an expandable section.
  * Signing happens in the wallet's own UI; this page receives only the signature.
  */
-export function SignatureRequestView({ operation, name, busy, error, onSign }: SignatureRequestViewProps) {
+export function SignatureRequestView({ operation, name, busy, error, onSign, explanation }: SignatureRequestViewProps) {
   const request = operation.signatureRequest;
-  const e = explain(operation, name);
+  const e = explanation ?? explain(operation, name);
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface-2 p-4 text-sm">
       <span className="eyebrow">Your signature is needed</span>

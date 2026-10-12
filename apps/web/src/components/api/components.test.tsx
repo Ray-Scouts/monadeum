@@ -4,9 +4,10 @@ import { apiAgent } from "@/data/api/fixtures";
 import { stopViewFromError, stopViewFromResponse } from "@/data/api/stop";
 import { ApiError } from "@/data/api/client";
 import { loadWebConfig } from "@/data/config";
-import type { Operation, SessionView } from "@/data/api/types";
+import type { FundingPrepared, Operation, SessionView } from "@/data/api/types";
 import { activateViewFromError, activateViewFromOperation } from "@/data/api/activate";
 import { ActivatePanel, type ActivatePanelProps } from "./ActivateAgent";
+import { explainFunding, fundingOperation } from "@/data/api/funding";
 import { CreateFormView } from "./CreateAgent";
 import { SignatureRequestView } from "./OperationSigner";
 import { SignInPanel } from "./SignIn";
@@ -36,6 +37,35 @@ describe("sign-in", () => {
   test("without a Privy app ID the social path says it is not configured", () => {
     const html = renderToStaticMarkup(<SignInPanel privyAvailable={false} privyReady={false} busy={false} error="x" onPrivy={noop} onWallet={noop} />);
     expect(html).toContain("not configured on this deployment");
+  });
+});
+
+describe("fund this agent", () => {
+  test("the authorization is summarized in plain words first, with the raw typed data expandable", () => {
+    const owner = "0x00000000000000000000000000000000000000a0";
+    const prepared: FundingPrepared = {
+      funding: { nonce: `0x${"ab".repeat(32)}`, agentId: "a1", status: "prepared", from: owner, to: "0x00000000000000000000000000000000000000ac", value: "5000000", validAfter: "1", validBefore: "601", txHash: null, blockNumber: null, submittedAt: null, error: null },
+      agent: { id: "a1", name: "alpha" },
+      decimals: 6,
+      expiresAt: 601_000,
+      typedData: {
+        domain: { name: "USDC", version: "2", chainId: 10143, verifyingContract: "0x534b2f3A21130d7a60830c2Df862319e593943A3" },
+        types: { TransferWithAuthorization: [{ name: "to", type: "address" }] },
+        primaryType: "TransferWithAuthorization",
+        message: { from: owner, to: "0x00000000000000000000000000000000000000ac", value: "5000000", validAfter: "1", validBefore: "601", nonce: `0x${"ab".repeat(32)}` },
+      },
+    };
+    const html = text(
+      renderToStaticMarkup(
+        <SignatureRequestView operation={fundingOperation(prepared, owner)} explanation={explainFunding(prepared, owner)} busy={false} error={null} onSign={noop} />,
+      ),
+    );
+    const summary = html.indexOf("Move 5 USDC from your owner wallet to alpha's account.");
+    const raw = html.indexOf("Raw data your wallet will sign (EIP-712 typed data)");
+    expect(summary).toBeGreaterThan(-1);
+    expect(summary).toBeLessThan(raw);
+    expect(html).toContain("pays the network fee");
+    expect(html).not.toContain("Do not sign");
   });
 });
 

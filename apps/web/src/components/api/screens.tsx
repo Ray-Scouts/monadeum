@@ -11,6 +11,7 @@ import type { Operation } from "@/data/api/types";
 import { WEB_CONFIG } from "@/data/config";
 import { useSession } from "./auth";
 import { ErrorNote, errorText } from "./ErrorNote";
+import { FundAgent } from "./FundAgent";
 import { OperationSigner } from "./OperationSigner";
 import { ActivateAgent } from "./ActivateAgent";
 import { StopAgent } from "./StopAgent";
@@ -169,6 +170,7 @@ export function ApiAgent({ id }: { id: string }) {
         <CapitalHistoryCard agent={agent} settlement={settlement} />
         <StrategyCard agent={agent} />
       </div>
+      {agent.deployment === "deployed" && <FundAgent agent={agent} onChanged={reload} />}
       <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <ExplainerCard explainer={explainAgent(agent, owner)} owner={owner} />
         <ApiX402Split x402={agent.x402} title="x402 spend" scope="this agent, by provider" settlement={settlement} />

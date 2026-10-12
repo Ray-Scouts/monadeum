@@ -19,8 +19,9 @@ export class FileVaultError extends Error {
 /**
  * What a vault holds. Written into the vault's header and into every key's associated data, so a session-key vault
  * cannot be opened as the x402 vault, and a key file copied between vaults or between agents fails to decrypt.
+ * `relayer` holds the API's funding relayer key (ARCHITECTURE.md section 7), one key under a fixed name.
  */
-export type VaultPurpose = "session" | "x402";
+export type VaultPurpose = "session" | "x402" | "relayer";
 
 /** scrypt cost parameters. N must be a power of two. */
 export interface ScryptParams {
@@ -158,7 +159,7 @@ function parseHeader(raw: string, directory: string): Header {
   const valid =
     header?.format === FORMAT &&
     header.version === VERSION &&
-    (header.purpose === "session" || header.purpose === "x402") &&
+    (header.purpose === "session" || header.purpose === "x402" || header.purpose === "relayer") &&
     k?.name === "scrypt" &&
     Number.isSafeInteger(k.N) && k.N > 1 && (k.N & (k.N - 1)) === 0 &&
     Number.isSafeInteger(k.r) && k.r > 0 &&
@@ -301,7 +302,11 @@ export interface FileVaults {
   x402: FileSessionKeyVault | null;
 }
 
-async function passphrase(env: Env, prefix: string): Promise<string> {
+/**
+ * A vault passphrase from `<prefix>_PASSPHRASE` or, preferably, the file named by `<prefix>_PASSPHRASE_FILE` (a Docker
+ * secret). Exactly one of the two must be set.
+ */
+export async function vaultPassphrase(env: Env, prefix: string): Promise<string> {
   const direct = env[`${prefix}_PASSPHRASE`];
   const file = env[`${prefix}_PASSPHRASE_FILE`]?.trim();
   if (direct && file) throw new FileVaultError(`set ${prefix}_PASSPHRASE or ${prefix}_PASSPHRASE_FILE, not both`);
@@ -341,10 +346,10 @@ export async function loadFileVaults(env: Env, options: { scrypt?: ScryptParams 
     const b = path.resolve(x402Dir);
     if (inside(a, b) || inside(b, a)) throw new FileVaultError("WALLETS_X402_VAULT_DIR must be a separate directory from WALLETS_SESSION_VAULT_DIR, neither inside the other");
   }
-  const session = await FileSessionKeyVault.open({ directory: sessionDir, passphrase: await passphrase(env, "WALLETS_SESSION_VAULT"), purpose: "session", scrypt: options.scrypt });
+  const session = await FileSessionKeyVault.open({ directory: sessionDir, passphrase: await vaultPassphrase(env, "WALLETS_SESSION_VAULT"), purpose: "session", scrypt: options.scrypt });
   try {
     const x402 = x402Dir
-      ? await FileSessionKeyVault.open({ directory: x402Dir, passphrase: await passphrase(env, "WALLETS_X402_VAULT"), purpose: "x402", scrypt: options.scrypt })
+      ? await FileSessionKeyVault.open({ directory: x402Dir, passphrase: await vaultPassphrase(env, "WALLETS_X402_VAULT"), purpose: "x402", scrypt: options.scrypt })
       : null;
     return { session, x402 };
   } catch (error) {

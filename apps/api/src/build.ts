@@ -18,6 +18,9 @@ import { MemoryTradeStore, type TradeCounts } from "@monadeum/trading";
 import { MemoryAgentWalletStore, MemorySponsorshipLedger, type AgentWalletStore, type SponsorshipLedger, type WalletsService } from "@monadeum/wallets";
 import { MemoryPaymentLog, type PaymentTotals } from "@monadeum/x402";
 import type { ApiSettings } from "./config.js";
+import type { FundingChain } from "./funding-chain.js";
+import type { FundingSettings } from "./funding-runtime.js";
+import { MemoryFundingStore, PgFundingStore, type FundingStore } from "./funding-store.js";
 import { API_ROLE, READER_ROLE, roleScoped } from "./database.js";
 import { defaultClock, type ApiDependencies } from "./dependencies.js";
 import { SignatureRelay } from "./relay.js";
@@ -55,6 +58,8 @@ export interface ApiStores {
   /** The worker's trade store and x402 payment log, read only: the API never writes either. */
   trades: TradeCounts;
   payments: PaymentTotals;
+  /** Relayed funding authorizations (migration 0014). */
+  funding: FundingStore;
 }
 
 /** In-memory stores, for tests and local development only. Nothing survives a restart. */
@@ -76,6 +81,7 @@ export function memoryStores(): ApiStores {
     evaluations: new MemoryEvaluationStore(),
     trades: new MemoryTradeStore(),
     payments: new MemoryPaymentLog(),
+    funding: new MemoryFundingStore(),
   };
 }
 
@@ -103,6 +109,7 @@ export function postgresStores(db: Database): ApiStores {
     evaluations: new PgEvaluationStore(reader),
     trades: new PgTradeStore(reader),
     payments: new PgPaymentLog(reader),
+    funding: new PgFundingStore(api),
   };
 }
 
@@ -114,6 +121,8 @@ export interface BuildInput {
   /** Builds WalletsModule over the API's wallet store and ledger; omitted or null leaves wallet operations unavailable. */
   wallets?: ((stores: ApiStores) => WalletsService | null) | null;
   policyWriter?: ReallocationPolicyWriter | null;
+  /** The funding relayer's chain adapter and limits; omitted or null leaves funding unavailable. */
+  funding?: { chain: FundingChain; settings: FundingSettings } | null;
   handoff?: OwnerWalletHandoff;
   now?: () => number;
   newId?: () => string;
@@ -137,6 +146,7 @@ export function buildDependencies(input: BuildInput): ApiDependencies {
     evaluations: stores.evaluations,
     trades: stores.trades,
     payments: stores.payments,
+    funding: input.funding ? { ...input.funding, store: stores.funding } : null,
     relay: new SignatureRelay(input.settings.signatureTimeoutMs, input.settings.operationWaitMs),
     settings: input.settings,
     now,

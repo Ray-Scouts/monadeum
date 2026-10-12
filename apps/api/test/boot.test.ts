@@ -123,7 +123,7 @@ test("without WALLETS_CHAIN_ID wallet operations stay unavailable, and /health s
     assert.equal(booted.deps.wallets, null);
     const health = await booted.app.inject({ method: "GET", url: "/health" });
     assert.equal(health.statusCode, 200);
-    assert.deepEqual(JSON.parse(health.body), { status: "ok", wallets: "unavailable" });
+    assert.deepEqual(JSON.parse(health.body), { status: "ok", wallets: "unavailable", funding: "unavailable", fundingRelayer: null });
   } finally {
     await booted.close();
   }
@@ -135,7 +135,7 @@ test("with WALLETS_* and a file vault, agent creation no longer answers 503 and 
   try {
     await ready(booted);
     assert.ok(booted.deps.wallets);
-    assert.deepEqual(JSON.parse((await booted.app.inject({ method: "GET", url: "/health" })).body), { status: "ok", wallets: "configured" });
+    assert.deepEqual(JSON.parse((await booted.app.inject({ method: "GET", url: "/health" })).body), { status: "ok", wallets: "configured", funding: "unavailable", fundingRelayer: null });
     const account = newWallet();
     const challenge = await booted.app.inject({ method: "POST", url: "/auth/wallet/challenge", payload: { address: account.address } });
     const { nonce, message } = JSON.parse(challenge.body);
