@@ -19,7 +19,9 @@ export {
   priceOf,
   referencePrice,
 } from "./market.js";
-export { DEFAULT_MON_PRICE_LIMITS, KuruBookMonPrice, fixedMonPrice, kuruBookReader } from "./mon-price.js";
+export { DEFAULT_MON_PRICE_LIMITS, KuruBookMonPrice, fixedMonPrice, kuruBookReader, monBase } from "./mon-price.js";
+export { TradingConfigError, buildKuruTrading, loadTradingConfig, monPriceSourceOf } from "./config.js";
+export type { TradingConfig } from "./config.js";
 export type { BookReader, MonPrice, MonPriceLimits, MonPriceSource } from "./mon-price.js";
 export type { Book, KuruMarket } from "./market.js";
 export { MemoryPositionStore, MemoryTradeStore, SignerRejected } from "./types.js";

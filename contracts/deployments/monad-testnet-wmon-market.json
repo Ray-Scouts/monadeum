@@ -1,0 +1,52 @@
+{
+  "chainId": 10143,
+  "status": "planned, simulated only (nothing was sent)",
+  "note": "The committed record of the testnet WMON/USDC market (ARCHITECTURE.md section 10, Testnet market). contracts/script/wmon-market.sh writes deployments/monad-testnet-wmon-market.latest.json and deployments/monad-testnet-wmon-seed.latest.json (not committed) on every run; after the owner's broadcasts, copy the market, the transaction hashes, blocks, and gas from the receipts here, set status to created and seeded, and commit. The market address is fixed by the parameters (CREATE2 at the router, no sender in the salt), so it is known before the broadcast. Addresses are public.",
+  "pair": "WMON/USDC",
+  "router": "0x7EFbE105Ca7415dE98F96622173458ac1c054630",
+  "orderBookImplementation": "0x72caE0a99C19B574e8a6De558F43fc1D019c9374",
+  "marginAccount": "0xd029C2D98ff85D8F64799017fE00a59B1159CE02",
+  "market": "0x46b66f84317941eC371E7791753f35653341aeBC",
+  "ammVault": "0x1fDa5CC22F809BC5e446e7F47c2b45DFC1Fc44F3",
+  "params": {
+    "type": "NO_NATIVE",
+    "base": "0xFb8bf4c1CC7a94c73D209a149eA2AbEa852BC541",
+    "baseDecimals": 18,
+    "quote": "0x534b2f3A21130d7a60830c2Df862319e593943A3",
+    "quoteDecimals": 6,
+    "sizePrecision": 10000000000,
+    "pricePrecision": 100000000,
+    "tickSize": 100,
+    "minSize": 1000000000,
+    "maxSize": 2000000000000000000,
+    "takerFeeBps": 0,
+    "makerFeeBps": 0,
+    "kuruAmmSpread": 10
+  },
+  "simulation": {
+    "date": "2026-10-11",
+    "rpc": "https://testnet-rpc.monad.xyz, and an anvil fork of it for the seed (the market must exist first)",
+    "create": {
+      "forkBlock": 70245627,
+      "transactions": 1,
+      "gasLimit": 1620368,
+      "maxCostMonAt110Gwei": "0.17824048",
+      "note": "forge's estimate with its default 1.3 multiplier. Monad charges the gas limit at the effective gas price, so at the 100 gwei base fee and a 2 gwei tip this costs about 0.165 MON. On the fork the call used 1224662 gas."
+    },
+    "seed": {
+      "transactions": 6,
+      "calls": ["WMON.deposit", "USDC.approve", "MarginAccount.deposit(USDC)", "WMON.approve", "MarginAccount.deposit(WMON)", "OrderBook.batchUpdate"],
+      "gasLimit": 2127815,
+      "maxCostMonAt110Gwei": "0.23405965",
+      "inputs": "mid 0.026904 USDC per WMON (REFERENCE: Kuru mainnet MON/USDC mid read 2026-10-11, not a testnet price), 3 levels a side, 25 bps out and 25 bps apart, 2 USDC per bid, 15 WMON per ask",
+      "resultingBook": { "bestBid": "0.026836", "bestAsk": "0.026972", "spreadBps": 50 },
+      "needs": "6 USDC and 45 MON to wrap, plus gas. On the real chain on 2026-10-11 the deployer held 20 USDC and 0.2637 MON, so the seed reverts in the script's preflight (Insufficient MON to wrap) until the deployer holds about 45.5 MON."
+    },
+    "takerDryRun": {
+      "where": "the same anvil fork, after create and seed",
+      "buy": "1 USDC -> 37.0034302368 WMON through anyToAnySwap, value 0, calldata built by kuru-sdk 0.0.95 from libs/trading's pool list, 557911 gas from an EOA",
+      "close": "37.0034302368 WMON -> 0.993024 USDC, value 0, 447269 gas from an EOA",
+      "note": "Foundry's EVM, not Monad's client, and from an EOA rather than an agent's ERC-4337 account, so the gas figures are indicative only."
+    }
+  }
+}

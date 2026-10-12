@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import type { Hex } from "viem";
+import { zeroAddress, type Hex } from "viem";
 import { liveSide, ORDER_BOOK_ABI, PRICE_SCALE, type Book, type KuruMarket } from "./market.js";
 
 /** Quote per MON at the 1e18 scale, where it came from, and the chain time it was read at (Unix seconds). */
@@ -38,19 +38,20 @@ export interface MonPriceLimits {
 export const DEFAULT_MON_PRICE_LIMITS: MonPriceLimits = { maxAgeSeconds: 60, maxSpreadBps: 200 };
 
 /**
- * The mid of Kuru's MON/USDC book: the smallest source that needs no new vendor or oracle. It fails closed (null)
+ * The mid of a Kuru MON/USDC book, or of a WMON/USDC book where WMON wraps MON one to one (the testnet market,
+ * ARCHITECTURE.md section 10): the smallest source that needs no new vendor or oracle. It fails closed (null)
  * when the read throws, when either side of the book is empty, when the spread is wider than `maxSpreadBps`, or when
  * the block it was read at is more than `maxAgeSeconds` behind the local clock. It is a spot mid, so it can be moved
  * by whoever moves that book; it only converts gas, which is small next to the trade (ECONOMICS.md section 1).
  */
 export class KuruBookMonPrice implements MonPriceSource {
-  readonly source = "kuru-mon-usdc-mid";
-
   constructor(
     private readonly reader: BookReader,
     readonly quote: Hex,
     private readonly limits: MonPriceLimits = DEFAULT_MON_PRICE_LIMITS,
     private readonly now: () => number = () => Date.now(),
+    /** Recorded on every order as the price's origin. */
+    readonly source: string = "kuru-mon-usdc-mid",
   ) {}
 
   async monPrice(): Promise<MonPrice | null> {
@@ -70,12 +71,20 @@ export class KuruBookMonPrice implements MonPriceSource {
   }
 }
 
-/** Reads `bestBidAsk` and the block's timestamp at one block, so the two cannot come from different blocks. */
-export function kuruBookReader(market: KuruMarket, provider: ethers.providers.JsonRpcProvider): BookReader {
-  if (market.base.toLowerCase() !== "0x0000000000000000000000000000000000000000") {
-    throw new Error("the MON price book must have native MON as its base");
+/**
+ * Reads `bestBidAsk` and the block's timestamp at one block, so the two cannot come from different blocks. The book's
+ * base must be native MON, or `wrappedNative` when one is given: Wrapped MON is redeemable for MON one to one, so its
+ * book prices MON. Any other base is refused, since its price is not a MON price.
+ */
+export function kuruBookReader(
+  book: Pick<KuruMarket, "market" | "base">,
+  provider: ethers.providers.JsonRpcProvider,
+  options: { wrappedNative?: Hex } = {},
+): BookReader {
+  if (!monBase(book.base, options.wrappedNative)) {
+    throw new Error("the MON price book must have native MON, or the configured wrapped MON, as its base");
   }
-  const orderBook = new ethers.Contract(market.market, ORDER_BOOK_ABI as unknown as ethers.ContractInterface, provider);
+  const orderBook = new ethers.Contract(book.market, ORDER_BOOK_ABI as unknown as ethers.ContractInterface, provider);
   return {
     async read() {
       const block = await provider.getBlock("latest");
@@ -83,6 +92,12 @@ export function kuruBookReader(market: KuruMarket, provider: ethers.providers.Js
       return { book: { bid: bid.toBigInt(), ask: ask.toBigInt() }, blockTimestamp: BigInt(block.timestamp) };
     },
   };
+}
+
+/** Whether a book on `base` prices MON: native MON, or the configured wrapped MON. */
+export function monBase(base: Hex, wrappedNative?: Hex): boolean {
+  const b = base.toLowerCase();
+  return b === zeroAddress || (wrappedNative !== undefined && b === wrappedNative.toLowerCase());
 }
 
 /** A fixed price, for tests and local development only. */
