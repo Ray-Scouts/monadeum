@@ -29,10 +29,10 @@ The `backend` network is `internal`: Postgres and Redis have no route out and no
 - Owners can sign in, create agents, sign the account deployment, and stop an agent. Session keys and x402 keys live in the local encrypted vault on the `vault` volume, shared by `api` and `worker`.
 - Owners can fund an agent from the agent page ("Fund this agent"): they sign an EIP-3009 authorization moving testnet USDC from their owner wallet to the agent's deployed account, and the API's relayer submits it and pays the gas in testnet MON. The relayer key lives in its own encrypted vault on the `relayer_vault` volume, mounted into `api` only. Until the relayer holds MON, every submission is refused with `503 relayer-balance-low` and nothing is sent (step 5).
 - The indexer indexes the spend policy, account deployments, session key events, and settlement-asset transfers of followed accounts, from `INDEXER_START_BLOCK`.
-- The worker runs its `sync`, `principal`, and `x402-reconcile` jobs. It runs no trading tick: the production tick runner is not wired yet (`ARCHITECTURE.md` section 11, "Not yet wired"), so every tick and evaluation job is skipped and nothing is sent. This is the existing fail-closed state, not something this deployment changes. The worker does read and validate the trading market (`TRADING_*`) and logs it.
+- The worker runs its `sync`, `principal`, and `x402-reconcile` jobs. It runs no trading tick until the owner enables the tick runner (`WORKER_TICK_RUNNER=enabled`, step 9; `ARCHITECTURE.md` section 11, "Tick runner"): while it is `disabled`, the default, every tick and evaluation job is skipped and nothing is sent. Enabled, it still runs no tick without a signed risk policy version in effect. The worker reads and validates the trading market (`TRADING_*`) either way and logs it.
 - Agents trade WMON/USDC on testnet, on a market we create and seed (step 2b), not WETH/USDC as on mainnet. The liquidity is ours, so testnet prices and agents' P&L carry no economic meaning (`ARCHITECTURE.md` section 10, "Testnet market").
 - The x402 payer is off (`WORKER_X402_PAYER_ENABLED=false`) and reallocation is off (`MONADEUM_REALLOCATION_ENABLED=false`), both decided.
-- All services run with `MONADEUM_ENV=development`, deliberately: the file vault refuses `production`, and so does a worker without a tick runner. Every store is still on Postgres, because `DATABASE_URL` is set; `development` only lifts those two refusals. The production guards stay as they are for mainnet.
+- All services run with `MONADEUM_ENV=development`, deliberately: the file vault refuses `production`, and so does a worker without the tick runner enabled. Every store is still on Postgres, because `DATABASE_URL` is set; `development` only lifts those two refusals. The production guards stay as they are for mainnet.
 
 ## Live testnet deployment
 
@@ -212,7 +212,7 @@ On the VPS, in `/opt/monadeum`:
 cp deploy/.env.testnet.example deploy/.env.testnet
 chmod 600 deploy/.env.testnet
 # Generate one value per password variable and paste each into deploy/.env.testnet:
-for v in POSTGRES_SUPERUSER_PASSWORD DB_OWNER_PASSWORD DB_API_PASSWORD DB_WORKER_PASSWORD DB_INDEXER_PASSWORD REDIS_PASSWORD; do echo "$v=$(openssl rand -hex 32)"; done
+for v in POSTGRES_SUPERUSER_PASSWORD DB_OWNER_PASSWORD DB_API_PASSWORD DB_WORKER_PASSWORD DB_INDEXER_PASSWORD DB_POLICY_OPERATOR_PASSWORD REDIS_PASSWORD; do echo "$v=$(openssl rand -hex 32)"; done
 nano deploy/.env.testnet
 ```
 
@@ -252,7 +252,7 @@ dc run --rm migrate
 dc up -d
 ```
 
-`dc run --rm migrate` applies every pending migration as `monadeum_owner` and creates or updates `monadeum_api_login`, `monadeum_worker_login`, and `monadeum_indexer_login` as members of their group roles. It is idempotent, and `dc up -d` runs it again before the services start (they wait for it to exit 0). The services then start with `DATABASE_MIGRATIONS=verify` and refuse to run on a schema that differs from their code.
+`dc run --rm migrate` applies every pending migration as `monadeum_owner` and creates or updates `monadeum_api_login`, `monadeum_worker_login`, `monadeum_indexer_login`, and, when `DB_POLICY_OPERATOR_PASSWORD` is set, `monadeum_policy_operator_login`, as members of their group roles. It is idempotent, and `dc up -d` runs it again before the services start (they wait for it to exit 0). The services then start with `DATABASE_MIGRATIONS=verify` and refuse to run on a schema that differs from their code.
 
 With the optional Caddy proxy (DNS must already point at the VPS):
 
@@ -399,12 +399,70 @@ dc up -d
 
 `WORKER_TICK_INTERVAL_MS` is fixed for the life of a deployment: changing it renumbers ticks. Rotating a database password: change it in `deploy/.env.testnet`, then `dc run --rm migrate` (which sets it again) and `dc up -d`. Logs are capped at 5 x 20 MB per container.
 
+## 9. Enable trading: the operator key, the risk policy, and the tick runner
+
+The decisions are in `ARCHITECTURE.md` section 11 ("Tick runner") and section 16.1 (the operator's tooling). Until this step is done the worker sends nothing. Do it in this order; each part is safe to stop after.
+
+**Before you start.** The WMON/USDC market exists and is seeded (step 2b) and `cast call $M "bestBidAsk()(uint256,uint256)"` shows two live sides. `TRADING_*` and `WALLETS_TRADED_ASSETS` (WMON) are set as in `deploy/.env.testnet.example`. Agents that should trade were created after `WALLETS_TRADED_ASSETS` held WMON (step 2b, "On a host already running"), activated, and funded, so their principal is above 0. The VPS runs this release (`dc build`, step 8), which adds migration 0015.
+
+**9.1 Generate the operator key (owner's workstation, never the VPS).** A new Foundry keystore, not the deployer and not a Safe owner key:
+
+```bash
+cast wallet new ~/.foundry/keystores policy-operator    # asks for a password; prints the address
+cast wallet address --account policy-operator           # the address, again
+```
+
+Store the keystore file and its password in the owner's password manager, apart from each other. Only the address goes to the VPS.
+
+**9.2 Configure the VPS.** In `deploy/.env.testnet`, set `DB_POLICY_OPERATOR_PASSWORD` (`openssl rand -hex 32`) and `WORKER_POLICY_SIGNER` to the address from 9.1. Leave `WORKER_TICK_RUNNER=disabled` for now. Then:
+
+```bash
+dc run --rm migrate                                    # applies 0015, creates monadeum_policy_operator_login
+sudo install -d -o 1000 -g 1000 -m 0700 deploy/policy   # where the policy service writes documents
+dc --profile operator run --rm policy show              # "no version signed by 0x... verifies"
+```
+
+**9.3 Build version 1 (VPS).** The caps are settlement-asset base units. These are the API's maximum caps (1 USDC per action, 5 USDC per rolling day), the largest an agent can hold on chain (`API_MAX_PER_TX_CAP`, `API_MAX_DAILY_CAP`); never set them above those:
+
+```bash
+dc --profile operator run --rm policy build --per-action-cap 1000000 --session-daily-cap 5000000 \
+  --out /var/lib/monadeum/policy/v1.json
+```
+
+It prints the document and `hash to sign (EIP-191 over these 32 bytes): 0x...`. Read the document before signing: `settlementAsset` is USDC, `allowedPairs` is `["WMON/USDC"]`, `allowedCalls` holds exactly `transfer` and `approve` on USDC, `0xffa5210a` on Kuru's router, `0x4c329bba` on `AgentReallocation`, and `approve` on WMON, both information caps are `"0"`, and `maxPositionFraction` is `0.25`.
+
+**9.4 Sign (owner's workstation).** Sign the printed hash, as it is, without `--no-hash`:
+
+```bash
+cast wallet sign --account policy-operator 0x<hash from 9.3>
+```
+
+This signs the 32 bytes under EIP-191, which is what the worker verifies (checked with Foundry 1.8.5 on 2026-10-12). Only the signature goes back to the VPS. The CLI's `sign` command does the same from a keystore file and a password file, for a machine with this repository built.
+
+**9.5 Append (VPS).** The CLI refuses a signature that does not recover to `WORKER_POLICY_SIGNER` and a version that does not extend the stored chain:
+
+```bash
+dc --profile operator run --rm policy append --document /var/lib/monadeum/policy/v1.json --signature 0x<signature from 9.4>
+dc --profile operator run --rm policy show              # "in effect now: version 1"
+```
+
+**9.6 Enable the tick runner.** Set `WORKER_TICK_RUNNER=enabled` in `deploy/.env.testnet`, then `dc up -d worker`. The worker refuses to start, and says why, if the market does not match the chain, the RPC serves another chain, or the spend policy counts another asset. Expect in `dc logs worker`:
+
+- `tick runner: risk policy verified and in effect` and `tick runner enabled: WMON/USDC on 0x...`.
+- One line per agent per hour. For the first 24 hours, `failed at observe: rpc`: the signal needs 25 consecutive hourly mids, which the runner starts recording when it is enabled. Enabling before 9.5 is also safe, and starts that clock earlier: every tick is then skipped with `no signed risk policy version is stored`, and the book is still sampled.
+- After that, `none (no-action)` or `failed ...` lines until the mid has risen by more than 0.0002 an hour on average over the last 24 hours. On our own book the mid only moves when someone trades on it or it is reseeded at another mid (`SEED_MID_USDC`), so with the book untouched no agent buys (`ARCHITECTURE.md` section 11, "Not verified live").
+- A buy is `executed (executed)`; check it with `cast call $M "bestBidAsk()(uint256,uint256)"` and the agent's WMON balance. Reseed (step 2b) when the asks are gone.
+
+**Stop.** Set `WORKER_TICK_RUNNER=disabled` and `dc up -d worker`: no new tick runs. A tick whose operation was already sent is reconciled when the runner is enabled again.
+
+**Change a cap or the pair.** Build the next version with `build` (it reads the stored chain, so `version` and `previousHash` are filled in; pass `--effective-from` for a later start), sign its hash, `append`. The worker picks it up at its `effectiveFrom`, without a restart. A version is never edited or deleted.
+
 ## Before mainnet
 
 None of this is a mainnet deployment. Before one:
 
 - **Secrets manager behind `SessionKeyVault`.** The file vault refuses `MONADEUM_ENV=production` by design. Mainnet needs a dedicated secrets manager or KMS-backed implementation (`SECURITY.md` section 11), and the passphrase files go away.
-- **`MONADEUM_ENV=production`**, with a configured tick runner, so every production guard applies.
+- **`MONADEUM_ENV=production`**, with the tick runner enabled and a signed risk policy in effect, so every production guard applies.
 - **Separate multisig signers.** The Safe's three owner keys must be held by different people on different devices, none of them a key any process here holds (`ARCHITECTURE.md` section 16.5). The testnet Safe's owners have not been checked against that rule; the threshold and owner count are what the deployment script checks, which no contract can extend to who holds the keys.
 - **External audit** of `AgentSpendPolicy`, `AgentReallocation`, and `X402PaymentValidator` with findings resolved or accepted (`SECURITY.md` section 3), and mainnet USDC, Kuru, and ZeroDev addresses re-verified at deployment time.
 - **A deployer that is not a hot key**, and source verification of every contract.
@@ -412,7 +470,7 @@ None of this is a mainnet deployment. Before one:
 
 ## Open questions
 
-1. **Resolved (owner, 2026-10-11): testnet trades WMON/USDC on our own market.** Kuru's documented testnet market is MON/USDC with a native-MON base, quoted in another token, so the owner chose to create a WMON/USDC market on the deployed USDC (step 2b; `ARCHITECTURE.md` section 10, "Testnet market"; the options are in `docs/testnet-trading-options.md`). Still open: the deployer's MON for the seed (step 2b), and the production tick runner that would trade on it (`ARCHITECTURE.md` section 11, "Not yet wired").
+1. **Resolved (owner, 2026-10-11): testnet trades WMON/USDC on our own market.** Kuru's documented testnet market is MON/USDC with a native-MON base, quoted in another token, so the owner chose to create a WMON/USDC market on the deployed USDC (step 2b; `ARCHITECTURE.md` section 10, "Testnet market"; the options are in `docs/testnet-trading-options.md`). Still open: the deployer's MON for the seed (step 2b), and the first live tick on it: the tick runner is wired and off by default (step 9), and no tick has run against the deployment yet (`ARCHITECTURE.md` section 11, "Not verified live").
 2. **ZeroDev sponsorship limit.** The project serving chain 10143 is set up ("Live testnet deployment"), and it sponsors all transactions; which per-chain limit to set is not decided.
 3. **Testnet x402 providers.** `WALLETS_X402_VALIDATOR_ADDRESS` stays empty until there are pay-to addresses to list, although the validator is deployed (`0xCA918F53FFc7507Bd41602c0bD1ef72558705991`); the payer stays off regardless.
 4. **Explorer source verification** for the three contracts (the explorer's verification API and settings were not checked).

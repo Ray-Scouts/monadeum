@@ -24,6 +24,11 @@ export class RiskService {
     return this.policy !== null;
   }
 
+  /** The policy the last `load` verified and found in effect, or null, in which case every request is rejected. */
+  active(): VerifiedPolicy | null {
+    return this.policy;
+  }
+
   information(request: InformationRequest, ledger: Ledger) {
     return evaluateInformation(this.policy, request, ledger);
   }

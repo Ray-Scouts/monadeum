@@ -26,6 +26,8 @@ export type { BookReader, MonPrice, MonPriceLimits, MonPriceSource } from "./mon
 export type { Book, KuruMarket } from "./market.js";
 export { MemoryPositionStore, MemoryTradeStore, SignerRejected } from "./types.js";
 export { WalletsTradeSigner } from "./wallets-signer.js";
+export { MemoryMidSampleStore } from "./samples.js";
+export type { MidSample, MidSampleStore } from "./samples.js";
 export type { TickExecutor } from "./wallets-signer.js";
 export type {
   BuyFill,

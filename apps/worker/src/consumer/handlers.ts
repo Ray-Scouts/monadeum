@@ -161,9 +161,8 @@ export class WorkerJobHandlers {
 }
 
 /**
- * The runner when TradingService, X402Client, WalletsService, and a market source are not configured in this process
- * (ARCHITECTURE.md section 11, "Not yet wired"). Fails closed: nothing is decided, bought, or sent, and each job says
- * why. Refused in production by `bootWorker`.
+ * The runner while the tick runner is not enabled (`WORKER_TICK_RUNNER`, ARCHITECTURE.md section 11, "Tick runner").
+ * Fails closed: nothing is decided, bought, or sent, and each job says why. Refused in production by `runWorker`.
  */
 export class UnconfiguredTickRunner implements TickRunner {
   constructor(private readonly log: (message: string) => void = () => {}) {}

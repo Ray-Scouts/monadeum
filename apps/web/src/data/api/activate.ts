@@ -34,7 +34,7 @@ export const ACTIVATE_COPY = {
     "One limit of these guarantees: whether the exchange router can be made to forward funds to another address is a property of the router that has not been checked yet.",
   stop: "You can revoke the key at any time with \"Stop this agent\". Your balance stays in the agent's account, which your wallet owns.",
   testnet:
-    "Activating does not make the agent trade yet. In this release the worker has no tick runner or market configured (on testnet included), and an unfunded agent is not ticked, so the agent stays idle after activation.",
+    "Activating does not make the agent trade yet. The agent trades only once it is funded and the operator has enabled trading for this deployment under a signed risk policy, which is off by default (on testnet included); until then it stays idle after activation.",
 };
 
 /** What the chain says about the key, in plain language. */

@@ -6,11 +6,12 @@ import { FitnessModule } from "@monadeum/fitness";
 import { ReallocationModule, loadReallocationSwitch, type ReallocationSwitch } from "@monadeum/reallocation";
 import { RiskModule } from "@monadeum/risk";
 import { TickModule } from "@monadeum/tick";
-import { TradingConfigError, loadTradingConfig, type TradingConfig } from "@monadeum/trading";
+import type { TradingConfig } from "@monadeum/trading";
 import { loadWalletsRuntime, type WalletsRuntimeOptions, type WalletsService } from "@monadeum/wallets";
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
-import { loadConsumerConfig, WorkerConfigError } from "./config.js";
+import { loadConsumerConfig, loadTickRunnerConfig, loadWorkerTrading, WorkerConfigError } from "./config.js";
+import { buildTickRunner } from "./runner.js";
 import { BullJobQueue, QUEUE_NAME, startConsumer } from "./consumer/bullmq.js";
 import { UnconfiguredTickRunner, WorkerJobHandlers, type TickRunner } from "./consumer/handlers.js";
 import { RedisAgentLocks } from "./consumer/locks.js";
@@ -32,7 +33,27 @@ export type { DebitRecord, DebitStore, ReallocationExecutor } from "./reallocati
 export type { ChainReader, MarketReading, MarketSource } from "./ports.js";
 export { WORKER_STORES, memoryWorkerStores, postgresWorkerStores } from "./stores.js";
 export type { WorkerStores } from "./stores.js";
-export { WorkerConfigError, loadConsumerConfig } from "./config.js";
+export { WorkerConfigError, loadConsumerConfig, loadTickRunnerConfig, loadWorkerTrading } from "./config.js";
+export type { MarketDataLimits, TickRunnerConfig } from "./config.js";
+export { PolicyGatedRunner, assembleTickRunner, buildTickRunner } from "./runner.js";
+export { KuruMidSignal, rpcBookReader } from "./market.js";
+export type { BookReader, BookReading } from "./market.js";
+export { RpcChainReader, SPEND_POLICY_READ_ABI, rpcReads } from "./chain.js";
+export type { Holdings, RpcReads } from "./chain.js";
+export {
+  MemoryPolicyVersions,
+  PolicyError,
+  appendVersion,
+  buildPolicyDocument,
+  coverageProblems,
+  latestVersion,
+  policyFromJson,
+  policyTarget,
+  policyToJson,
+  signWithKeystore,
+  signerOf,
+} from "./policy.js";
+export type { PolicyAppender, PolicyInputs, PolicyTarget, PolicyVersions } from "./policy.js";
 export { DisabledX402Payer, RpcSettlementLogSource, X402Reconciler, agentOfTickKey, buildX402Payer, loadX402PayerConfig } from "./x402.js";
 export type { LogReader, ReconcileReport, SettlementLogSource, WorkerX402PayerConfig } from "./x402.js";
 import { X402Reconciler, loadX402PayerConfig, type SettlementLogSource } from "./x402.js";
@@ -53,7 +74,7 @@ export type { PrincipalSyncResult } from "./principal.js";
  * The worker's Nest context. The modules that need no deployment configuration are provided here, and the module
  * stores under `WORKER_STORES`. TradingService, X402Client, and WalletsService need the market, provider endpoints,
  * chain, bundler, and paymaster configuration, so an `AgentWorker` is assembled from them and the stores explicitly
- * (see `WorkerDependencies`); that configuration is not wired in this process yet. `runWorker` adds the BullMQ consumer.
+ * (see `WorkerDependencies`), by `buildTickRunner` when `WORKER_TICK_RUNNER=enabled`. `runWorker` adds the BullMQ consumer.
  */
 @Module({
   imports: [TickModule, ReallocationModule, RiskModule, FitnessModule],
@@ -141,14 +162,19 @@ export interface WorkerRunOptions extends WorkerBootOptions {
    */
   x402Settlements?: SettlementLogSource;
   /**
-   * Builds what runs ticks and evaluations over the booted stores: an `AgentWorker` once TradingService, X402Client,
-   * WalletsService, and a market source are configured. Without it the consumer runs `UnconfiguredTickRunner`, which
+   * Overrides what runs ticks and evaluations over the booted stores, for tests. Without it, `WORKER_TICK_RUNNER=enabled`
+   * builds the production runner (`buildTickRunner`), and otherwise the consumer runs `UnconfiguredTickRunner`, which
    * fails every job closed, and MONADEUM_ENV=production refuses to start. It receives the reallocation switch read from
    * the environment, which it passes to `AgentWorker` as `settings.reallocation`, WalletsModule when
    * `WALLETS_CHAIN_ID` is set (null otherwise), and the trading market from `TRADING_*` (null when unset), from which
    * `buildKuruTrading` of `@monadeum/trading` builds TradingService.
    */
-  runner?: (stores: WorkerStores, reallocation: ReallocationSwitch, wallets: WalletsService | null, trading: TradingConfig | null) => TickRunner;
+  runner?: (
+    stores: WorkerStores,
+    reallocation: ReallocationSwitch,
+    wallets: WalletsService | null,
+    trading: TradingConfig | null,
+  ) => TickRunner | Promise<TickRunner>;
   clock?: () => Date;
 }
 
@@ -163,9 +189,10 @@ export async function runWorker(options: WorkerRunOptions) {
   const production = loadDatabaseSettings(options.env).production;
   const config = loadConsumerConfig(options.env);
   const x402 = loadX402PayerConfig(options.env);
+  const tickRunner = loadTickRunnerConfig(options.env);
   if (!config && production) throw new WorkerConfigError("MONADEUM_ENV is production and REDIS_URL is not set: refusing to start without a consumer");
-  if (production && !options.runner) {
-    throw new WorkerConfigError("MONADEUM_ENV is production and no tick runner is configured: trading, x402, and wallets are not wired in this process");
+  if (production && !options.runner && !tickRunner.enabled) {
+    throw new WorkerConfigError("MONADEUM_ENV is production and no tick runner is configured: set WORKER_TICK_RUNNER=enabled with its dependencies");
   }
   if (production && config && !config.principal) {
     throw new WorkerConfigError("MONADEUM_ENV is production and WORKER_SETTLEMENT_ASSET_ADDRESS is not set: no agent principal could ever be recomputed");
@@ -187,8 +214,19 @@ export async function runWorker(options: WorkerRunOptions) {
   const connection = new Redis(config.redisUrl, { maxRetriesPerRequest: null });
   const queue = new BullJobQueue(new Queue(QUEUE_NAME, { connection, prefix: config.prefix }));
   try {
-    const runner = options.runner ? options.runner(booted.stores, booted.reallocation, booted.wallets, booted.trading) : new UnconfiguredTickRunner(log);
-    if (!options.runner) log("no tick runner is configured: every tick and evaluation job is skipped, nothing is sent");
+    const clock = options.clock ?? (() => new Date());
+    let runner: TickRunner;
+    if (options.runner) {
+      runner = await options.runner(booted.stores, booted.reallocation, booted.wallets, booted.trading);
+    } else if (tickRunner.enabled) {
+      runner = await buildTickRunner({
+        config: tickRunner, env: options.env, stores: booted.stores, reallocation: booted.reallocation, wallets: booted.wallets,
+        trading: booted.trading, tickIntervalMs: config.settings.tickIntervalMs, production, clock, log,
+      });
+    } else {
+      runner = new UnconfiguredTickRunner(log);
+      log("no tick runner is configured (WORKER_TICK_RUNNER is not enabled): every tick and evaluation job is skipped, nothing is sent");
+    }
     const locks = new RedisAgentLocks(connection, `${config.prefix}:agent-lock:`);
     const principal = config.principal
       ? new PrincipalSync({ agents: booted.stores.agents, readModel: booted.stores.readModel, settlementAsset: config.principal.settlementAsset, locks, lockTtlMs: config.settings.lockTtlMs })
@@ -208,7 +246,7 @@ export async function runWorker(options: WorkerRunOptions) {
       queue,
       locks,
       settings: config.settings,
-      clock: options.clock ?? (() => new Date()),
+      clock,
       principal,
       x402Reconciler,
       log,
@@ -237,26 +275,6 @@ export async function runWorker(options: WorkerRunOptions) {
     await booted.close();
     throw error;
   }
-}
-
-/**
- * The trading market from `TRADING_*` (`loadTradingConfig` of `@monadeum/trading`), null when unset. A configured
- * market whose quote is not the settlement asset the worker counts (`WORKER_SETTLEMENT_ASSET_ADDRESS`) is refused:
- * every buy approves the quote asset, and the spend policy counts only the settlement asset.
- */
-export function loadWorkerTrading(env: Record<string, string | undefined>): TradingConfig | null {
-  let trading: TradingConfig | null;
-  try {
-    trading = loadTradingConfig(env);
-  } catch (error) {
-    if (error instanceof TradingConfigError) throw new WorkerConfigError(error.message);
-    throw error;
-  }
-  const settlement = env.WORKER_SETTLEMENT_ASSET_ADDRESS?.trim().toLowerCase();
-  if (trading && settlement && trading.market.quote.toLowerCase() !== settlement) {
-    throw new WorkerConfigError("TRADING_QUOTE is not WORKER_SETTLEMENT_ASSET_ADDRESS: the market must be quoted in the settlement asset");
-  }
-  return trading;
 }
 
 /** Runs the consumer until SIGINT or SIGTERM, then shuts down gracefully. */

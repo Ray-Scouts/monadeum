@@ -53,15 +53,17 @@ describe("migration step", () => {
         DB_API_PASSWORD: "api password long enough",
         DB_WORKER_PASSWORD_FILE: path.join(root, "worker"),
         DB_INDEXER_PASSWORD: "indexer password long enough",
+        DB_POLICY_OPERATOR_PASSWORD: "policy operator password long enough",
       };
       const result = await runMigrationStep(env, { connect: onto(pg), log: (m) => logs.push(m) });
       assert.ok(result.applied.length > 0);
-      assert.deepEqual(result.roles, ["monadeum_api_login", "monadeum_worker_login", "monadeum_indexer_login"]);
+      assert.deepEqual(result.roles, ["monadeum_api_login", "monadeum_worker_login", "monadeum_indexer_login", "monadeum_policy_operator_login"]);
       const db = pgliteDatabase(pg);
       await verifyMigrations(db);
       assert.deepEqual(await memberships(db, "monadeum_api_login"), ["monadeum_api", "monadeum_reader"]);
       assert.deepEqual(await memberships(db, "monadeum_worker_login"), ["monadeum_worker"]);
       assert.deepEqual(await memberships(db, "monadeum_indexer_login"), ["monadeum_indexer"]);
+      assert.deepEqual(await memberships(db, "monadeum_policy_operator_login"), ["monadeum_policy_operator"]);
       for (const role of Object.values(PROCESS_LOGIN_ROLES)) {
         assert.deepEqual(await attributes(db, role.name), { rolcanlogin: true, rolsuper: false, rolcreaterole: false, rolcreatedb: false, rolinherit: true });
       }
@@ -72,6 +74,10 @@ describe("migration step", () => {
       assert.equal(await allowedAs(db, "monadeum_indexer_login", "INSERT INTO indexer_settings (id, settlement_asset) VALUES (1, '0x00000000000000000000000000000000000000a1')"), true);
       assert.equal(await allowedAs(db, "monadeum_worker_login", "DELETE FROM chain_events"), false);
       assert.equal(await allowedAs(db, "monadeum_worker_login", "SELECT count(*) FROM store_schema_migrations"), true);
+      // The policy operator reads the policy chain it extends and verifies the schema, and writes nothing else.
+      assert.equal(await allowedAs(db, "monadeum_policy_operator_login", "SELECT count(*) FROM risk_policy_versions"), true);
+      assert.equal(await allowedAs(db, "monadeum_policy_operator_login", "SELECT count(*) FROM store_schema_migrations"), true);
+      assert.equal(await allowedAs(db, "monadeum_policy_operator_login", "SELECT count(*) FROM tick_records"), false);
 
       // A rerun applies nothing, keeps the roles, and makes memberships exact again.
       await db.query("GRANT monadeum_indexer TO monadeum_worker_login");
