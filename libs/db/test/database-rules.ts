@@ -14,6 +14,7 @@ import {
   PgEvaluationStore,
   PgPaymentLog,
   PgX402SlotStore,
+  PgMidSampleStore,
   PgPolicyVersions,
   PgPositionStore,
   PgReadModelStore,
@@ -328,7 +329,7 @@ export function databaseRules(name: string, db: Database): void {
     });
 
     it("every process role can verify the migrations, and none can change the ledger", async () => {
-      for (const role of ["monadeum_worker", "monadeum_reader", "monadeum_indexer"]) {
+      for (const role of ["monadeum_worker", "monadeum_reader", "monadeum_indexer", "monadeum_policy_operator"]) {
         await verifyMigrations(asRole(db, role));
         await assert.rejects(as(db, role, "DELETE FROM store_schema_migrations"), DENIED, role);
       }
@@ -342,6 +343,26 @@ export function databaseRules(name: string, db: Database): void {
       await assert.rejects(as(db, "monadeum_reader", "SELECT * FROM risk_policy_versions"), DENIED);
       await assert.rejects(as(db, "monadeum_policy_operator", "UPDATE risk_policy_versions SET signature = '0x00'"), DENIED);
       await assert.rejects(as(db, "monadeum_policy_operator", "DELETE FROM risk_policy_versions"), DENIED);
+      // It reads the chain it extends (migration 0015), and nothing it does not need.
+      await as(db, "monadeum_policy_operator", "SELECT * FROM risk_policy_versions");
+      await assert.rejects(as(db, "monadeum_policy_operator", "SELECT * FROM tick_records"), DENIED);
+    });
+
+    it("the worker records each market mid once and reads the series; nobody changes a sample", async () => {
+      const market = "0x00000000000000000000000000000000000000AA" as const;
+      const store = new PgMidSampleStore(asRole(db, "monadeum_worker"));
+      const first = { market, tick: 7, mid: 26_904n * 10n ** 12n, blockNumber: 70_000_000n, blockTimestamp: 1_760_000_000n };
+      assert.deepEqual(await store.record(first), { ...first, market: market.toLowerCase() });
+      // A second reading of the same tick keeps the first one, so every agent of that tick sees one mid.
+      assert.equal((await store.record({ ...first, mid: 1n })).mid, first.mid);
+      await store.record({ ...first, tick: 8, mid: 27_000n * 10n ** 12n });
+      assert.deepEqual((await store.range(market, 6, 8)).map((s) => [s.tick, s.mid]), [[7, first.mid], [8, 27_000n * 10n ** 12n]]);
+      await new PgMidSampleStore(asRole(db, "monadeum_reader")).range(market, 0, 10);
+      for (const role of ["monadeum_worker", "monadeum_reader", "monadeum_indexer", "monadeum_policy_operator", "monadeum_api"]) {
+        await assert.rejects(as(db, role, "UPDATE market_mid_samples SET mid = 1"), DENIED, role);
+        await assert.rejects(as(db, role, "DELETE FROM market_mid_samples"), DENIED, role);
+      }
+      await assert.rejects(as(db, "monadeum_reader", "INSERT INTO market_mid_samples (market, tick, mid, block_number, block_timestamp) VALUES ('0x00000000000000000000000000000000000000bb', 1, 1, 1, 1)"), DENIED);
     });
   });
 }

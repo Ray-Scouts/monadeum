@@ -22,6 +22,7 @@ export const STORE_TABLES = [
   "auth_challenges", "auth_sessions", "trade_records", "x402_payments", "x402_nonce_slots", "tick_records",
   "indexer_cursor", "indexer_blocks", "indexer_tracked_accounts", "chain_events", "indexer_settings",
   "worker_agent_states", "worker_agents", "reallocation_debits", "trade_positions", "evaluation_records",
+  "market_mid_samples",
 ];
 
 /** Postgres stores over one migrated database, emptied before each test. */

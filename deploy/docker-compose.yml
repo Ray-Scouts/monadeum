@@ -46,8 +46,23 @@ x-wallets-env: &wallets-env
   WALLETS_X402_VAULT_DIR: /var/lib/monadeum/vault/x402
   WALLETS_X402_VAULT_PASSPHRASE_FILE: /run/secrets/x402_vault_passphrase
 
+# The trading market (libs/trading, loadTradingConfig), read by the worker and by the policy operator's CLI, so the
+# policy it builds is for the market the worker trades. Empty TRADING_KURU_MARKET: no market is configured.
+x-trading-env: &trading-env
+  TRADING_PAIR: ${TRADING_PAIR:-}
+  TRADING_KURU_ROUTER: ${TRADING_KURU_ROUTER:-}
+  TRADING_KURU_MARKET: ${TRADING_KURU_MARKET:-}
+  TRADING_BASE: ${TRADING_BASE:-}
+  TRADING_QUOTE: ${SETTLEMENT_ASSET}
+  TRADING_BASE_DECIMALS: ${TRADING_BASE_DECIMALS:-18}
+  TRADING_QUOTE_DECIMALS: ${SETTLEMENT_DECIMALS:-6}
+  TRADING_SIZE_PRECISION: ${TRADING_SIZE_PRECISION:-}
+  TRADING_MON_PRICE_MARKET: ${TRADING_MON_PRICE_MARKET:-}
+  TRADING_MON_PRICE_BASE: ${TRADING_MON_PRICE_BASE:-}
+  TRADING_WRAPPED_NATIVE: ${TRADING_WRAPPED_NATIVE:-}
+
 x-common-env: &common-env
-  # Testnet runs as development: the file vault and the worker's unwired tick runner both refuse production by design.
+  # Testnet runs as development: the local file vault refuses production by design (SECURITY.md section 11).
   MONADEUM_ENV: development
   DATABASE_MIGRATIONS: verify
   MONADEUM_REALLOCATION_ENABLED: ${MONADEUM_REALLOCATION_ENABLED:-false}
@@ -106,6 +121,8 @@ services:
       DB_API_PASSWORD: ${DB_API_PASSWORD:?set DB_API_PASSWORD}
       DB_WORKER_PASSWORD: ${DB_WORKER_PASSWORD:?set DB_WORKER_PASSWORD}
       DB_INDEXER_PASSWORD: ${DB_INDEXER_PASSWORD:?set DB_INDEXER_PASSWORD}
+      # Optional: empty, the policy operator's login role is not created (deploy/README.md, step 9).
+      DB_POLICY_OPERATOR_PASSWORD: ${DB_POLICY_OPERATOR_PASSWORD:-}
     networks: [backend]
     depends_on:
       postgres: { condition: service_healthy }
@@ -159,25 +176,20 @@ services:
     <<: *server
     command: ["node", "apps/worker/dist/src/main.js"]
     environment:
-      <<: [*common-env, *wallets-env]
+      <<: [*common-env, *wallets-env, *trading-env]
       DATABASE_URL: postgres://monadeum_worker_login:${DB_WORKER_PASSWORD}@postgres:5432/monadeum
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       WORKER_TICK_INTERVAL_MS: ${WORKER_TICK_INTERVAL_MS:?set WORKER_TICK_INTERVAL_MS}
       WORKER_SETTLEMENT_ASSET_ADDRESS: ${SETTLEMENT_ASSET}
       WORKER_X402_PAYER_ENABLED: ${WORKER_X402_PAYER_ENABLED:-false}
       WORKER_X402_CHAIN_ID: "10143"
-      # The trading market (libs/trading, loadTradingConfig). Empty TRADING_KURU_MARKET: no market is configured.
-      TRADING_PAIR: ${TRADING_PAIR:-}
-      TRADING_KURU_ROUTER: ${TRADING_KURU_ROUTER:-}
-      TRADING_KURU_MARKET: ${TRADING_KURU_MARKET:-}
-      TRADING_BASE: ${TRADING_BASE:-}
-      TRADING_QUOTE: ${SETTLEMENT_ASSET}
-      TRADING_BASE_DECIMALS: ${TRADING_BASE_DECIMALS:-18}
-      TRADING_QUOTE_DECIMALS: ${SETTLEMENT_DECIMALS:-6}
-      TRADING_SIZE_PRECISION: ${TRADING_SIZE_PRECISION:-}
-      TRADING_MON_PRICE_MARKET: ${TRADING_MON_PRICE_MARKET:-}
-      TRADING_MON_PRICE_BASE: ${TRADING_MON_PRICE_BASE:-}
-      TRADING_WRAPPED_NATIVE: ${TRADING_WRAPPED_NATIVE:-}
+      # The tick runner (ARCHITECTURE.md section 11, "Tick runner"). disabled (the default): every tick is skipped.
+      WORKER_TICK_RUNNER: ${WORKER_TICK_RUNNER:-disabled}
+      WORKER_RPC_URL: ${MONAD_RPC_URL}
+      WORKER_POLICY_SIGNER: ${WORKER_POLICY_SIGNER:-}
+      WORKER_MAX_SLIPPAGE_BPS: ${WORKER_MAX_SLIPPAGE_BPS:-100}
+      WORKER_MARKET_MAX_AGE_SECONDS: ${WORKER_MARKET_MAX_AGE_SECONDS:-60}
+      WORKER_MARKET_MAX_SPREAD_BPS: ${WORKER_MARKET_MAX_SPREAD_BPS:-200}
     volumes:
       - vault:/var/lib/monadeum/vault
     secrets: [session_vault_passphrase, x402_vault_passphrase]
@@ -186,6 +198,28 @@ services:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
     # No healthcheck: the worker serves no port. It exits on a fatal error and `restart` brings it back.
+
+  # The policy operator's CLI (apps/worker/src/policy-main.ts), run on demand, never as a service:
+  #   docker compose ... --profile operator run --rm policy <build | append | show> [options]
+  # It connects as monadeum_policy_operator_login, the only role that may append a risk policy version, and reads the
+  # same WALLETS_* and TRADING_* configuration as the worker, so the document it builds is the one the worker checks.
+  # It holds no key: versions are signed on the owner's workstation (deploy/README.md, step 9). No route out.
+  policy:
+    <<: *server
+    profiles: [operator]
+    restart: "no"
+    entrypoint: ["node", "apps/worker/dist/src/policy-main.js"]
+    command: ["show"]
+    environment:
+      <<: [*wallets-env, *trading-env]
+      MONADEUM_ENV: development
+      DATABASE_MIGRATIONS: verify
+      DATABASE_URL: postgres://monadeum_policy_operator_login:${DB_POLICY_OPERATOR_PASSWORD:-}@postgres:5432/monadeum
+      WORKER_SETTLEMENT_ASSET_ADDRESS: ${SETTLEMENT_ASSET}
+      WORKER_POLICY_SIGNER: ${WORKER_POLICY_SIGNER:-}
+    volumes:
+      - ./policy:/var/lib/monadeum/policy
+    networks: [backend]
 
   indexer:
     <<: *server

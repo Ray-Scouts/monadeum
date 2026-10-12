@@ -5,6 +5,8 @@ node_modules/
 !*.example
 # Secret files for deploy/docker-compose.yml (vault passphrases).
 deploy/secrets/
+# Risk policy documents the operator's `policy` service writes on the VPS (deploy/README.md, step 9).
+deploy/policy/
 dist/
 build/
 .DS_Store

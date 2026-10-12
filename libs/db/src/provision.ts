@@ -17,12 +17,14 @@ export interface LoginRole {
 /**
  * The login role of each deployed process and its memberships (ARCHITECTURE.md section 10, "Roles and grants"):
  * the API runs its statements under `monadeum_api` and the read-model under `monadeum_reader`; the worker connects as
- * a member of `monadeum_worker`; the indexer as a member of `monadeum_indexer`. None of them is the table owner.
+ * a member of `monadeum_worker`; the indexer as a member of `monadeum_indexer`; the policy operator's CLI, which appends
+ * signed risk policy versions (section 16.1), as a member of `monadeum_policy_operator`. None of them is the table owner.
  */
 export const PROCESS_LOGIN_ROLES = {
   api: { name: "monadeum_api_login", memberOf: ["monadeum_api", "monadeum_reader"] },
   worker: { name: "monadeum_worker_login", memberOf: ["monadeum_worker"] },
   indexer: { name: "monadeum_indexer_login", memberOf: ["monadeum_indexer"] },
+  policyOperator: { name: "monadeum_policy_operator_login", memberOf: ["monadeum_policy_operator"] },
 } as const satisfies Record<string, { name: string; memberOf: readonly GroupRole[] }>;
 
 export const MIN_ROLE_PASSWORD_LENGTH = 16;

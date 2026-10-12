@@ -6,7 +6,12 @@ import { PROCESS_LOGIN_ROLES, provisionLoginRoles, type LoginRole } from "./prov
 type Env = Record<string, string | undefined>;
 
 /** The environment variable prefix of each process's login role password, e.g. DB_API_PASSWORD or DB_API_PASSWORD_FILE. */
-const PASSWORD_VARS = { api: "DB_API_PASSWORD", worker: "DB_WORKER_PASSWORD", indexer: "DB_INDEXER_PASSWORD" } as const;
+const PASSWORD_VARS = {
+  api: "DB_API_PASSWORD",
+  worker: "DB_WORKER_PASSWORD",
+  indexer: "DB_INDEXER_PASSWORD",
+  policyOperator: "DB_POLICY_OPERATOR_PASSWORD",
+} as const;
 
 async function secret(env: Env, name: string): Promise<string | null> {
   const direct = env[name];
@@ -20,7 +25,7 @@ async function secret(env: Env, name: string): Promise<string | null> {
  * The dedicated, privileged migration step a deployment runs once before the services start (ARCHITECTURE.md
  * section 10, "Process wiring"): with `DATABASE_URL` naming the owning role, it applies every pending migration, then
  * creates or updates the login role of each process whose password is set (`DB_API_PASSWORD`, `DB_WORKER_PASSWORD`,
- * `DB_INDEXER_PASSWORD`, or each with `_FILE`), as members of the group roles the migrations created
+ * `DB_INDEXER_PASSWORD`, `DB_POLICY_OPERATOR_PASSWORD`, or each with `_FILE`), as members of the group roles the migrations created
  * (`PROCESS_LOGIN_ROLES`). The services then connect through those roles with `DATABASE_MIGRATIONS=verify`.
  * Returns the migrations applied and the roles provisioned. Never logs a password or the connection string.
  */
