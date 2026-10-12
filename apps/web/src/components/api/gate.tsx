@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { useAuth } from "./auth";
-import { gateDecision, homeDecision } from "./navigation";
+import { gateDecision } from "./navigation";
 
 // Session gating for `api` mode. This is a user experience, not a control: every read and write is authenticated and
 // authorized by the API itself (THREAT-MODEL.md trust boundary 10), which answers 401 without a session.
@@ -30,13 +30,3 @@ export function AppGate({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/** `/` in `api` mode: no landing page, only a redirect to the population or the sign-in page. */
-export function ApiHome() {
-  const { state } = useAuth();
-  const router = useRouter();
-  useEffect(() => {
-    const decision = homeDecision(state);
-    if (decision.kind === "redirect") router.replace(decision.to);
-  }, [state, router]);
-  return <SessionPending />;
-}

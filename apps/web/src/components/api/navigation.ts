@@ -52,12 +52,6 @@ export function gateDecision(state: AuthState, pathname: string, search: string)
   return { kind: "redirect", to: state.byUser ? LOGIN_PATH : loginHref(pathname, search) };
 }
 
-/** `/`: the population for a confirmed session, the sign-in page otherwise. */
-export function homeDecision(state: AuthState): Decision {
-  if (state.status === "loading") return { kind: "pending" };
-  return { kind: "redirect", to: state.status === "signed-in" ? HOME_PATH : LOGIN_PATH };
-}
-
 /** `/login`: shown at once, including while the session is still being checked; a confirmed session moves on. */
 export function loginDecision(state: AuthState, search: string): Decision {
   if (state.status !== "signed-in") return { kind: "render" };
