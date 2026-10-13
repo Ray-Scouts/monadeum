@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Card, CardHead } from "@/components/ui";
 import { FUNDING_NOTE, genomeSummary } from "@/data/api/create";
+import { firstRunSteps, ownerNextStep } from "@/data/api/firstrun";
 import { amount, explainAgent } from "@/data/api/present";
 import type { ApiAgent } from "@/data/api/types";
 import type { Operation } from "@/data/api/types";
@@ -15,6 +16,7 @@ import { CardFundingNotice } from "./CardFundingNotice";
 import { FundAgent } from "./FundAgent";
 import { OperationSigner } from "./OperationSigner";
 import { ActivateAgent } from "./ActivateAgent";
+import { FirstRunChecklist, NextStepCard } from "./FirstRun";
 import { StopAgent } from "./StopAgent";
 import { useApiData } from "./useApiData";
 import { EventFeed } from "@/app/(app)/events/_components/EventFeed";
@@ -32,6 +34,23 @@ function Loading() {
   );
 }
 
+/** The dashboard's pointer for a new owner: create the first agent, or finish the next step of the newest unfinished one. */
+export function GetStarted({ agents }: { agents: ApiAgent[] }) {
+  if (agents.length === 0) {
+    return (
+      <Card>
+        <CardHead title="Create your first agent" />
+        <p className="text-sm text-muted">You have no agents yet. Creating one takes a single step with the recommended settings, on the Monad testnet.</p>
+        <Link href="/create" className="btn btn-primary mt-3 w-full sm:w-auto">
+          Create your first agent
+        </Link>
+      </Card>
+    );
+  }
+  const next = ownerNextStep(agents, settlement);
+  return next ? <NextStepCard agentName={next.agent.name} agentId={next.agent.id} step={next.step} /> : null;
+}
+
 export function ApiPopulation() {
   const { data, error } = useApiData(async (s) => {
     const [population, mine, owner] = await Promise.all([s.population(), s.agents(), s.owner()]);
@@ -41,6 +60,7 @@ export function ApiPopulation() {
   return (
     <>
       <ErrorNote error={error} />
+      <GetStarted agents={data.agents} />
       <PopulationView population={data.population} agents={data.agents} owner={data.owner} settlement={settlement} />
     </>
   );
@@ -61,7 +81,7 @@ export function ApiCapitalFlow() {
 }
 
 /** Retries an agent's deployment through the owner-signed relay, for an account that is not deployed. */
-function Redeploy({ agentId, name, onDone }: { agentId: string; name: string; onDone(): void }) {
+function Redeploy({ agentId, name, pending, onDone }: { agentId: string; name: string; pending: boolean; onDone(): void }) {
   const session = useSession();
   const [operation, setOperation] = useState<Operation | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,10 +102,14 @@ function Redeploy({ agentId, name, onDone }: { agentId: string; name: string; on
   return (
     <Card>
       <CardHead title="Account deployment" />
-      <p className="text-sm text-muted">This agent&apos;s smart account is not deployed. Deployment is signed by your owner wallet.</p>
+      <p className="text-sm text-muted">
+        {pending
+          ? "This agent's deployment was started but has not finished. If it was interrupted, start it again here. Your owner wallet signs it and the platform pays the network fee."
+          : "This agent's smart account is not deployed yet. Your owner wallet signs one approval and the platform pays the network fee. Funding and activation open once it is deployed."}
+      </p>
       {!operation && (
         <button type="button" className="btn mt-3" disabled={busy} onClick={() => void start()}>
-          Deploy the account
+          {pending ? "Continue the deployment" : "Deploy the account"}
         </button>
       )}
       {operation && !finished && (
@@ -99,7 +123,7 @@ function Redeploy({ agentId, name, onDone }: { agentId: string; name: string; on
       )}
       {finished && (
         <p role="status" className="mt-3 text-sm">
-          {operation.status === "succeeded" ? "Deployment finished." : `Deployment failed (${operation.error ?? "unknown"}). You can start it again.`}
+          {operation.status === "succeeded" ? "Deployment finished." : "Deployment did not finish, so the account is still not deployed. Choose Deploy the account to start it again."}
         </p>
       )}
       <p role="alert" className="mt-2 text-sm text-bad empty:hidden">
@@ -164,12 +188,21 @@ export function ApiAgent({ id }: { id: string }) {
         settlement={settlement}
         actions={
           <>
-            {agent.deployment === "deployed" && agent.session?.status !== "revoking" && <ActivateAgent agent={agent} onChanged={reload} />}
+            <FirstRunChecklist steps={firstRunSteps(agent, settlement)} />
+            {agent.deployment === "deployed" && agent.session?.status !== "revoking" && (
+              <div id="activate" className="scroll-mt-4">
+                <ActivateAgent agent={agent} onChanged={reload} />
+              </div>
+            )}
             <StopAgent agent={agent} onChanged={reload} />
           </>
         }
       />
-      {agent.deployment !== "deployed" && <Redeploy agentId={agent.id} name={agent.name} onDone={reload} />}
+      {agent.deployment !== "deployed" && (
+        <div id="account" className="scroll-mt-4">
+          <Redeploy agentId={agent.id} name={agent.name} pending={agent.deployment === "pending"} onDone={reload} />
+        </div>
+      )}
       <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <CapitalHistoryCard agent={agent} settlement={settlement} />
         <StrategyCard agent={agent} />
@@ -177,7 +210,9 @@ export function ApiAgent({ id }: { id: string }) {
       <EarningsCard agent={agent} settlement={settlement} />
       {agent.deployment === "deployed" && (
         <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-          <FundAgent agent={agent} onChanged={reload} />
+          <div id="fund" className="min-w-0 scroll-mt-4">
+            <FundAgent agent={agent} onChanged={reload} />
+          </div>
           <CardFundingNotice />
         </div>
       )}

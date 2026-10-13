@@ -1,5 +1,6 @@
 "use client";
 
+import { plainThrown } from "@/data/api/plain";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createApiClient, isApiError, type ApiClient, type Credential, type SessionClient } from "@/data/api/client";
 import { messageHex, sameAddress, type Eip1193 } from "@/data/api/signing";
@@ -95,7 +96,7 @@ const describe = (error: unknown) => {
   if (isApiError(error)) return error.reason === "network-error" ? "The API could not be reached." : `Sign-in failed (${error.reason}).`;
   const code = (error as { code?: unknown } | null)?.code;
   if (code === 4001) return "The request was declined in your wallet.";
-  return error instanceof Error ? error.message : "Sign-in failed.";
+  return plainThrown(error, "Sign-in failed. Try again, or use the other sign-in option.");
 };
 
 export function AuthProvider({ privy, privyError = null, children }: { privy: PrivyBridge | null; privyError?: string | null; children: ReactNode }) {
