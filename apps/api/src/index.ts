@@ -1,4 +1,4 @@
-export { ApiModule, configureApp } from "./app.module.js";
+export { ApiModule, configureApp, PUBLIC_RATE_LIMIT, PUBLIC_RATE_WINDOW_MS } from "./app.module.js";
 export { buildDependencies, memoryStores, postgresStores } from "./build.js";
 export type { ApiStores, BuildInput } from "./build.js";
 export { ApiConfigError, loadApiConfig } from "./config.js";

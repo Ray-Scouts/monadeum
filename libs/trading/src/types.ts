@@ -187,6 +187,8 @@ export interface TradeCounts {
   filledByAgent(agentIds: readonly string[]): Promise<Map<string, number>>;
   /** Filled trades across every agent. */
   filledTotal(): Promise<number>;
+  /** The latest `limit` filled records, newest first, for the public evidence page. */
+  filledRecords(limit: number): Promise<TradeRecord[]>;
   /**
    * The summed costs of every trade of each agent in `agentIds` that carries costs, a reverted one included (it still
    * paid gas): the same entries `toCostedFill` hands FitnessModule. An agent with none maps to zeros.
@@ -240,6 +242,9 @@ export class MemoryTradeStore implements TradeStore, TradeCounts {
   }
   async filledTotal(): Promise<number> {
     return [...this.rows.values()].filter((r) => r.status === "filled").length;
+  }
+  async filledRecords(limit: number): Promise<TradeRecord[]> {
+    return [...this.rows.values()].filter((r) => r.status === "filled").reverse().slice(0, limit);
   }
   async costsByAgent(agentIds: readonly string[]): Promise<Map<string, TradeCosts>> {
     const rows = [...this.rows.values()];
