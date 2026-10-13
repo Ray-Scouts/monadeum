@@ -1,12 +1,12 @@
 import type { AgentRecord as WorkerAgentRecord } from "@monadeum/agent-registry";
 import type { Principal } from "@monadeum/auth";
-import { projectAccount, type ChainEvent } from "@monadeum/indexer";
+import { REALLOCATION_RECEIVED, REALLOCATION_SENT, chainOrder, projectAccount, type ChainEvent } from "@monadeum/indexer";
 import { RECOVERY_WINDOW_MS, RecoveryService, type RecoveryHold } from "@monadeum/recovery";
 import { DEFAULT_GENOME_PRESET, GENOME_PRESETS, genomePreset } from "@monadeum/strategy/presets";
 import type { OwnerSigner, RevokeResult } from "@monadeum/wallets";
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Res, UseGuards } from "@nestjs/common";
 import type { Address, Hex } from "viem";
-import { activityOf, agentView, callerUser, chainView, evaluationsOf, ownedAgent, spendsOf, x402View } from "./agents.js";
+import { activityOf, agentView, callerUser, chainView, evaluationsOf, ownedAgent, selectionEvents, spendsOf, x402View } from "./agents.js";
 import { API_DEPENDENCIES, fail, type ApiDependencies } from "./dependencies.js";
 import { STRATEGY_VERSION_HASH, buildGenome, workerGenome } from "./genome.js";
 import { jsonSafe } from "./json.js";
@@ -138,21 +138,57 @@ export class AgentsController {
   }
 
   /**
-   * The caller's capital flow. Reallocations are not indexed yet: the reallocation contract (issue #31) is not
-   * deployed, so the list is empty and says so; what the chain shows today is each agent's spends.
+   * The caller's capital flow: each indexed reallocation that moved capital out of or into one of the caller's agents,
+   * and each agent's spends. `reallocationsIndexed` is true only when the read-model records the reallocation contract
+   * this API is configured with (libs/db migration 0016), so an empty list then means nothing moved; while it is false
+   * the list is empty because nothing reads the contract, and says nothing about whether capital moved.
    */
   @Get("capital-flow")
   async capitalFlow(@Caller() principal: Principal) {
     const user = await callerUser(this.deps, principal);
+    const configured = this.deps.settings.reallocationContract?.toLowerCase() ?? null;
+    const reallocationsIndexed = configured !== null && (await this.deps.readModel.indexedContracts()).reallocation === configured;
     const spends = [];
+    const byAccount = new Map<string, string>();
+    const moves = new Map<string, ChainEvent>();
     for (const agent of user.ownerWallet ? await this.deps.agents.listByOwner(user.ownerWallet) : []) {
       const wallet = await this.deps.walletStore.get(agent.agentId);
       if (!wallet) continue;
+      const account = wallet.account.toLowerCase() as Address;
+      byAccount.set(account, agent.agentId);
       for (const e of await spendsOf(this.deps, wallet.account)) {
         spends.push({ agentId: agent.agentId, amount: e.data.amount, transactionHash: e.transactionHash, blockNumber: e.blockNumber });
       }
+      if (!reallocationsIndexed) continue;
+      // A move between two of the caller's agents is stored once per side; it is served once.
+      for (const kind of [REALLOCATION_SENT, REALLOCATION_RECEIVED]) {
+        for (const e of await this.deps.readModel.events({ kind, account })) moves.set(`${e.transactionHash}:${e.logIndex}`, e);
+      }
     }
-    return jsonSafe({ ownerId: user.id, reallocations: [], reallocationsIndexed: false, spends });
+    const reallocations = [...moves.values()].sort(chainOrder).map((e) => ({
+      evaluation: Number(e.data.evaluation),
+      source: e.data.source,
+      sink: e.data.sink,
+      sourceAgentId: byAccount.get(String(e.data.source)) ?? null,
+      sinkAgentId: byAccount.get(String(e.data.sink)) ?? null,
+      amount: e.data.amount,
+      transactionHash: e.transactionHash,
+      blockNumber: e.blockNumber,
+    }));
+    return jsonSafe({ ownerId: user.id, reallocations, reallocationsIndexed, spends });
+  }
+
+  /**
+   * The caller's selection events, newest first (`selectionEvents`): retirements and the reallocations the worker
+   * submitted, from the evaluation records of the caller's agents, the last `CAPITAL_HISTORY_LIMIT` evaluations of each.
+   * Policy-engine decisions are not served here.
+   */
+  @Get("events")
+  async events(@Caller() principal: Principal) {
+    const user = await callerUser(this.deps, principal);
+    const agents = user.ownerWallet ? await this.deps.agents.listByOwner(user.ownerWallet) : [];
+    const records = (await Promise.all(agents.map((a) => evaluationsOf(this.deps, a.agentId)))).flat();
+    return jsonSafe({ ownerId: user.id, events: selectionEvents(records) });
   }
 
   /** The genome presets an owner can create an agent from (EVOLUTION.md section 1.1), with the pair they trade. */

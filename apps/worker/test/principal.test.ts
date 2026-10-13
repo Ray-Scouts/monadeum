@@ -69,7 +69,7 @@ await migrate(db);
 after(() => pg.close());
 
 async function fresh(recordAsset: Address | null = USDC) {
-  await db.query("TRUNCATE chain_events, indexer_blocks, indexer_cursor, indexer_tracked_accounts, indexer_settings, worker_agent_states, worker_agents");
+  await db.query("TRUNCATE chain_events, indexer_blocks, indexer_cursor, indexer_tracked_accounts, indexer_settings, indexer_contracts, worker_agent_states, worker_agents");
   await new PgAgentStore(asRole(db, "monadeum_api")).add(record("1"));
   const indexer = new PgReadModelStore(asRole(db, "monadeum_indexer"));
   if (recordAsset) await indexer.recordSettlementAsset(recordAsset);

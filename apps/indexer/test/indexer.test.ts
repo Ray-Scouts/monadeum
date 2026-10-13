@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseAbi, type AbiEvent, type Address } from "viem";
+import type { AbiEvent, Address } from "viem";
 import { entryPoint07Address } from "viem/account-abstraction";
-import { entryPointEvents, kernelEvents, spendPolicyEvents } from "../src/handlers/abi.js";
+import { REALLOCATION_RECEIVED, REALLOCATION_SENT } from "@monadeum/read-model";
+import { entryPointEvents, kernelEvents, reallocationEvents, spendPolicyEvents } from "../src/handlers/abi.js";
 import { defaultRegistry } from "../src/handlers/index.js";
 import { DeepReorgError, Indexer, type SyncOptions } from "../src/indexer.js";
 import { accountView } from "../src/read-model.js";
@@ -190,29 +191,48 @@ test("a batch that does not extend the cursor is retried", async () => {
   assert.equal((await store.cursor())?.number, 2n);
 });
 
-test("a further contract is added by registering a handler, without changing the core", async () => {
+test("indexes the reallocation contract's moves once per followed side, its agent events, and its owner events", async () => {
   const REALLOCATION = "0x5555555555555555555555555555555555555555" as Address;
-  // A stand-in shape for the reallocation contract (issue #31); its real events are defined there.
-  const events = parseAbi(["event Reallocated(address indexed owner, address indexed source, address indexed sink, uint256 amount)"]);
-  const handler: EventHandler = {
-    name: "reallocation-example",
-    source: { kind: "contract", address: REALLOCATION },
-    events,
-    kinds: ["reallocation.moved"],
-    handle: ({ args }) => ({ kind: "reallocation.moved", account: String(args.source).toLowerCase() as Address, data: { amount: String(args.amount) } }),
-  };
-  const chain = new MockChain().mine(2, [
-    deploymentBlock(ACCOUNT),
-    [{ address: REALLOCATION, event: events[0]!, args: { owner: STRANGER, source: ACCOUNT, sink: STRANGER, amount: 3n } }],
+  const OWNER = "0x6666666666666666666666666666666666666666" as Address;
+  const SINK = "0x7777777777777777777777777777777777777777" as Address;
+  const realloc = (name: string, args: Record<string, unknown>): LogSpec => ({ address: REALLOCATION, event: event(reallocationEvents, name), args });
+  const chain = new MockChain().mine(4, [
+    [...deploymentBlock(ACCOUNT), ...deploymentBlock(SINK)],
+    [
+      realloc("AgentRegistered", { account: ACCOUNT, owner: OWNER, principal: 10_000_000n }),
+      realloc("AgentRegistered", { account: STRANGER, owner: OWNER, principal: 1n }),
+      realloc("PolicyCommitted", { owner: OWNER, policyHash: `0x${"cd".repeat(32)}`, nonce: 0n }),
+    ],
+    [
+      realloc("EvaluationAdvanced", { evaluation: 1n }),
+      realloc("Reallocated", { owner: OWNER, source: ACCOUNT, sink: SINK, amount: 2_000_000n, evaluation: 1n }),
+      // A move whose sides are not followed is not stored.
+      realloc("Reallocated", { owner: OWNER, source: STRANGER, sink: STRANGER, amount: 1n, evaluation: 1n }),
+    ],
+    [realloc("PrincipalSet", { account: ACCOUNT, principal: 12_000_000n }), realloc("AgentRetired", { account: SINK, owner: OWNER, by: OWNER })],
   ]);
   const store = new InMemoryReadModelStore();
-  const registry = defaultRegistry(registryInput).register(handler);
-  const indexer = new Indexer(chain, store, registry, options);
+  const indexer = new Indexer(chain, store, defaultRegistry({ ...registryInput, reallocation: REALLOCATION }), options);
   await drain(indexer);
-  const moved = await store.events({ kind: "reallocation.moved" });
-  assert.deepEqual(moved.map((e) => [e.account, e.data.amount]), [[ACCOUNT, "3"]]);
-  // A non-discovery handler does not add accounts to the tracked set.
-  assert.deepEqual(await store.trackedAccounts(), [ACCOUNT]);
+
+  const sent = await store.events({ kind: REALLOCATION_SENT });
+  const received = await store.events({ kind: REALLOCATION_RECEIVED });
+  assert.deepEqual(sent.map((e) => [e.account, e.data]), [[ACCOUNT, { owner: OWNER, source: ACCOUNT, sink: SINK, amount: "2000000", evaluation: "1" }]]);
+  assert.deepEqual(received.map((e) => e.account), [SINK]);
+  assert.equal(sent[0]!.transactionHash, received[0]!.transactionHash);
+  assert.equal(sent[0]!.logIndex, received[0]!.logIndex);
+  assert.deepEqual((await store.events({ kind: "reallocation.agent-registered" })).map((e) => [e.account, e.data.principal]), [[ACCOUNT, "10000000"]]);
+  assert.deepEqual((await store.events({ kind: "reallocation.principal-set" })).map((e) => e.data.principal), ["12000000"]);
+  assert.deepEqual((await store.events({ kind: "reallocation.agent-retired" })).map((e) => [e.account, e.data.by]), [[SINK, OWNER]]);
+  assert.deepEqual((await store.events({ kind: "reallocation.policy-committed" })).map((e) => [e.account, e.data.owner, e.data.nonce]), [[null, OWNER, "0"]]);
+  assert.deepEqual((await store.events({ kind: "reallocation.evaluation-advanced" })).map((e) => e.data.evaluation), ["1"]);
+  // The reallocation handlers do not add accounts to the tracked set.
+  assert.deepEqual((await store.trackedAccounts()).sort(), [ACCOUNT, SINK].sort());
+});
+
+test("without a reallocation address, no reallocation handler is registered", () => {
+  assert.equal(defaultRegistry(registryInput).list().some((h) => h.name.startsWith("reallocation")), false);
+  assert.equal(defaultRegistry({ ...registryInput, reallocation: POLICY }).list().filter((h) => h.name.startsWith("reallocation")).length, 4);
 });
 
 test("the registry rejects a duplicate handler name or kind", () => {

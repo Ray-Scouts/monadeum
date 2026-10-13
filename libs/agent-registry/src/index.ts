@@ -180,6 +180,24 @@ export interface EvaluationRecord {
   retired: boolean;
   /** The section 6 rule that retired the agent in this evaluation, or null when it was not retired. */
   retirementRule: string | null;
+  /**
+   * What reallocation did to the agent in this evaluation (`evaluationOutcomes` of `@monadeum/reallocation`), or null
+   * when the deployment's reallocation switch was off, so nothing was planned. Optional so a record written before it
+   * existed reads the same as one with no outcome.
+   */
+  reallocation?: RecordedReallocation | null;
+}
+
+/**
+ * One agent's reallocation outcome as recorded. `reason` is set for `off`, `unranked`, and `held`; `amount` (base units)
+ * for `sent` and `received`, the sum of the credits the worker submitted for it; `rank` when it was in its owner's
+ * ranking pool (position 1 is the lowest).
+ */
+export interface RecordedReallocation {
+  kind: "off" | "unranked" | "sent" | "received" | "held" | "retired";
+  reason: string | null;
+  amount: bigint | null;
+  rank: { position: number; of: number; quota: number } | null;
 }
 
 /**
@@ -215,5 +233,34 @@ export class MemoryEvaluationStore implements EvaluationStore {
       .filter((r) => r.sequence === top)
       .sort((a, b) => (a.agentId < b.agentId ? -1 : a.agentId > b.agentId ? 1 : 0))
       .map((r) => structuredClone(r));
+  }
+}
+
+/** The two signals of the population-level circuit breaker (SECURITY.md section 9, layer 3). */
+export type BreakerSignal = "capital-at-risk" | "reallocation-volume";
+
+/**
+ * One entry of the breaker's append-only log. The worker appends a `trip` when a signal crosses its threshold; only a
+ * human, through the policy operator's CLI, appends a `clear`. The latest entry is the breaker's state.
+ */
+export type BreakerEvent =
+  | { kind: "trip"; signal: BreakerSignal; observed: bigint; threshold: bigint; actor: string; reason: string; recordedAt: number }
+  | { kind: "clear"; actor: string; reason: string; recordedAt: number };
+
+export interface BreakerStore {
+  append(event: BreakerEvent): Promise<void>;
+  /** The most recent entry, or null when the log is empty. */
+  latest(): Promise<BreakerEvent | null>;
+}
+
+/** For tests and local development. Not durable: a restart forgets a trip, so production uses the Postgres store. */
+export class MemoryBreakerStore implements BreakerStore {
+  readonly events: BreakerEvent[] = [];
+  async append(event: BreakerEvent) {
+    this.events.push(structuredClone(event));
+  }
+  async latest() {
+    const last = this.events.at(-1);
+    return last ? structuredClone(last) : null;
   }
 }

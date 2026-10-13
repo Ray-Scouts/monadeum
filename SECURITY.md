@@ -72,6 +72,12 @@ A layered-cap pattern, matching the production precedent found in research (Coin
 1. **Per-transaction and per-day caps, on-chain, per agent** (section 1). No application bug or compromised worker process can exceed these, because the chain itself rejects the transaction.
 2. **A session-level budget enforced by the Policy/Risk Engine**, tighter than the on-chain cap (deployment-wide on testnet today, not per agent; section 13), evaluated before a transaction is even submitted. This catches problems earlier than the on-chain layer, at the cost of being bypassable if the application layer itself is compromised, which is exactly why layer 1 exists independently.
 3. **An aggregate, population-level circuit breaker**, tracking total capital at risk across all live agents and the aggregate capital moved by reallocation per evaluation. If either crosses a configured threshold, this is the platform-wide equivalent of a kill switch: new agent ticks stop being scheduled, and reallocation is paused, until a human reviews and clears the condition. This is the control that specifically answers `THREAT-MODEL.md` scenario D, capital drifting toward a strategy whose risk the fitness metric does not capture; no single agent's individual spend limit catches a slow, population-wide drift toward a bad strategy, only an aggregate view can. (Under the superseded reproduction mechanism the second signal was the aggregate reproduction rate.)
+   **Decided, as implemented** (`apps/worker/src/breaker.ts`, libs/db migration 0018):
+   - *Capital at risk* is the sum, over every Active, funded agent, of its account's settlement-asset balance plus the cost basis of its open position, in base units. *Reallocation volume* is what one evaluation's plan would move, in base units.
+   - Both are checked at every evaluation, capital at risk first and the plan's volume before any debit is submitted. A slow drift is what this layer exists for, so a check per evaluation cadence is the chosen granularity; a breach between evaluations is caught at the next one, while layers 1 and 2 bound each tick.
+   - A value strictly above its threshold trips the breaker. The trip is appended to an append-only Postgres log, so a restarted worker is still halted. While the latest entry is a trip, the worker runs no tick at all, including the reconciliation of a tick already started, which resumes under the same tick key once cleared, and an evaluation still computes fitness and applies retirement, which move no capital, but submits no reallocation debit.
+   - The capital falling back below the threshold does not release it. Only a clear does, appended by the policy operator's CLI (`breaker-clear --by <who> --reason <what was reviewed>`). Row-level security lets the worker's database role append trips only and the policy operator's role append clears only, so a compromised worker cannot clear its own trip.
+   - Thresholds: `WORKER_BREAKER_CAPITAL_AT_RISK` is required when the tick runner is enabled, so no trading worker runs without one; the testnet starting value is 1000 USDC (`deploy/.env.testnet.example`), a hypothesis to revisit, not a measured number. `WORKER_BREAKER_REALLOCATION_VOLUME` is optional, because the tick runner settles no reallocation (its reallocation executor is unconfigured); it must be set before any reallocation executor is wired.
 4. **Manual, immediate per-agent stop**: the user can retire any agent from the dashboard at any time, which revokes its session key immediately (section 1); the operator can do the same for any agent platform-wide in an incident.
 
 ### Bulk recovery hold
@@ -108,6 +114,8 @@ Testnet uses real testnet assets. It exists to validate the paths mainnet will u
 - Accounting: `ECONOMICS.md` section 2. Reallocation moves capital that already exists between one owner's agents. It does not create capital, and it never crosses owners.
 - Trading: `ARCHITECTURE.md` section 10 (`TradingModule`).
 - Policies: sections 1 and 4 of this document.
+
+`docs/testnet-validation-checklist.md` maps each of these to the checks a valid testnet deployment must pass (issue #48), and records which are evidenced in this repository and which still need a run on testnet. A testnet deployment is not validated until every item there is evidenced or explicitly accepted in the validation report.
 
 ### Mainnet
 

@@ -6,6 +6,7 @@ import {
   type DebitRecord,
   type DebitStore,
   type EvaluationRecord,
+  type RecordedReallocation,
   type EvaluationStore,
 } from "@monadeum/agent-registry";
 import type { Hex } from "viem";
@@ -112,15 +113,22 @@ interface EvaluationRow {
   low_windows: number;
   retired: boolean;
   retirement_rule: string | null;
+  reallocation_kind: RecordedReallocation["kind"] | null;
+  reallocation_reason: string | null;
+  reallocation_amount: string | null;
+  rank_position: number | null;
+  rank_of: number | null;
+  rank_quota: number | null;
 }
 
 const EVALUATION_COLUMNS = `agent_id, sequence, evaluated_at::text AS evaluated_at, capital::text AS capital, adjusted_fitness,
-  fitness_percentile, raw_sortino, zero_downside, trade_count, low_windows, retired, retirement_rule`;
+  fitness_percentile, raw_sortino, zero_downside, trade_count, low_windows, retired, retirement_rule, reallocation_kind, reallocation_reason,
+  reallocation_amount::text AS reallocation_amount, rank_position, rank_of, rank_quota`;
 
 const num = (v: number | string | null) => (v === null ? null : Number(v));
 
 function evaluationFrom(row: EvaluationRow): EvaluationRecord {
-  return {
+  const record: EvaluationRecord = {
     sequence: Number(row.sequence),
     agentId: row.agent_id,
     evaluatedAt: Number(row.evaluated_at),
@@ -134,6 +142,16 @@ function evaluationFrom(row: EvaluationRow): EvaluationRecord {
     retired: row.retired,
     retirementRule: row.retirement_rule,
   };
+  // Set only when recorded, so a record without an outcome reads exactly as the in-memory store returns it.
+  if (row.reallocation_kind !== null) {
+    record.reallocation = {
+      kind: row.reallocation_kind,
+      reason: row.reallocation_reason,
+      amount: row.reallocation_amount === null ? null : BigInt(row.reallocation_amount),
+      rank: row.rank_position === null ? null : { position: Number(row.rank_position), of: Number(row.rank_of), quota: Number(row.rank_quota) },
+    };
+  }
+  return record;
 }
 
 /**
@@ -149,10 +167,13 @@ export class PgEvaluationStore implements EvaluationStore {
       for (const r of records) {
         await tx.query(
           `INSERT INTO evaluation_records (agent_id, sequence, evaluated_at, capital, adjusted_fitness, fitness_percentile, raw_sortino,
-             zero_downside, trade_count, low_windows, retired, retirement_rule)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (agent_id, sequence) DO NOTHING`,
+             zero_downside, trade_count, low_windows, retired, retirement_rule, reallocation_kind, reallocation_reason, reallocation_amount,
+             rank_position, rank_of, rank_quota)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) ON CONFLICT (agent_id, sequence) DO NOTHING`,
           [r.agentId, r.sequence, r.evaluatedAt, r.capital.toString(), r.adjustedFitness, r.fitnessPercentile, r.rawSortino,
-            r.zeroDownsideFlag, r.tradeCount, r.lowWindows, r.retired, r.retirementRule],
+            r.zeroDownsideFlag, r.tradeCount, r.lowWindows, r.retired, r.retirementRule, r.reallocation?.kind ?? null,
+            r.reallocation?.reason ?? null, r.reallocation?.amount?.toString() ?? null, r.reallocation?.rank?.position ?? null,
+            r.reallocation?.rank?.of ?? null, r.reallocation?.rank?.quota ?? null],
         );
       }
     });

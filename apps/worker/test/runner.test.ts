@@ -71,6 +71,7 @@ async function setup(options: { policy?: "valid" | "none" | "other-signer" | "ot
       stores: { ...w.stores, policies }, chain: w.token, market, trading, settlementAsset: WETH_MARKET.quote, network: "eip155:10143",
       reallocation: REALLOCATION_DISABLED, maxSlippageBps: 100, signer: operator.address, target, clock, log: (m) => logs.push(m),
       commitments: options.commitments ?? null,
+      breaker: { capitalAtRisk: 10n ** 30n, reallocationVolume: null },
     });
   }
 
