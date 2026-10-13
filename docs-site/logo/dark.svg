@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 32" width="176" height="32" role="img" aria-label="Monadeum">
+  <title>Monadeum</title>
+  <path d="M16 2c-3.9 0-14 10.1-14 14s10.1 14 14 14 14-10.1 14-14S19.9 2 16 2zm-2.2 22c-1.6-.4-6-8.2-5.6-9.8.4-1.6 8.2-6 9.8-5.6 1.6.4 6 8.2 5.6 9.8-.4 1.6-8.2 6-9.8 5.6z" fill="#836EF9"/>
+  <text x="42" y="23" font-family="'Bricolage Grotesque', 'Geist', ui-sans-serif, system-ui, sans-serif" font-size="22" font-weight="600" letter-spacing="-0.4" fill="#F6F5F2">Monadeum</text>
+</svg>
