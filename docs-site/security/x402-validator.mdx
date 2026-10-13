@@ -16,8 +16,9 @@ An x402 payment on EVM is, by default, an EIP-3009 `transferWithAuthorization` t
 
 A dedicated x402 key and a separate Kernel validator module, `X402PaymentValidator`, which the owner installs beside the trading permission. It approves an ERC-1271 signature only for an EIP-3009 `transferWithAuthorization` from the account to a payee the owner listed. Kernel's skip-signature flag is never set on the spend policy, for any agent. The trading key therefore cannot sign for the account at all, and the x402 key can sign nothing but bounded payments. Each key holds exactly one power.
 
-<Frame caption="x402 payment flow, including the validator's on-chain bounds on the signed authorization. Source: ARCHITECTURE.md section 16.3.">
-  <img src="/images/diagrams/07-x402-payment-flow.svg" alt="Sequence diagram of an x402 payment with the on-chain validator bounding payee, amount, validity window, and per-hour slot." />
+<Frame caption="x402 payment flow with the validator's on-chain bounds on the signed authorization: a listed payee, at most 0.05 USDC, validity of at most 300 seconds, and four payments per hour, so at most 5.20 USDC per agent per 24 hours (proposed defaults). The provider serving x402 v2 on Monad and the facilitator accepting ERC-1271 signatures are unverified assumptions. Source: ARCHITECTURE.md section 16.3.">
+  <img className="block dark:hidden" src="/images/diagrams/07-x402-payment-flow-light.svg" alt="An agent can pay only a listed payee, within chain-enforced bounds. The x402 payment path as a vertical flow: check budget, request, sign, retry with payment, reconcile. The validator contract checks the signature on chain, a provider and a facilitator sit outside, and both are unverified assumptions." />
+  <img className="hidden dark:block" src="/images/diagrams/07-x402-payment-flow-dark.svg" alt="An agent can pay only a listed payee, within chain-enforced bounds. The x402 payment path as a vertical flow: check budget, request, sign, retry with payment, reconcile. The validator contract checks the signature on chain, a provider and a facilitator sit outside, and both are unverified assumptions." />
 </Frame>
 
 ## What it enforces

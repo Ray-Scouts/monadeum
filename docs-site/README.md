@@ -9,7 +9,7 @@ Source of the public documentation, built with [Mintlify](https://mintlify.com) 
 | `docs.json` | Site configuration: theme, colors, logo, navigation, navbar, footer, SEO |
 | `index.mdx` and `*/` | Pages, grouped as Introduction, Concepts, Architecture, Security, Economics, Evidence, Deployments, Reference |
 | `logo/light.svg`, `logo/dark.svg`, `favicon.svg` | Brand assets, derived from the app's logo mark and color tokens in `apps/web/src/app/globals.css` |
-| `images/diagrams/` | The twelve system diagrams (`01-system-architecture.svg` through `12-evidence-chain.svg`), referenced by the pages |
+| `images/diagrams/` | The twelve system diagrams (`01-system-architecture-light.svg` through `12-evidence-chain-dark.svg`, a light and a dark variant of each), referenced by the pages |
 
 ## Run it locally
 
@@ -29,7 +29,6 @@ npx mint@latest validate        # builds the site and fails on warnings or error
 npx mint@latest broken-links    # reports links and images that do not resolve
 ```
 
-`broken-links` reports a missing image for every diagram path until the files in `images/diagrams/` exist. Those paths are deliberate: another change produces the diagrams, and the pages reference them at their final paths.
 
 ## Rules for editing
 

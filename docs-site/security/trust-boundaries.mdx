@@ -5,8 +5,9 @@ description: "The ten places where control passes from one part of Monadeum to a
 
 Source of truth: `THREAT-MODEL.md` section 3.
 
-<Frame caption="Trust boundaries across the model, the risk engine, the account, external providers, and the owner's wallet. Source: THREAT-MODEL.md section 3.">
-  <img src="/images/diagrams/09-trust-boundaries.svg" alt="Diagram of ten trust boundaries: model to risk engine, risk engine to on-chain validator, worker to x402 responses, account to external addresses, account to account at reallocation, root wallet to session key, Postgres to chain commitments, agent to agent, paymaster budget, and frontend to API." />
+<Frame caption="Trust boundaries: the browser and provider responses are untrusted input (boundaries B10 and B3), the strategy proposes and the RiskModule checks (B1), the chain re-checks the approved plan (B2) and rejects any other address (B4), reallocation is the only path between agents and stays within one owner (B5, B8), and the owner can revoke at any time (B6). The platform operator is trusted for the MVP. Source: THREAT-MODEL.md section 3.">
+  <img className="block dark:hidden" src="/images/diagrams/09-trust-boundaries-light.svg" alt="Every layer re-checks what the layer before it claims. Three bands: untrusted input, the platform, and Monad. The browser and provider responses are re-validated by the platform, the strategy's proposal is checked by the RiskModule, and the chain re-checks the approved plan and rejects any other address." />
+  <img className="hidden dark:block" src="/images/diagrams/09-trust-boundaries-dark.svg" alt="Every layer re-checks what the layer before it claims. Three bands: untrusted input, the platform, and Monad. The browser and provider responses are re-validated by the platform, the strategy's proposal is checked by the RiskModule, and the chain re-checks the approved plan and rejects any other address." />
 </Frame>
 
 | # | Boundary | What crosses it, and what is trusted |

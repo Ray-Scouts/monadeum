@@ -5,8 +5,9 @@ description: "How the worker runs an agent tick and an evaluation: idempotency, 
 
 Source of truth: `ARCHITECTURE.md` sections 11 and 14, `apps/worker`, and `libs/tick`.
 
-<Frame caption="One tick: observe, optional information purchase, propose, build the plan, evaluate it, submit the approved plan hash, measure. Source: ARCHITECTURE.md section 11.">
-  <img src="/images/diagrams/08-worker-tick.svg" alt="Flow diagram of a worker tick: sample the market, verify the signed policy, observe, decide on information, propose, build the execution plan, risk engine evaluation, submit only the approved plan hash, record the outcome and measure fitness." />
+<Frame caption="One tick: claim the tick under a per-agent lock, check the breaker, signed policy, and genome commitment, observe the market and the account, propose a plan, check it with the RiskModule, submit only the approved plan hash, and measure. Any failure ends the tick with no action. The tick runner is off by default and no tick has run on the live testnet deployment. Source: ARCHITECTURE.md section 11.">
+  <img className="block dark:hidden" src="/images/diagrams/08-worker-tick-light.svg" alt="A tick either submits an approved plan or stops without acting. One worker tick as a vertical path: claim the tick, check the gates, observe, propose, check risk, submit, and measure. Four steps can fail, and each failure leads to a single no-action outcome that is final for that tick." />
+  <img className="hidden dark:block" src="/images/diagrams/08-worker-tick-dark.svg" alt="A tick either submits an approved plan or stops without acting. One worker tick as a vertical path: claim the tick, check the gates, observe, propose, check risk, submit, and measure. Four steps can fail, and each failure leads to a single no-action outcome that is final for that tick." />
 </Frame>
 
 ## The loop

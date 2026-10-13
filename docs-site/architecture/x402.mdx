@@ -15,8 +15,9 @@ Of the roughly five dozen services in Monad's API Hub at research time, only two
 
 ## The payment path
 
-<Frame caption="x402 payment flow: request, 402 terms, plan check, signature through the bounded validator, settlement by the facilitator, and reconciliation. Source: ARCHITECTURE.md section 16.3.">
-  <img src="/images/diagrams/07-x402-payment-flow.svg" alt="Sequence diagram of an x402 payment: the agent requests a resource, receives 402 payment requirements, the risk engine checks the information request, the x402 key signs an EIP-3009 authorization that the validator bounds, the facilitator settles on chain, and the worker reconciles the settlement with the payment log." />
+<Frame caption="x402 payment flow: budget check, request to an allowlisted provider, the 402 terms, a signature checked by the bounded validator, retry with payment, settlement by the facilitator, and reconciliation. The whole path is implemented and off by default. Source: ARCHITECTURE.md section 16.3.">
+  <img className="block dark:hidden" src="/images/diagrams/07-x402-payment-flow-light.svg" alt="An agent can pay only a listed payee, within chain-enforced bounds. The x402 payment path as a vertical flow: check budget, request, sign, retry with payment, reconcile. The validator contract checks the signature on chain, a provider and a facilitator sit outside, and both are unverified assumptions." />
+  <img className="hidden dark:block" src="/images/diagrams/07-x402-payment-flow-dark.svg" alt="An agent can pay only a listed payee, within chain-enforced bounds. The x402 payment path as a vertical flow: check budget, request, sign, retry with payment, reconcile. The validator contract checks the signature on chain, a provider and a facilitator sit outside, and both are unverified assumptions." />
 </Frame>
 
 The client speaks the x402 v2 HTTP transport only: the `PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, and `PAYMENT-RESPONSE` headers with base64 JSON, the requirement's `amount` field, and CAIP-2 networks such as `eip155:143`. This was read from the specification on 2026-10-10 (coinbase/x402 commit `dd927a2`). Version 1's `maxAmountRequired` and `X-PAYMENT` now fail closed.
