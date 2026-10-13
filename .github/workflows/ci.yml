@@ -41,3 +41,8 @@ jobs:
         run: forge build --sizes
       - name: test
         run: forge test -vvv
+      - name: market activity tool (sizing arithmetic and wrapper, offline)
+        working-directory: .
+        run: |
+          python3 -m unittest discover -s contracts/script -p 'test_*.py'
+          contracts/script/market-activity.test.sh
