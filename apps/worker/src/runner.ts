@@ -8,6 +8,7 @@ import { loadWalletsConfig, type WalletsService } from "@monadeum/wallets";
 import { X402Client, type Provider, type ProviderEndpoint } from "@monadeum/x402";
 import { ethers } from "ethers";
 import { createPublicClient, http, zeroAddress, type Address, type Hex } from "viem";
+import { PopulationBreaker, type BreakerThresholds } from "./breaker.js";
 import { RpcChainReader, rpcReads } from "./chain.js";
 import { WorkerConfigError, type TickRunnerConfig } from "./config.js";
 import type { TickRunner } from "./consumer/handlers.js";
@@ -76,7 +77,7 @@ export class PolicyGatedRunner implements TickRunner {
 }
 
 function describe(result: TickResult | null): string {
-  if (!result) return "not ticked (unfunded or retired)";
+  if (!result) return "not ticked (unfunded, retired, or the population breaker is tripped)";
   const o = result.outcome;
   if (!o) return `${result.action}, retry ${result.retry}`;
   if (o.kind === "failed") return `${result.action}, failed at ${o.step}: ${o.reason}${o.violations ? ` [${o.violations.join(", ")}]` : ""}`;
@@ -98,7 +99,9 @@ const NO_PROVIDERS: Record<Provider, ProviderEndpoint> = {
  * reader and market source. `buildTickRunner` passes the RPC-backed edges; tests pass fakes.
  */
 export function assembleTickRunner(parts: {
-  stores: Pick<WorkerStores, "agents" | "ticks" | "evaluations" | "payments" | "policies">;
+  stores: Pick<WorkerStores, "agents" | "ticks" | "evaluations" | "payments" | "policies" | "breaker">;
+  /** The population breaker's thresholds (SECURITY.md section 9, layer 3). */
+  breaker: BreakerThresholds;
   chain: ChainReader;
   market: MarketSource & { sample(): Promise<unknown> };
   trading: TradingService;
@@ -128,6 +131,7 @@ export function assembleTickRunner(parts: {
     // No owner policy and no executor: even with the switch on, nothing is planned or settled (section 5).
     reallocation: new ReallocationService(),
     settings: { maxSlippageBps: parts.maxSlippageBps, information: null, reallocation: parts.reallocation, clock: parts.clock },
+    breaker: new PopulationBreaker(parts.stores.breaker, parts.breaker, parts.clock),
   });
   const runner = new PolicyGatedRunner({
     worker, risk, policies: parts.stores.policies, signer: parts.signer, target: parts.target, market: parts.market, clock: parts.clock, log: parts.log,
@@ -202,6 +206,7 @@ export async function buildTickRunner(input: {
     network: `eip155:${chainId}`,
     reallocation: input.reallocation,
     maxSlippageBps: config.maxSlippageBps,
+    breaker: config.breaker,
     signer: config.policySigner,
     target,
     clock: input.clock,
@@ -210,6 +215,7 @@ export async function buildTickRunner(input: {
   const problem = await runner.checkPolicy();
   if (problem && input.production) throw new WorkerConfigError(`MONADEUM_ENV is production and ${problem}`);
   log(problem ? `tick runner: ${problem}; every tick is skipped until a valid version is appended` : "tick runner: risk policy verified and in effect");
+  log(`population breaker: capital at risk above ${config.breaker.capitalAtRisk} base units halts every tick until a human clears it`);
   log(`tick runner enabled: ${trading.market.pair} on ${trading.market.market}, signal from that book's mid, slippage bound ${config.maxSlippageBps} bps, x402 off, information not bought`);
   return runner;
 }

@@ -15,6 +15,7 @@ import { runTick, type Observation, type TickMeasurement, type TickPorts, type T
 import { toCostedFill, type TradingService } from "@monadeum/trading";
 import { PROVIDERS, type X402Client } from "@monadeum/x402";
 import type { AgentRecord, AgentStore } from "./agents.js";
+import type { BreakerTrip, PopulationBreaker } from "./breaker.js";
 import type { ChainReader, MarketSource } from "./ports.js";
 
 export interface WorkerSettings {
@@ -45,6 +46,11 @@ export interface WorkerDependencies {
   /** Constructed over the worker's RiskGatedSettlement, so every debit passes the RiskModule. */
   reallocation: ReallocationService;
   settings: WorkerSettings;
+  /**
+   * The population-level circuit breaker (SECURITY.md section 9, layer 3). While it is tripped no tick runs and no
+   * reallocation is settled. Omitted only in tests that do not exercise it.
+   */
+  breaker?: PopulationBreaker;
 }
 
 export interface FitnessRow {
@@ -63,6 +69,8 @@ export interface EvaluationResult {
   reallocationEnabled: boolean;
   plan: EvaluationPlan;
   settled: SettledDebit[];
+  /** The breaker trip in force after this evaluation, which then settled nothing; null when not tripped. */
+  breaker: BreakerTrip | null;
 }
 
 const units = (amount: bigint, decimals: number) => Number(amount) / 10 ** decimals;
@@ -87,6 +95,9 @@ export class AgentWorker {
 
   /** Runs one tick for one agent. A retired agent does not tick, nor does an unfunded one (EVOLUTION.md section 1.1). */
   async tick(agentId: string, tick: number): Promise<TickResult | null> {
+    // A tripped breaker halts every tick, including the reconciliation of one already started: that resumes, under the
+    // same tick key and without resending, once a human clears the breaker.
+    if (this.deps.breaker && (await this.deps.breaker.tripped())) return null;
     const agent = await this.deps.agents.get(agentId);
     if (!agent || !funded(agent)) return null;
     return runTick(this.deps.ticks, agentId, tick, this.ports(agent));
@@ -179,9 +190,18 @@ export class AgentWorker {
       });
     }
 
-    if (!(settings.reallocation ?? REALLOCATION_DISABLED).enabled) {
+    // The breaker's capital-at-risk signal: each Active, funded agent's settlement-asset balance plus its open
+    // position's cost basis. With the breaker tripped, by this check or earlier, nothing is planned or settled.
+    let trip: BreakerTrip | null = null;
+    if (this.deps.breaker) {
+      let atRisk = 0n;
+      for (const a of active) atRisk += balances.get(a.agentId)! + (await this.deps.trading.position(a.agentId)).basis;
+      trip = await this.deps.breaker.check("capital-at-risk", atRisk);
+    }
+
+    if (trip || !(settings.reallocation ?? REALLOCATION_DISABLED).enabled) {
       await evaluations.record(records);
-      return { sequence, fitness: rows, retired, reallocationEnabled: false, plan: NOTHING_PLANNED, settled: [] };
+      return { sequence, fitness: rows, retired, reallocationEnabled: false, plan: NOTHING_PLANNED, settled: [], breaker: trip };
     }
 
     const population: PlannerAgent[] = (await agents.list()).map((a) => ({
@@ -194,6 +214,14 @@ export class AgentWorker {
       flaggedZeroDownside: rowOf.get(a.agentId)?.flaggedZeroDownside ?? false,
     }));
     const plan = reallocation.plan(tick, population);
+    // The breaker's second signal: the capital this plan would move, checked before any debit is submitted.
+    if (this.deps.breaker) {
+      trip = await this.deps.breaker.check("reallocation-volume", BigInt(Math.ceil(plan.moved * 10 ** decimals)));
+      if (trip) {
+        await evaluations.record(records);
+        return { sequence, fitness: rows, retired, reallocationEnabled: true, plan, settled: [], breaker: trip };
+      }
+    }
     const settled = await reallocation.settle(sequence, plan, decimals);
     // What the plan did to each recorded agent, with the base units submitted for it (issue #43). A move that rounded to
     // zero was never submitted, so it does not count as sent or received. Whether a submitted debit settled on chain is
@@ -217,7 +245,7 @@ export class AgentWorker {
       };
     }
     await evaluations.record(records);
-    return { sequence, fitness: rows, retired, reallocationEnabled: true, plan, settled };
+    return { sequence, fitness: rows, retired, reallocationEnabled: true, plan, settled, breaker: null };
   }
 
   private ports(agent: AgentRecord): TickPorts {

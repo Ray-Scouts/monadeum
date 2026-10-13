@@ -10,6 +10,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
   PgAgentStore,
   PgAgentWalletStore,
+  PgBreakerStore,
   PgDebitStore,
   PgEvaluationStore,
   PgPaymentLog,
@@ -371,6 +372,27 @@ export function databaseRules(name: string, db: Database): void {
         await assert.rejects(as(db, role, "DELETE FROM market_mid_samples"), DENIED, role);
       }
       await assert.rejects(as(db, "monadeum_reader", "INSERT INTO market_mid_samples (market, tick, mid, block_number, block_timestamp) VALUES ('0x00000000000000000000000000000000000000bb', 1, 1, 1, 1)"), DENIED);
+    });
+
+    it("the population breaker: the worker only trips it, only the policy operator clears it, and nobody rewrites the log", async () => {
+      const worker = new PgBreakerStore(asRole(db, "monadeum_worker"));
+      const operator = new PgBreakerStore(asRole(db, "monadeum_policy_operator"));
+      const trip = { kind: "trip" as const, signal: "capital-at-risk" as const, observed: 11n, threshold: 10n, actor: "worker", reason: "over", recordedAt: 1 };
+      const clear = { kind: "clear" as const, actor: "operator", reason: "reviewed", recordedAt: 2 };
+      assert.equal(await worker.latest(), null);
+      await worker.append(trip);
+      assert.deepEqual(await new PgBreakerStore(asRole(db, "monadeum_reader")).latest(), trip);
+      await assert.rejects(worker.append(clear), DENIED, "the worker cannot clear its own trip");
+      await assert.rejects(operator.append(trip), DENIED, "the operator does not trip");
+      await operator.append(clear);
+      assert.deepEqual(await worker.latest(), clear);
+      for (const role of ["monadeum_worker", "monadeum_reader", "monadeum_indexer", "monadeum_policy_operator", "monadeum_api"]) {
+        await assert.rejects(as(db, role, "UPDATE population_breaker_events SET kind = 'clear'"), DENIED, role);
+        await assert.rejects(as(db, role, "DELETE FROM population_breaker_events"), DENIED, role);
+      }
+      for (const role of ["monadeum_reader", "monadeum_indexer", "monadeum_api"]) {
+        await assert.rejects(as(db, role, "INSERT INTO population_breaker_events (kind, actor, reason, recorded_at) VALUES ('clear', 'x', 'y', 1)"), DENIED, role);
+      }
     });
   });
 }
