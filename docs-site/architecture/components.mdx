@@ -1,0 +1,40 @@
+---
+title: "Components"
+description: "The processes and libraries that make up Monadeum, why the policy gate and the indexer are separate components, and which parts exist today."
+---
+
+Source of truth: `ARCHITECTURE.md` sections 1, 2, and 10 to 12.
+
+<Frame caption="System architecture: web, API, worker, indexer, stores, and the chain. Source: ARCHITECTURE.md section 2.">
+  <img src="/images/diagrams/01-system-architecture.svg" alt="System architecture diagram showing the web app and API, the worker with the risk engine and execution layer, the indexer, Postgres and Redis, x402 providers, Kuru, and the Monad chain." />
+</Frame>
+
+## Deployable processes
+
+| Process | Role | Notes |
+| --- | --- | --- |
+| `apps/web` | Next.js frontend: landing, onboarding, population, per-agent views, capital flow | A build-time switch selects `sample` data or the live `api` mode |
+| `apps/api` | NestJS on Fastify: authentication, owner reads, owner-signed operations, funding relay | Contains no agent loop. Reads the read-model through a read-only database role |
+| `apps/worker` | BullMQ consumer: ticks, evaluations, principal job, x402 reconciliation | Imports the risk library in-process, with no network hop on the enforcement path |
+| `apps/indexer` | Plain Node process: syncs finalized chain events into Postgres | Independent failure and retry profile |
+| PostgreSQL, Redis | Durable state and the job queue | Not published outside the host's internal network |
+
+## Libraries
+
+Shared logic lives in `libs/`: `risk` (the policy engine), `wallets` (accounts and session keys), `trading` (Kuru integration), `x402`, `fitness`, `reallocation`, `recovery`, `commitment` (hashing), `read-model`, `agent-registry`, `auth`, `db`, `tick`, and `strategy`. The frontend never restates a protocol constant. It imports them from the same packages the worker and the simulation use, so changing a documented default changes all three together.
+
+## Why the policy gate is its own component
+
+The policy and risk engine sits between the model and execution, not inside the model's own call. It is a library the worker imports, not a network service, so there is one rule implementation and no extra failure mode on the enforcement path. The API imports the same package only for read-only previews and never invokes it as part of a live decision. See [Spend policy](/security/spend-policy).
+
+## Why the indexer is not part of the API
+
+The API handles requests. The indexer syncs events and must handle reorgs, gaps, and restarts. Conflating them would make one process responsible for two jobs with different failure semantics. The worker also never depends on the indexer for a decision: an agent's tick reads the agent's record, not the read-model, so an indexer outage delays a principal change but never blocks or misleads a decision. See [Indexer](/architecture/indexer).
+
+## Worker over Temporal, for now
+
+BullMQ on Redis was chosen over Temporal because the core loop (observe, decide, reason, propose, check, execute, measure) needs retries, backoff, and idempotency keys, not durable multi-day sagas. The explicit revisit trigger is a capital workflow needing compensating transactions. The adopted reallocation, one atomic transfer between existing accounts, does not meet it.
+
+## What is not mounted
+
+The API does not mount the strategy, x402, trading, fitness, reallocation, or simulation modules. They run in the worker or as libraries. A second strategy plugin, a second trading venue, and agent-to-agent payments are not implemented.

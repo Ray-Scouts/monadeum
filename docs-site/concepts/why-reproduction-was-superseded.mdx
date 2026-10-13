@@ -1,0 +1,47 @@
+---
+title: "Why reproduction was superseded"
+description: "The original design had agents reproduce. Simulation found no population-level benefit, so it was replaced, and a pre-registered study then tested whether the replacement has anything to act on. The answer, and its limits."
+---
+
+The founding brief described agents that reproduce: an agent that doubled its capital would split into two children, each inheriting a strategy. That was a starting hypothesis, not a specification. This page records what happened to it, because the way it ended is a feature of the project's rigor, not an embarrassment. Source of truth: `EVOLUTION.md` sections 3.5, 3.6, and 7; `ECONOMICS.md` section 8; and the files under `simulation/results/`.
+
+## What was tried, in order
+
+| Step | Question | Outcome |
+| --- | --- | --- |
+| Threshold reproduction at 0.5 (issue 74) | Does a population reproduce at all? | No reproduction at any x402 price in the researched range |
+| Lower threshold, 12-cell re-run | Does a reproducing population beat a static one? | Inconclusive in all arms. Evolving mean was below static in all 24 cells of two arms, by 0.01 to 0.85 percentage points |
+| Heritable skill (issue 80) | Is heritability the bottleneck? | No. Children held about 1.4 percent of capital at population 1,000 |
+| Larger children, with and without a treasury (issue 82) | Is child size the bottleneck? | No. Inconclusive in all 14 arms, never positive |
+| Genome model, fixed slots with replacement and reallocation (issues 84 and 85) | Does a different mechanism work? | Bounded reallocation did most of the work; replacement added a smaller, not separately significant increment |
+| Reallocation scope (issue 89) | Does it hold within each owner's agents, without replacement? | Yes, when starved agents retire |
+| Pre-registered confirmation (issue 92) | Does owner-scoped reallocation with retirement hold out of sample? | Yes, in simulation, at the assumed edge |
+
+The working hypothesis, not isolated by any single run, is that every extra account carries fixed per-tick costs that consume the edge a small account earns, so splitting capital across more accounts does not pay for itself. Capital-weighted skill, not the number of agents, drives return.
+
+## What replaced it
+
+Fixed slots, owner-scoped bounded reallocation under a policy the owner signs, and retirement of starved agents. No genome is copied, so no genome-consent question arises. See [Reallocation and retirement](/concepts/reallocation-and-retirement).
+
+## The pre-registered study, and what it found
+
+The replacement was confirmed in simulation, on a model in which genome fields carry an assumed edge. The remaining gate was whether the production strategy's genomes carry an edge of that size. Issue 102 answered it with a study whose design, hypotheses, thresholds, and decision rule were written down before any market data was fetched (`simulation/results/genome-edge-preregistration.md`).
+
+It backtested 1,000 genomes of the production strategy on hourly closes built from every on-chain `Trade` event of the Kuru mainnet MON-USDC market (in-sample 2025-12-23 to 2026-05-31, held out 2026-06-01 to 2026-09-30), net of measured costs. The result is a no-go:
+
+- **Edge size.** The in-sample top fifth of genomes beat the bottom fifth out of sample by 0.028 market standard deviations per tick (95 percent bounds 0.015 to 0.039), against 0.278 for the modeled edge.
+- **Rank persistence.** The mean rank correlation between adjusted fitness and the next 20 ticks' net return was 0.066 (bounds 0.027 to 0.103), against 0.416 in the model. At zero cost it is -0.017, so the persistence that exists sorts genomes by how often they trade.
+- **Calibrated re-run.** At the measured magnitude of 0, owner-scoped reallocation was inconclusive against a static population (2 of 12 cells significant, both lower, median gap -0.24 percentage points).
+
+Under the pre-registered rule, selection adds nothing measurable for this strategy. The product rests on well-calibrated static agents with reallocation off.
+
+## Why this is stated as a rigor feature
+
+A mechanism was built, confirmed in simulation, and then tested against real market data before it was allowed near capital. The test could have come out the other way, and was written so that it could. The negative outcome is therefore evidence that the gate works.
+
+## Limits of the evidence
+
+- The study measured MON-USDC on Kuru. The owner then decided agents trade WETH/USDC on mainnet, so the result is extended to that market as an assumption, not a finding.
+- It covers one strategy signal (a trailing mean), one venue, and costs taken from snapshots, not a spread history. No stress regime occurred in the held-out data, so only the choppy regime could be tested on its own.
+- It says nothing about strategies with a different signal, or with information purchases that pay, which could not be replayed on historical data. A future strategy would need its own pre-registered study.
+- All earlier simulation results rest on synthetic markets and an assumed genome model. They are statements about the mechanism in that model, not about production returns.

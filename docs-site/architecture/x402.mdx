@@ -1,0 +1,45 @@
+---
+title: "x402"
+description: "How agents buy information with x402: the narrow provider scope, the v2 transport, the client's rules, the on-chain payment bound, and the open question that keeps the payer switched off."
+---
+
+Source of truth: `ARCHITECTURE.md` sections 8 and 16.3 ("x402 signature path"), `libs/x402`, and `SECURITY.md` sections 5 and 6.
+
+## Posture
+
+Every external x402 response is untrusted input by default, not merely data. This mirrors Monad's own API Hub documentation, which disclaims that listed services are independent and not audited, and a documented class of attacks on x402's discovery layer.
+
+## Narrow scope by decision
+
+Of the roughly five dozen services in Monad's API Hub at research time, only two, Nansen and DeFiLlama, were relevant to a trading agent. The MVP integrates exactly those. Expanding the list later is cheap, and doing it before the core loop is proven adds untrusted surface for no proven benefit. This closes the discovery-manipulation attack in [Threat model](/security/threat-model), scenario C, by construction instead of by runtime scoring.
+
+## The payment path
+
+<Frame caption="x402 payment flow: request, 402 terms, plan check, signature through the bounded validator, settlement by the facilitator, and reconciliation. Source: ARCHITECTURE.md section 16.3.">
+  <img src="/images/diagrams/07-x402-payment-flow.svg" alt="Sequence diagram of an x402 payment: the agent requests a resource, receives 402 payment requirements, the risk engine checks the information request, the x402 key signs an EIP-3009 authorization that the validator bounds, the facilitator settles on chain, and the worker reconciles the settlement with the payment log." />
+</Frame>
+
+The client speaks the x402 v2 HTTP transport only: the `PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, and `PAYMENT-RESPONSE` headers with base64 JSON, the requirement's `amount` field, and CAIP-2 networks such as `eip155:143`. This was read from the specification on 2026-10-10 (coinbase/x402 commit `dd927a2`). Version 1's `maxAmountRequired` and `X-PAYMENT` now fail closed.
+
+The client sends a payload only if it echoes the chosen requirement and authorizes exactly its payee and amount, and it records a settlement hash only for a successful settlement on the configured network by the paying account. Assumption, not verified: Nansen and DeFiLlama serve v2 on Monad.
+
+## Client rules
+
+- Provider allowlist, not open discovery.
+- Per-resource idempotency tracked client-side. A duplicate grant is an anomaly to log, not to accept.
+- No caching of paid responses at any intermediary the platform controls.
+- Every response validated against a schema before use. A malformed response is a failed call.
+- Every payment logged with provider, price, response summary, and whether it changed the decision. A payment counts toward the agent's cost once it carries a nonzero price, so an unconfirmed or anomalous payment is never understated.
+- A nonce slot is claimed durably before signing, so two purchases never share a nonce.
+
+## The on-chain bound
+
+The client is not the enforcement point. Every authorization must also pass `X402PaymentValidator` (see [x402 validator](/security/x402-validator)): a listed payee, a per-payment cap, a validity window of at most an hour, and one of a fixed number of per-hour slots.
+
+## Reconciliation
+
+`reconcileSettlements` matches each on-chain settlement of the agent's account (USDC's `AuthorizationUsed` and the `Transfer` after it) to a slot and a payment-log entry. An unmatched or mismatched settlement raises an alert, because it means an x402 key signed outside the platform's own client. The worker runs it as the repeatable `x402-reconcile` job.
+
+## Why the payer is off
+
+`WORKER_X402_PAYER_ENABLED` is off unless exactly `true`. With it off, every purchase ends as `authorize-failed` and nothing is signed. The reference facilitator accepts smart-account (ERC-1271) signatures for EIP-3009, but whether the facilitator used on Monad does is unverified. If it does not, a fallback with a small hot balance exists, and it moves part of the recipient guarantee to a platform-held key. Until the question is answered, agents cannot pay x402, and nothing fails open. The tick runner also refuses to start with the payer on, and the `conservative` preset buys no information.

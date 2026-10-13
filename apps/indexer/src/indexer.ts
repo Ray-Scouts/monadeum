@@ -1,5 +1,6 @@
-import { decodeEventLog, pad, type Address, type Hex } from "viem";
-import { selectors, type HandlerRegistry } from "./registry.js";
+import { type Address } from "viem";
+import { decodeRow, logQueries } from "./decode.js";
+import { type HandlerRegistry } from "./registry.js";
 import { chainOrder, type ReadModelStore, type TrackedAccount } from "./store.js";
 import type { BlockHash, ChainEvent, EventHandler, IndexerChain, RawLog } from "./types.js";
 
@@ -156,40 +157,16 @@ export class Indexer {
   }
 
   private async fetch(handler: EventHandler, from: bigint, to: bigint, accounts: Address[]): Promise<{ handler: EventHandler; log: RawLog }[]> {
-    const topic0 = selectors(handler);
-    const source = handler.source;
-    const queries: { address: Address[]; topics: (Hex[] | null)[] }[] = [];
-    if (source.kind === "contract") {
-      queries.push({ address: [source.address], topics: [topic0] });
-    } else {
-      for (let i = 0; i < accounts.length; i += this.addressChunk) {
-        const chunk = accounts.slice(i, i + this.addressChunk);
-        if (source.kind === "account") {
-          queries.push({ address: chunk, topics: [topic0] });
-        } else {
-          const topics: (Hex[] | null)[] = [topic0, null, null, null].slice(0, source.accountTopic + 1);
-          topics[source.accountTopic] = chunk.map((a) => pad(a, { size: 32 }));
-          queries.push({ address: [source.address], topics });
-        }
-      }
-    }
+    const queries = logQueries(handler, from, to, accounts, this.addressChunk);
     const out: { handler: EventHandler; log: RawLog }[] = [];
     for (const q of queries) {
-      for (const log of await this.chain.logs({ fromBlock: from, toBlock: to, ...q })) out.push({ handler, log });
+      for (const log of await this.chain.logs(q)) out.push({ handler, log });
     }
     return out;
   }
 
   private decode(handler: EventHandler, log: RawLog) {
-    let decoded;
-    try {
-      decoded = decodeEventLog({ abi: handler.events, data: log.data, topics: log.topics as [Hex, ...Hex[]], strict: true });
-    } catch {
-      // A log with a matching selector that does not decode (for example a different contract's event with the same
-      // name and argument types but other indexing) is not one of ours.
-      return null;
-    }
-    return handler.handle({ eventName: decoded.eventName as string, args: (decoded.args ?? {}) as Record<string, unknown> }, log);
+    return decodeRow(handler, log);
   }
 
   /** Runs until `signal` aborts. Polls immediately while behind, then every `pollIntervalMs`. */

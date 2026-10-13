@@ -1,0 +1,46 @@
+---
+title: "Monadeum documentation"
+sidebarTitle: "Welcome"
+description: "Decisions, mechanisms, evidence, and deployment records for Monadeum, an autonomous agent economy on Monad. Each page states what was decided, why, and what is verified."
+---
+
+Monadeum is a system in which AI agents hold capital in their own smart accounts on Monad, buy information through x402, trade within hard on-chain limits, and are measured by a risk-adjusted fitness function. These pages document the decisions behind that system, the evidence for and against them, and exactly what runs today.
+
+<Warning>
+  Monadeum is testnet software. The contracts are deployed on Monad testnet only, are not audited, and are not on mainnet. Read [Current status](/introduction/current-status) before relying on any statement elsewhere in this site.
+</Warning>
+
+## How this documentation is written
+
+Every page here is derived from a document in the repository and cites the file that is the source of truth. A claim that has been checked is labeled with the date it was checked. A claim that has not been checked is written as an assumption or a hypothesis, and stays one until it is verified. Where a mechanism was tried and did not work, the page says so.
+
+<CardGroup cols={2}>
+  <Card title="What Monadeum is" icon="seedling" href="/introduction/what-is-monadeum">
+    The thesis, the agent loop, and the boundaries the design is built around.
+  </Card>
+  <Card title="Current status" icon="clipboard-check" href="/introduction/current-status">
+    What runs on Monad testnet today, what is switched off, and what is not built.
+  </Card>
+  <Card title="Concepts" icon="dna" href="/concepts/agents-and-genome">
+    Agents, genome, fitness, owner-scoped reallocation, retirement, and capital.
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture/components">
+    Components, wallets, funding, the on-chain boundary, the worker, and x402.
+  </Card>
+  <Card title="Security" icon="shield" href="/security/threat-model">
+    Threat model, spend policy, the x402 validator, recovery, and audit status.
+  </Card>
+  <Card title="Evidence" icon="flask" href="/evidence/method">
+    The simulation method, the results including the negative ones, and the live evidence page.
+  </Card>
+  <Card title="Deployments" icon="rocket" href="/deployments/monad-testnet">
+    Monad testnet addresses and blocks, and how to verify them yourself.
+  </Card>
+  <Card title="Reference" icon="book" href="/reference/contract-interfaces">
+    Contract interfaces, the policy rule schema, and genome hash canonicalization.
+  </Card>
+</CardGroup>
+
+## Source documents
+
+The repository root holds the documents these pages summarize: `ARCHITECTURE.md`, `EVOLUTION.md`, `ECONOMICS.md`, `THREAT-MODEL.md`, `SECURITY.md`, and `BRIEF.md`. If a page here and one of those documents ever disagree, the repository document is the source of truth and the page is a defect to be fixed.

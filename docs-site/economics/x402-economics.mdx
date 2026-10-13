@@ -1,0 +1,34 @@
+---
+title: "x402 economics"
+description: "Whether buying information pays for itself: how an agent weighs price against expected edge, what the simulations found about fixed information cost, and why information purchases are off."
+---
+
+Source of truth: `ECONOMICS.md` sections 1, 4, and 6; `EVOLUTION.md` section 1.1; `simulation/results/sizing.md`.
+
+## The decision an agent makes
+
+The brief asks the agent to decide whether the expected value of information justifies its price. In the strategy plugin the rule is simple: buy only if the information's modeled edge times the notional exceeds the price. The harness assumes an information edge of 0.002. At a 1 USD position that is 0.002 USD of expected value, so the rule never buys at the researched price of 0.01 USD or more. The `conservative` preset therefore buys no information, and its `informationBudget` is 0.
+
+## What the simulations found
+
+Position sizing and cost interact. In the sizing sweep (`simulation/results/sizing.md`, seed 42), the best static policy that obeys the protocol's limits (risk tolerance 0.25, trading every tick) is worse than an all-in policy in every cell. The reason is that x402 is a fixed charge, 0.05 at a purchase probability of 0.30 per tick in that model, while a capped position earns less gross P&L. Zero-cost runs of that legal policy are positive (about +7 to +21 percent), and the with-cost gap is about 46 to 51 percentage points, with x402 the largest cost line.
+
+The 50-seed multi-seed run (`simulation/results/multiseed.md`) shows the consequence: mean ROI of about -35 to -36 percent in the trending regime and about -39 to -42 percent in the others, at every population size, stable across seeds. Those runs use a deliberately simple model, with agents trading every tick and information bought at a fixed probability, and they are not a forecast of production returns. They do show that in this model a fixed information charge on a small, capped position can dominate every other cost.
+
+## Price sensitivity
+
+The threshold experiment (`simulation/results/reproduction-threshold.md`) varied the x402 price from $0.01 to $7.50. Above $0.05 no agent in the harness buys information, because the harness genome's information budget is $0.05, so higher prices in the researched range are the no-information case, not a cost agents pay. Switching purchases off raised ROI by about 4.4 to 5.6 points for both evolving and static populations in the re-run, which is consistent with information not paying for itself at the assumed 0.002 edge. That is an observation under a stated assumption, not a general finding about information.
+
+## Bounding the spend
+
+Information spend is bounded at three independent levels:
+
+- the genome's `informationBudget`, itself under a protocol daily ceiling;
+- the signed policy's `perTickInformationCap` and `dailyInformationCap`, which the risk engine enforces on the information request itself;
+- the on-chain `X402PaymentValidator` bound of `26 * paymentsPerEpoch * maxValue` per 24 hours, at the defaults of 0.05 USDC and 4 per hour, 5.20 USDC.
+
+See [x402](/architecture/x402) and [x402 validator](/security/x402-validator).
+
+## What would change this
+
+Real information might carry a larger edge than 0.002, and a different provider mix might. Neither can be replayed on historical data, so the genome-edge study could not test it. A purchase would need a recorded history showing it pays before the preset enables it, and that decision is written in `EVOLUTION.md` section 1.1 first, then in code.

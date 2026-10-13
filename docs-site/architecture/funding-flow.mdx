@@ -1,0 +1,44 @@
+---
+title: "Funding flow"
+description: "How a user gets USDC to an agent without holding MON: the on-ramp decision, the relayed EIP-3009 allocation, why principal comes only from indexed transfers, and what is unverified."
+---
+
+Source of truth: `ARCHITECTURE.md` sections 6.1 and 7, and `docs/funding-onramp.md` for the vendor comparison.
+
+## Decision
+
+On mainnet, a user buys USDC on Monad with a card through Ramp Network, opened from inside the app with the asset locked to USDC on Monad and the destination preset to the user's own embedded wallet. Coinbase Onramp is second, pending one confirmation. The fallback where neither serves the user is USDC on Base through Privy's on-ramp, moved to Monad with Circle's CCTP.
+
+Ramp was chosen because it is the only vendor whose own sources confirm USDC on Monad mainnet specifically (checked 2026-10-09). MoonPay and Transak list Monad assets but not USDC on Monad, and Stripe's onramp does not list Monad. The on-ramp vendor holds the user's payment and identity data, and the platform never does.
+
+<Note>
+  The on-ramp session itself is not built. On testnet no card on-ramp applies, so funding uses test assets from a separate source. The relayed allocation below is built for testnet.
+</Note>
+
+## Steps
+
+1. The user picks an amount. The API, not the client, sets the destination to the authenticated user's embedded wallet and locks the asset.
+2. The vendor widget runs its own identity check and takes the card payment.
+3. The vendor delivers USDC on Monad to the embedded wallet.
+4. The indexer credits the balance only when it observes a `Transfer` of the canonical USDC contract to that wallet. The vendor's webhook drives progress display and never credits a balance.
+5. The agent's account is deployed, sponsored, when the agent is created, before any allocation.
+6. The user confirms the allocation. The embedded wallet signs an EIP-3009 `transferWithAuthorization` to the deployed account. A platform relayer submits it and pays the gas.
+7. The indexer stores the finalized transfer. The worker's principal job recomputes the agent's principal from it, and the agent ticks from its next tick.
+
+## Why the relayed authorization
+
+The user holds no MON, and a plain `transfer` from the embedded wallet would need it. Native EIP-7702 sponsorship would work, but it attaches delegated code to the root wallet, which owns every agent the user has, and its interaction with Monad's reserve-balance rule for a wallet holding no MON is unverified. An EIP-3009 authorization names the recipient and amount inside the user's signature, so the relayer can submit it but cannot redirect it. If it fails, Privy's native sponsorship is the fallback and the delegation concern is recorded as accepted risk.
+
+## The relayer as built on testnet
+
+It is an ordinary externally owned account paying gas in MON, with a budget of 3 relayed transfers per user per rolling 24 hours (proposed default) and at most 100 USDC per transfer on testnet (proposed default). Both are starting values, not measurements. Before claiming budget it estimates the transaction, which simulates the token call, and refuses with `relayer-balance-low` if its own balance cannot cover the gas limit at the maximum fee. The transaction hash is recorded before broadcast so a lost response is reconciled from the receipt. Its key sits in its own encrypted vault and is mounted into the API only.
+
+The API builds the authorization with `from` set to the owner wallet on record and `to` set to the deployed account, and recovers the signer over the stored fields on submit, so a signature over any other recipient, amount, or window does not recover the owner.
+
+## Why the account is deployed first
+
+Principal counts only transfers the indexer has observed to a followed account, and the indexer follows an account from its deployment transaction. A transfer to a counterfactual address would land as capital but not as principal. See [Capital and principal](/concepts/capital-and-principal).
+
+## Verified and unverified
+
+Verified on 2026-10-11 (FACT): the testnet USDC's name, version, and decimals, and that its `DOMAIN_SEPARATOR` matches chain 10143 and its address; a simulated relay from a wallet holding no USDC was refused. Not verified: a relayed `transferWithAuthorization` that moves funds has not been executed on Monad, and that the token accepts a Privy embedded wallet's `eth_signTypedData_v4` signature is an assumption. Also unverified: USDC on Monad through Coinbase Onramp, Ramp's regional exclusions for this asset, and the CCTP addresses on Monad. Known costs not designed away: Ramp requires an identity document from the first purchase in the US, and its minimum card fee of about 2.49 EUR is roughly a quarter of a 10 USD first deposit.

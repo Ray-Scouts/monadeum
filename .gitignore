@@ -19,3 +19,6 @@ coverage/
 .turbo/
 
 simulation/data/genome-edge/raw/
+
+# Python virtual environment for the diagram generator (diagrams/README.md).
+.venv-diagrams/
