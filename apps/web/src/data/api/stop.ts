@@ -38,11 +38,10 @@ export function stopViewFromOperation(local: StopLocal[], operation: Operation):
     return { state: "stopped", operation, message: "Stopped. The revocation is verified on chain: the permission is removed and the enable signature can no longer reinstall it." };
   }
   if (operation.status === "failed" || operation.status === "succeeded") {
-    const reason = operation.error ?? results.find((r) => r.result?.ok === false)?.result?.reason ?? "unknown";
     return {
       state: "failed",
       operation,
-      message: `${offChainLine(local)} The on-chain step did not complete (${reason}). Start the stop again to retry it.`,
+      message: `${offChainLine(local)} The on-chain step did not complete, so the key may still be installed on the account. Start the stop again to retry it.`,
     };
   }
   const next = operation.status === "awaiting-signature" ? "Sign the on-chain revocation below to finish." : "Waiting for the on-chain revocation to be included.";

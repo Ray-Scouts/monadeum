@@ -10,6 +10,8 @@ import { ActivatePanel, type ActivatePanelProps } from "./ActivateAgent";
 import { explainFunding, fundingOperation } from "@/data/api/funding";
 import { CardFundingNotice, CARD_FUNDING_COPY } from "./CardFundingNotice";
 import { CreateFormView } from "./CreateAgent";
+import { FirstRunChecklist, NextStepCard } from "./FirstRun";
+import { firstRunSteps } from "@/data/api/firstrun";
 import { SignatureRequestView } from "./OperationSigner";
 import { SignInPanel } from "./SignIn";
 import { StopPanel, type StopPanelProps } from "./StopAgent";
@@ -411,6 +413,69 @@ describe("create in api mode", () => {
     expect(html).toContain("Per-transaction cap (USDC)");
     expect(html).toContain("population cap");
     expect(html).not.toMatch(/riskTolerance|entryThreshold/);
+  });
+
+  const preset = (name: string) => ({
+    name,
+    riskTolerance: 0.1,
+    executionFrequency: 24,
+    timeHorizon: 24,
+    entryThreshold: 0.0002,
+    exitThreshold: 0,
+    informationSources: [],
+    informationBudget: "0",
+    modelConfiguration: "low",
+    genomeHash: `0x${name}`,
+  });
+  const presets = { default: "conservative", pair: "WETH/USDC", presets: [preset("conservative"), preset("balanced")] };
+  const render = (form: { name: string; perTxCap: string; dailyCap: string; preset: string }) =>
+    renderToStaticMarkup(<CreateFormView presets={presets} form={form} settlement={settlement} busy={false} error={null} onChange={noop} onSubmit={noop} />);
+
+  test("the recommended starter agent is selected and one button creates it, with the advanced fields collapsed", () => {
+    const html = render({ name: "My first agent", perTxCap: "1", dailyCap: "5", preset: "conservative" });
+    const t = text(html);
+    expect(t).toContain("Recommended starter agent");
+    expect(t).toContain("Create with recommended settings");
+    for (const heading of ["What it will do", "What it can never do", "What it costs", "What happens next"]) expect(t).toContain(heading);
+    expect(t).toContain("more than 5 USDC in any rolling day");
+    expect(t).toContain("no real money");
+    expect(t).toContain("off by default");
+    expect(html).toMatch(/<details(?![^>]*\sopen)/);
+    expect(html).toMatch(/name="preset" checked="" value="conservative"/);
+    expect(t).toContain("at most 6 decimal places");
+  });
+
+  test("a changed preset or cap relabels the button and says so", () => {
+    const t = text(render({ name: "x", perTxCap: "2", dailyCap: "5", preset: "conservative" }));
+    expect(t).toContain("Create agent with these settings");
+    expect(t).not.toContain("Create with recommended settings");
+    expect(t).toContain("Changed");
+    expect(text(render({ name: "x", perTxCap: "1", dailyCap: "5", preset: "balanced" }))).toContain("Create agent with these settings");
+  });
+});
+
+describe("first-run checklist", () => {
+  test("shows each step's state, the next action, and why a blocked step is blocked", () => {
+    const t = text(renderToStaticMarkup(<FirstRunChecklist steps={firstRunSteps(apiAgent({ deployment: "not-started", address: null, session: null, principal: "0" }), settlement)} />));
+    expect(t).toContain("0 of 4 done");
+    expect(t).toContain("Deploy the account");
+    expect(t).toContain("Blocked");
+    expect(t).toContain("Needs the account deployed first");
+    expect(renderToStaticMarkup(<FirstRunChecklist steps={firstRunSteps(apiAgent({ principal: "0" }), settlement)} />)).toContain('aria-current="step"');
+  });
+
+  test("when everything is done it says setup is complete, with no invented trade", () => {
+    const t = text(renderToStaticMarkup(<FirstRunChecklist steps={firstRunSteps(apiAgent({ principal: "5000000", tradeCount: 2 }), settlement)} />));
+    expect(t).toContain("Setup complete");
+    const waiting = text(renderToStaticMarkup(<FirstRunChecklist steps={firstRunSteps(apiAgent({ principal: "5000000", tradeCount: 0 }), settlement)} />));
+    expect(waiting).toContain("No trade is recorded yet");
+  });
+
+  test("the dashboard card names the agent and links to the step", () => {
+    const step = firstRunSteps(apiAgent({ session: null, principal: "0" }), settlement)[1]!;
+    const html = renderToStaticMarkup(<NextStepCard agentName="alpha" agentId="ag1" step={step} />);
+    expect(html).toContain('href="/agents/ag1#fund"');
+    expect(text(html)).toContain("Fund this agent");
   });
 });
 

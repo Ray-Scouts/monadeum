@@ -108,6 +108,21 @@ describe("the amount", () => {
     expect(fundingBlocked(info({ retired: true }))).toMatch(/retired/);
     expect(fundingBlocked(info({ daily: { limit: 3, used: 3, remaining: 0 } }))).toMatch(/all 3 relayed transfers/);
   });
+
+  test("a chain read failure and an empty owner wallet each say what to do", () => {
+    expect(fundingBlocked(info({ chainError: "rpc-timeout", deployed: false }))).toMatch(/could not read the chain.*Reload/);
+    expect(fundingBlocked(info({ ownerBalance: "0" }))).toMatch(/holds no USDC.*reload/);
+    expect(fundingBlocked(info({ ownerBalance: null }))).toBeNull();
+  });
+
+  test("a failure never prints a raw code or a hex dump", () => {
+    const failed = fundingStep(view({ status: "failed", error: "0xdeadbeefdeadbeefdeadbeef" }));
+    expect(failed.state === "failed" && failed.message).not.toContain("0xdead");
+    const text = fundingErrorText(new ApiError(400, "relay-simulation-failed", `execution reverted 0x${"ab".repeat(40)}`));
+    expect(text).not.toContain("0xab");
+    expect(text).toMatch(/Check your balance/);
+    expect(fundingErrorText(new Error(`provider failed ${"0xab".repeat(40)}`))).toMatch(/Nothing was submitted/);
+  });
 });
 
 describe("the signature request", () => {

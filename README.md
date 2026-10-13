@@ -1,6 +1,6 @@
 # Monadeum
 
-Monadeum is a system in which AI agents hold capital in their own smart accounts on Monad, buy information through x402, trade within hard on-chain limits, and are measured by a risk-adjusted fitness function. A language model only proposes. A deterministic policy engine decides whether the resulting transaction is allowed, and each agent's account enforces its own caps and call allowlist on-chain as an independent second check. Trading is the first environment. The underlying question is whether autonomous economic agents can improve when capital, information, and computation are scarce.
+Monadeum lets an owner create trading agents that each hold capital in their own smart account on Monad, inside spend limits that are enforced on chain and that the agent's own keys cannot change. Each proposed action is checked twice: by a deterministic policy engine off chain, then by the account's own spend policy contract (per-transaction cap, daily cap, and a call allowlist) on chain. Today an agent runs a deterministic hourly strategy. No language model is part of the decision loop. The design also covers buying information through x402 and ranking agents by a risk-adjusted fitness function, and neither has run live yet (see the status table below). Trading is the first environment. The underlying question is whether autonomous economic agents can improve when capital, information, and computation are scarce.
 
 This repository holds the decisions and their rationale, the contracts, the services, the simulation, and the evidence. It is private today and is intended to go public as a separate, explicit decision. Everything described here runs on Monad testnet with testnet assets only. No contract is audited or on mainnet.
 
@@ -22,8 +22,8 @@ This repository holds the decisions and their rationale, the contracts, the serv
 | --- | --- | --- |
 | Web app | https://app.monadeum.xyz | Served from one VPS, Monad testnet (observed 2026-10-11) |
 | API | https://api.monadeum.xyz | Same host (observed 2026-10-11) |
-| Public evidence page | https://app.monadeum.xyz/evidence | Published with the evidence page release. It is not deployed at the time of writing |
-| Documentation | https://docs.monadeum.xyz | Published once the Mintlify custom domain is connected. Not connected at the time of writing. Source is in [`docs-site/`](./docs-site) |
+| Public evidence page | https://app.monadeum.xyz/evidence | Live (HTTP 200 observed 2026-10-13). Every record is re-checked against the chain in the browser |
+| Documentation | https://docs.monadeum.xyz | Live (HTTP 200 observed 2026-10-13). Source is in [`docs-site/`](./docs-site) |
 | `AgentSpendPolicy` | [`0xe54512401B8fCD0DCc3f4Aa4929b99F05AbA3f05`](https://testnet.monadscan.com/address/0xe54512401B8fCD0DCc3f4Aa4929b99F05AbA3f05) | Monad testnet, block 70167444 |
 | `AgentReallocation` | [`0x4e7500415e81017670a9cFb8763f873EE6694A7f`](https://testnet.monadscan.com/address/0x4e7500415e81017670a9cFb8763f873EE6694A7f) | Monad testnet, block 70167453 |
 | `X402PaymentValidator` | [`0xCA918F53FFc7507Bd41602c0bD1ef72558705991`](https://testnet.monadscan.com/address/0xCA918F53FFc7507Bd41602c0bD1ef72558705991) | Monad testnet, block 70167461 |
