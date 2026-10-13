@@ -119,7 +119,7 @@ step() {
 
   cast send "$MARKET" "$sig" "${args[@]}" --keystore "$HOME/.foundry/keystores/$ACCOUNT" --password-file "$pwfile" \
     --gas-price 110gwei --priority-gas-price 2gwei --rpc-url "$RPC_URL" --json >"$pwfile.receipt" || { echo "send failed" >&2; return 1; }
-  jq -r '"sent \(.transactionHash) block \(.blockNumber|tonumber) status \(.status) gas \(.gasUsed|tonumber)"' "$pwfile.receipt"
+  jq -r '"sent \(.transactionHash) block \(.blockNumber) status \(.status) gas \(.gasUsed)"' "$pwfile.receipt"  # cast prints hex quantities
   [[ "$(jq -r .status "$pwfile.receipt")" == "0x1" ]] || { echo "the step reverted on chain" >&2; return 1; }
   echo "book now: $(cast call "$MARKET" "bestBidAsk()(uint256,uint256)" --rpc-url "$RPC_URL" | num | tr '\n' ' ')"
 }
