@@ -114,7 +114,7 @@ function CapitalSpark({ agent, settlement, width, height }: { agent: ApiAgent; s
 }
 
 export function AgentsTable({ agents, settlement }: { agents: ApiAgent[]; settlement: Settlement }) {
-  if (agents.length === 0) return <p className="text-muted">You have no agents yet. Agents you create appear here, with their capital, fitness, and trades. Use Create in the menu to make your first one.</p>;
+  if (agents.length === 0) return <p className="text-muted">You have no agents yet. Agents you create appear here, with their capital, fitness, and trades. Use New agent in the menu to make your first one.</p>;
   const rows = [...agents].sort(
     (x, y) => Number(isRetired(x)) - Number(isRetired(y)) || (y.fitnessPercentile ?? -1) - (x.fitnessPercentile ?? -1),
   );

@@ -33,11 +33,11 @@ export function FirstRunChecklist({ steps }: { steps: FirstRunStep[] }) {
             <div className="grid min-w-0 gap-1.5 text-sm">
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
                 <span className="font-semibold">{s.title}</span>
-                <Pill tone={TONE[s.state]}>{LABEL[s.state]}</Pill>
+                <Pill tone={TONE[s.state]}>{s.state === "current" && next?.id !== s.id ? "Available" : LABEL[s.state]}</Pill>
               </div>
               <p className="long-value m-0 text-[13px] text-muted">{s.detail}</p>
               {s.action && (
-                <Link href={s.action.href} className="btn btn-primary w-full self-start sm:w-auto">
+                <Link href={s.action.href} className="btn btn-primary w-full justify-self-start sm:w-auto">
                   {s.action.label}
                 </Link>
               )}
