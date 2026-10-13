@@ -102,6 +102,16 @@ const [operator, admin, interval, floor] = await Promise.all([
 ]);
 ```
 
+## Compare the bytecode with the source
+
+From `contracts/`, after `forge build` with forge 1.8.5:
+
+```bash
+python3 audit/check-deployed-bytecode.py deployments/monad-testnet.json https://testnet-rpc.monad.xyz
+```
+
+The script sends only `eth_getCode` requests and masks constructor-set immutables. On 2026-10-12 all three matched a build of commit `513e943`.
+
 ## What this proves, and what it does not
 
-Matching receipts, code, and constructor values show that these addresses run contracts deployed from the deployer account and configured as recorded. They do not show that the deployed bytecode equals the audited or reviewed source, because no audit exists. Compare the code hash yourself against a local build of `contracts/` with the pinned compiler (solc 0.8.24) before relying on it. Whether the contracts are verified on a block explorer is not recorded in the deployment file.
+Matching receipts, code, and constructor values show that these addresses run contracts deployed from the deployer account and configured as recorded. The bytecode comparison above shows the deployment equals the source at the commit you build. It does not show the source is correct, because no audit exists. Whether the contracts are verified on a block explorer is not recorded in the deployment file.

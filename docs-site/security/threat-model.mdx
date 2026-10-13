@@ -33,6 +33,7 @@ An attacker with no privileged access cannot invoke an account's privileged func
 
 Seventeen numbered invariants are stated in `THREAT-MODEL.md` section 7 and are expressed, where the chain can see them, as Foundry invariant tests. The ones that carry the financial guarantees:
 
+- **12 (population cap).** The population cap is enforced at the application layer only, by decision (`EVOLUTION.md` section 4): the reallocation contract refuses any account it has not registered, so the mechanism cannot add an agent, and owner creation goes through the API's cap.
 - **1.** An account rejects any transaction over its on-chain spend limit, whatever the application layer approved.
 - **3, 13, 15.** Reallocation moves only existing capital between two existing accounts of one owner, in one atomic transfer, and creates nothing. No capital crosses an owner boundary. Retirement moves no capital.
 - **4, 12.** A source loses at most the cap and never goes below the floor. A sink never exceeds the slot ceiling.

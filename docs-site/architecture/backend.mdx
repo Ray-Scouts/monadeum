@@ -31,7 +31,7 @@ Migrations are ordered SQL files applied in one transaction under an advisory lo
 
 ## What the API serves
 
-Agent creation, with a server-built genome and the population cap (default 50) checked under a lock; owner reads including trade counts, x402 spend, and evaluation records; stop, activate, and funding endpoints; and the reallocation policy endpoints, which answer `409 reallocation-disabled` while the switch is off. Fields that no service produces yet are returned as null, not invented. Agent retirement is not built.
+Agent creation, with a server-built genome and the population cap (default 50) checked under a lock; owner reads including trade counts, x402 spend, and evaluation records; stop, activate, and funding endpoints; and the reallocation policy endpoints, which answer `409 reallocation-disabled` while the switch is off. `GET /events` serves the caller's retirements and the reallocations the worker submitted, and `GET /capital-flow` serves indexed reallocations once the indexer reads the reallocation contract. Per-agent views include net earnings after costs, the terms of `EVOLUTION.md` section 2.1 summed over every trade and purchase, and what reallocation did at the latest evaluation. Fields that no service produces yet are returned as null, not invented. Agent retirement is not built.
 
 ## Rate limiting
 

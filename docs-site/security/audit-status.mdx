@@ -23,6 +23,18 @@ An audit package for all three is in `contracts/audit/README.md` (827 normalized
 
 Contracts are built with Foundry and covered by unit, fuzz, and invariant tests. The invariants of `THREAT-MODEL.md` that the chain can see are expressed as executable invariant tests over fuzzed operation sequences: no accepted operation counts more than the per-transaction cap, no 24-hour period holds more than the daily cap, no call outside the allowlist is accepted at any amount, reallocation conserves total and per-owner capital, no source loses more than the cap or ends below the floor, no source is debited twice in an evaluation, and no move crosses owners or touches a retired or unregistered agent. For the reallocation contract an independent model of every rule must agree with the contract on every outcome, and each rule was removed in turn to confirm that at least one test fails without it. Fork tests run the spend policy and the x402 validator against the real Kernel v3.1 contracts on a Monad testnet fork and, for the x402 validator, the real USDC on a Monad mainnet fork.
 
+## Deployed bytecode
+
+On 2026-10-12 the runtime bytecode at each of the three testnet addresses was compared with a build of commit `513e943`, with constructor-set immutables masked, and all three matched byte for byte. The check is repeatable with `contracts/audit/check-deployed-bytecode.py` (`contracts/audit/README.md` section 14). It shows the deployment equals that source, not that the source is correct.
+
+## End-to-end threat tests
+
+Offline tests drive the worker loop over the real modules and attempt each scenario of the threat model (A to F), plus population explosion, accounting, and crash recovery, and check the mitigation. `docs/e2e-traceability.md` maps each scenario to its tests. Scenario G is covered in the API, and scenario I at the contract layer only, by design. `docs/testnet-validation-checklist.md` records, per item, whether it is evidenced, only tested offline, or still needs a run on testnet. These tests are not a substitute for an audit, and none of them ran against the live deployment.
+
+## Genome commitment contract
+
+`AgentCommitments` holds no capital and has no privileged role, and has Foundry unit and fuzz tests. It is not deployed and not audited. What an error in it would break is the binding of a track record to its genome.
+
 ## Static analysis
 
 Slither 0.11.4 and Aderyn 0.6.8 were run, and every result was triaged in the audit package as a false positive, an accepted risk with a stated reason, or a fix. For example, a `weak-prng` finding on the hour-bucket modulo is a false positive because the modulo only indexes a ring buffer, and `locked-ether` on payable hooks is accepted because Kernel's interfaces declare them payable.

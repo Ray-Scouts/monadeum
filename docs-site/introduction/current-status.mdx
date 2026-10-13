@@ -13,6 +13,7 @@ This page separates three things that are easy to blur: what has been observed r
 
 | Item | State | Verified |
 | --- | --- | --- |
+| Deployed bytecode matches source | On 2026-10-12 the runtime bytecode at all three addresses matched a build of commit `513e943`, with constructor-set immutables masked (`contracts/audit/README.md` section 14). | 2026-10-12 |
 | Three contracts deployed on chain 10143 | `AgentSpendPolicy`, `AgentReallocation`, `X402PaymentValidator`. All three receipts succeeded, each address has code, and constructor-set values read back correctly. | 2026-10-11 |
 | 2-of-3 Safe holds the reallocation operator and admin roles | Safe version 1.4.1+L2, threshold 2, three owners, read on chain and from the Safe transaction service. | 2026-10-11 |
 | Web app and API served publicly | `https://app.monadeum.xyz` and `https://api.monadeum.xyz`, one VPS, Privy in development mode. | 2026-10-11 |
@@ -32,6 +33,11 @@ Source: `ARCHITECTURE.md` section 10 ("Live testnet deployment"), `contracts/dep
 | x402 payments | Client, validator contract, and reconciliation are built. The worker's payer is off (`WORKER_X402_PAYER_ENABLED`). The testnet runbook installs the validator on no account. | Whether the facilitator used on Monad accepts ERC-1271 signatures for EIP-3009 is unverified, and gates turning the payer on. |
 | Reallocation | Contract deployed with a 2-of-3 Safe as operator and admin. The switch `MONADEUM_REALLOCATION_ENABLED` is off, and the worker's executor sends nothing. | No reallocation has been submitted. Production refuses to start with it on unless a new pre-registered study reports a persistent edge. |
 | Retirement | The retirement rules run in the evaluation, with or without reallocation. | The API's agent retirement endpoint is not built. |
+| Population circuit breaker | Built in the worker (`apps/worker/src/breaker.ts`). Each evaluation compares capital at risk with `WORKER_BREAKER_CAPITAL_AT_RISK`, required whenever the tick runner is enabled. A trip halts every tick and reallocation across restarts until the policy operator clears it. Tested offline. | Never run on testnet, because the tick runner is off. The 1000 USDC testnet starting threshold is a hypothesis. |
+| Genome commitment on chain | `AgentCommitments` is written and has Foundry unit and fuzz tests. Each account writes its own genome and strategy-version hashes once, in its deployment operation, and the tick runner verifies them before every tick. | Not deployed on testnet or mainnet, not audited, and no deployment record exists. Agents created before it is configured have no commitment. |
+| Reallocation events in the indexer | Handlers exist for `Reallocated`, registry, and policy events, enabled by `INDEXER_REALLOCATION_ADDRESS`. | Tested against an in-memory chain only. The testnet read-model was synced without it, and the contract has emitted no `Reallocated` event. |
+| Event feed and net earnings | The API serves `GET /events` (retirements and submitted reallocations), the indexed `GET /capital-flow`, and per-agent net earnings after costs. | Nothing observed on testnet beyond what the first agent produced, since no trade has run. |
+| End-to-end threat suite | Offline tests over the worker loop attempt each scenario of the threat model and are mapped in `docs/e2e-traceability.md`. | Offline only. `docs/testnet-validation-checklist.md` lists which checks still need a run on testnet. |
 
 ## No trade and no x402 payment recorded
 
@@ -40,8 +46,9 @@ As of 2026-10-12, no trade and no x402 payment have been recorded by the deploym
 ## Design only, not built
 
 - Mainnet deployment of any contract, and any audit. The audit package exists (`contracts/audit/README.md`), and no auditor is engaged.
+- Deployment of `AgentCommitments`, and a population cap on chain (decided to be application-layer only, `EVOLUTION.md` section 4).
 - A production secrets manager for session and x402 keys. The only vault is a local encrypted file vault that refuses `MONADEUM_ENV=production`.
-- The on-chain agent identity registry (ERC-8004 compatible). Until it exists, the reallocation contract's own registry holds owner, principal, and status.
+- The on-chain agent identity registry (ERC-8004 compatible). No such contract exists in the repository. Until it does, the reallocation contract's own registry holds owner, principal, and status, and genome and strategy-version hashes are meant to live in the write-once `AgentCommitments` contract, which is not yet deployed.
 - The card on-ramp session (Ramp Network is the decided vendor) and usability testing of the funding flow.
 - A per-agent policy limit tighter than the deployment-wide signed policy. The worker does not yet read an account's own on-chain limits.
 - Agent-to-agent payments, and any strategy other than trading.

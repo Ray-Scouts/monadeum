@@ -124,7 +124,7 @@ The `agent` read returns zero values for an account that was never registered wi
 cast logs --from-block 70167444 --to-block latest --address $POLICY --rpc-url $RPC
 ```
 
-The public RPC limits `eth_getLogs` to a 100-block range (observed 2026-10-12), so scan in 100-block windows or use the explorer. More commands, including `viem`, are in [Verify it yourself](./docs-site/deployments/verify-yourself.mdx).
+The public RPC limits `eth_getLogs` to a 100-block range (observed 2026-10-12), so scan in 100-block windows or use the explorer. To check that the deployed code equals this repository's source, run `python3 audit/check-deployed-bytecode.py deployments/monad-testnet.json https://testnet-rpc.monad.xyz` from `contracts/` after `forge build`. More commands, including `viem`, are in [Verify it yourself](./docs-site/deployments/verify-yourself.mdx).
 
 ## What works today and what does not
 
@@ -136,6 +136,11 @@ Testnet only. Dates are when the check was made. The fuller account is [Current 
 | Web app and API | Served at `app.monadeum.xyz` and `api.monadeum.xyz` | 2026-10-11 |
 | Sign-in, agent creation, account deployment | An owner signed in and created the first agent. Its Kernel account was deployed with sponsored gas | 2026-10-11 |
 | Indexer | Recorded the account's deployment, limits, and allowlist events from finalized blocks | 2026-10-11 |
+| Deployed bytecode | The runtime bytecode at all three addresses matched a build of commit `513e943` (`contracts/audit/README.md` section 14) | 2026-10-12 |
+| Population circuit breaker | Built in the worker and tested offline. A trip halts every tick until a human clears it. Never run on testnet, because the tick runner is off | 2026-10-12 |
+| Genome commitment on chain | `AgentCommitments` is written and tested. **Not deployed**, so no agent has an on-chain commitment yet | 2026-10-12 |
+| Reallocation events in the indexer, event feed, net earnings | Built, tested against in-memory stores. The testnet read-model was synced without the reallocation handlers | 2026-10-12 |
+| End-to-end threat tests | Offline suite over the worker loop, mapped in `docs/e2e-traceability.md`. Not run against the live deployment | 2026-10-12 |
 | **Trades** | **No trade has been recorded.** The tick runner is built, tested offline, and off by default. No tick has run on the live deployment, and the testnet market was not on chain | 2026-10-12 |
 | **x402 payments** | **No payment has been recorded.** Client, validator, and reconciliation are built. The payer is off by default, and whether the facilitator on Monad accepts ERC-1271 signatures is unverified | 2026-10-12 |
 | Reallocation | Contract deployed, switch off by default, nothing submitted. Pre-registered study found no edge for the current strategy | 2026-10-11 |
@@ -144,7 +149,7 @@ Testnet only. Dates are when the check was made. The fuller account is [Current 
 | Spending operation through the spend policy | Fuzz, invariant, and fork tests exist. Not observed through a bundler | 2026-10-11 |
 | Testnet market | Created and seeded by the team, so profit and loss on it is a transfer to or from that seed and is **not evidence of skill** | 2026-10-12 |
 | External audit | Not done. An audit package exists and no auditor is engaged | 2026-10-12 |
-| Design only | Mainnet deployment, a production key vault, the on-chain identity registry, the card on-ramp session | 2026-10-12 |
+| Design only | Mainnet deployment, a production key vault, the ERC-8004 identity registry (no contract exists), the card on-ramp session | 2026-10-12 |
 
 Numeric constants in the documents are proposed defaults unless a document says they were measured or decided. Claims about Monad, vendors, and third-party protocols are time-sensitive and should be re-verified before they are relied on for anything involving capital.
 

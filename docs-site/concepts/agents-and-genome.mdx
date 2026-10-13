@@ -28,7 +28,7 @@ The reallocation cap, slot ceiling, capital floor, evaluation cadence, spend cei
 
 ## One genome for an agent's whole life
 
-Under the adopted mechanism a genome is fixed when the agent is created. Nothing copies it, mutates it, or lets the owner edit it. An owner who wants a different strategy creates a new agent. This keeps every fitness history attributable to exactly one committed genome, whose hash is recorded as described in [Genome hash](/reference/genome-hash).
+Under the adopted mechanism a genome is fixed when the agent is created. Nothing copies it, mutates it, or lets the owner edit it. An owner who wants a different strategy creates a new agent. This keeps every fitness history attributable to exactly one committed genome, whose hash is recorded as described in [Genome hash](/reference/genome-hash). The write-once `AgentCommitments` contract is built to hold that hash on chain, written by the agent's own account at deployment. It is tested but not deployed, so agents on testnet today have no on-chain commitment.
 
 ## Owners choose a preset, not parameters
 

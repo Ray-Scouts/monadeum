@@ -13,6 +13,8 @@ Source of truth: `ARCHITECTURE.md` section 9 and `THREAT-MODEL.md` trust boundar
 - Reallocation events (owner, source, sink, amount, evaluation sequence number) and retirement status changes.
 - The hash of each owner's current reallocation policy, so the bounds the contract enforces are the bounds the owner signed.
 
+Genome and strategy-version hashes are held, until an identity registry exists, by `AgentCommitments`: each account writes its own pair once, in its deployment operation, and the contract has no update, delete, admin, or upgrade path. Before every tick, the worker verifies the stored genome document and the strategy version it runs against that commitment, and skips the tick with an alert on a mismatch. The contract is tested but not deployed on testnet, and agents created before it is configured have no commitment.
+
 Until the identity registry exists, the reallocation contract's own registry of each agent's owner, principal, and status is what its checks read. That registry is written by an operator role held by a 2-of-3 Safe.
 
 ## Off-chain

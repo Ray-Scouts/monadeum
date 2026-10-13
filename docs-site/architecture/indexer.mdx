@@ -28,6 +28,7 @@ Kept even in finalized mode, as a defence against a node serving inconsistent da
 - `AgentSpendPolicy`: `LimitsSet`, `CallAllowed`, `Spent` (and the traded-asset event).
 - EntryPoint v0.7 `AccountDeployed`, and Kernel v3.1 `PermissionInstalled`, `PermissionUninstalled`, and `NonceInvalidated`.
 - The settlement asset's ERC-20 `Transfer` where `from` or `to` is a followed account, from the configured contract only, never a token named by a client.
+- With `INDEXER_REALLOCATION_ADDRESS` set: `Reallocated`, stored once per followed side (`reallocation.sent` and `reallocation.received`), `AgentRegistered`, `PrincipalSet`, and `AgentRetired` for followed accounts, and `PolicyCommitted`, `PolicyRevoked`, and `EvaluationAdvanced`. Event signatures are parsed from `contracts/src/IAgentReallocation.sol` and tested against it.
 
 An account is followed only when the transaction in which it first appears on the configured spend policy also deployed it through the configured Kernel factory. The factory is public, so anyone can still produce a followed account. The API therefore joins the followed set against its own agent records rather than treating it as proof of platform ownership.
 
@@ -37,4 +38,4 @@ Rows are decoded events, and current state (limits, allowlist, session permissio
 
 ## Not yet indexed
 
-The identity registry and genome hash commitments have no deployed contract to read. The reallocation contract's events become one more handler without changing the sync loop. An opt-in run on 2026-10-10 synced a finalized batch without error but indexed no rows because the spend policy was not yet deployed. Since 2026-10-11 (start block 70167444) the first agent's rows have been indexed.
+The identity registry has no contract yet. `AgentCommitments` exists but is not deployed and has no handler, because the worker reads it directly. The reallocation handlers are tested only against an in-memory chain: the testnet read-model was synced without the contract, so enabling them there needs the read-model rebuilt first (`apps/indexer/README.md`), and the contract has emitted no `Reallocated` event because reallocation is off. An opt-in run on 2026-10-10 synced a finalized batch without error but indexed no rows because the spend policy was not yet deployed. Since 2026-10-11 (start block 70167444) the first agent's rows have been indexed.

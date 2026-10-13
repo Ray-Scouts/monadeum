@@ -45,4 +45,4 @@ ZeroDev ships no native resetting cap on value. A testnet run (issue 18) of the 
 
 ## Layers beyond these two
 
-A session-level budget is enforced by the risk engine, tighter than the on-chain cap. On testnet it is deployment-wide, not per agent, so for an agent whose owner chose lower on-chain caps, the chain's caps are the tighter bound. A population-level circuit breaker and a manual per-agent stop are specified in `SECURITY.md` section 9. See [Recovery](/security/recovery).
+A session-level budget is enforced by the risk engine, tighter than the on-chain cap. On testnet it is deployment-wide, not per agent, so for an agent whose owner chose lower on-chain caps, the chain's caps are the tighter bound. A population-level circuit breaker is built in the worker and tested offline (a trip halts every tick and reallocation until a human clears it), and has not run on testnet. A manual per-agent stop is also in `SECURITY.md` section 9. See [Recovery](/security/recovery).

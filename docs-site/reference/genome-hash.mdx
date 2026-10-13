@@ -40,7 +40,7 @@ JCS does none of the following, so the library does it:
 - A 20-byte address or 32-byte digest in a committed document is lowercased before hashing, so EIP-55 checksum case does not change a commitment. A malformed hex value is rejected.
 - `libs/commitment` is the only implementation for every tag. Array order is kept for the policy's `allowedCalls` and `allowedPairs` and for a plan's `calls`, because none is a set field.
 
-The strategy-version document, `{schemaVersion, strategyType, version, codeDigest}`, is provisional, and its field set may change when the chain's check on it is fixed.
+The strategy-version document is `{schemaVersion, strategyType, version, codeDigest}`. Agents run under `STRATEGY_VERSION` in `libs/strategy/src/version.ts`: version `"1"`, with `codeDigest` the SHA-256 of the exact bytes of `libs/strategy/src/propose.ts`. A test recomputes it, so the plugin cannot change without the document changing. The field set remains provisional and may change with a `schemaVersion` change.
 
 ## Worked example
 

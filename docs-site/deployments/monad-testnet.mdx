@@ -67,6 +67,14 @@ Against `https://testnet-rpc.monad.xyz` (chain id 10143), the deployment record 
 
 These are facts as of that date. Re-read them yourself on [Verify it yourself](/deployments/verify-yourself).
 
+## Deployed bytecode check
+
+On 2026-10-12 the runtime bytecode at all three addresses matched a build of commit `513e943` (forge 1.8.5), with constructor-set immutables masked, at 6,716, 9,276, and 6,566 bytes. See `contracts/audit/README.md` section 14 and the script on the verification page.
+
+## Not deployed: `AgentCommitments`
+
+The write-once genome commitment contract (`contracts/src/AgentCommitments.sol`) is not deployed. It has no entry in `contracts/deployments/monad-testnet.json`, so no address is listed here. Deploying it is an owner broadcast described in `deploy/README.md`.
+
 ## Other testnet addresses used by the system
 
 The testnet WMON/USDC market on Kuru's testnet router is planned and was simulated only on 2026-10-11, and nothing was sent (`contracts/deployments/monad-testnet-wmon-market.json`). On 2026-10-12 the market was not on chain. Its addresses are therefore not listed here as deployed.

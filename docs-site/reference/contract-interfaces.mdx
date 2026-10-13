@@ -87,6 +87,24 @@ The policy is an EIP-712 struct `ReallocationPolicy(address owner, address[] age
 
 `REALLOCATION_CAP_BPS = 2000` (the 0.2 cap), `SLOT_CEILING_BPS = 40000` (the ceiling of 4), and a capital floor of `6 * 10^decimals / 100` base units (0.06).
 
+## `IAgentCommitments`
+
+Not deployed. Each agent account commits its own genome hash and strategy-version hash once, in the owner-signed operation that deploys it. There is no update, delete, admin, or upgrade path, and a zero hash reverts.
+
+```solidity
+interface IAgentCommitments {
+    struct Commitment { bytes32 genomeHash; bytes32 strategyVersionHash; }
+
+    event AgentCommitted(address indexed account, bytes32 genomeHash, bytes32 strategyVersionHash);
+
+    error AlreadyCommitted(address account);
+    error ZeroHash();
+
+    function commit(bytes32 genomeHash, bytes32 strategyVersionHash) external;   // msg.sender is the account
+    function commitmentOf(address account) external view returns (Commitment memory);
+}
+```
+
 ## `X402PaymentValidator`
 
 Deployed at `0xCA918F53FFc7507Bd41602c0bD1ef72558705991` on Monad testnet. It is a Kernel v3.1 validator module (`isValidSignatureWithSender` is its only accepting path, and `validateUserOp` always fails). Its ERC-1271 signature layout is:
