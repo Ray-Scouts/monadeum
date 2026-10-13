@@ -1,10 +1,11 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 import { hashRiskPolicy } from "@monadeum/commitment";
-import { PgPolicyVersions, loadDatabaseSettings, openDatabase, type Connect, type DatabaseHandle } from "@monadeum/db";
+import { PgBreakerStore, PgPolicyVersions, loadDatabaseSettings, openDatabase, type Connect, type DatabaseHandle } from "@monadeum/db";
 import { loadPolicy, type PolicyDocument } from "@monadeum/risk";
 import { loadWalletsConfig } from "@monadeum/wallets";
 import { getAddress, isAddress, isHex, type Address, type Hex } from "viem";
+import { clearBreaker } from "./breaker.js";
 import { loadWorkerTrading } from "./config.js";
 import {
   PolicyError,
@@ -33,6 +34,11 @@ import {
  *     must connect as a member of `monadeum_policy_operator`, the only role that may insert a version.
  *   show
  *     Lists the stored versions and the one in effect now, verified against WORKER_POLICY_SIGNER.
+ *   breaker-show
+ *     Prints the population breaker's state (SECURITY.md section 9, layer 3): the trip in force, or that none is.
+ *   breaker-clear --by <who reviewed> --reason <why it is safe to resume>
+ *     Releases a tripped breaker after a human review. Ticks and reallocation resume on the worker's next tick. Only
+ *     `monadeum_policy_operator` may append a clear (migration 0016); the worker can trip the breaker, never clear it.
  *
  * Nothing here logs a key, a password, or a connection string. The operator key is never read from the environment.
  */
@@ -58,6 +64,8 @@ const OPTIONS = {
   "password-file": { type: "string" },
   signature: { type: "string" },
   signed: { type: "string" },
+  by: { type: "string" },
+  reason: { type: "string" },
 } as const;
 
 function required(values: Record<string, unknown>, name: string): string {
@@ -169,8 +177,32 @@ export async function runPolicyCli(argv: readonly string[], env: Env, io: Policy
       });
       return;
     }
+    case "breaker-show":
+    case "breaker-clear": {
+      const handle = await open(env, io);
+      if (!handle) throw new PolicyError("DATABASE_URL is not set: there is no breaker log to read or append to");
+      try {
+        const store = new PgBreakerStore(handle.db);
+        if (command === "breaker-clear") {
+          try {
+            await clearBreaker(store, { actor: required(values, "by"), reason: required(values, "reason"), now: now() });
+          } catch (error) {
+            throw error instanceof PolicyError ? error : new PolicyError(error instanceof Error ? error.message : String(error));
+          }
+          io.log("population breaker cleared: ticks and reallocation resume on the worker's next tick");
+          return;
+        }
+        const latest = await store.latest();
+        io.log(latest?.kind === "trip"
+          ? `population breaker TRIPPED at ${new Date(latest.recordedAt).toISOString()}: ${latest.reason}; no tick runs until it is cleared`
+          : "population breaker not tripped");
+      } finally {
+        await handle.close();
+      }
+      return;
+    }
     default:
-      throw new PolicyError("usage: policy-main.js build | sign | append | show (see apps/worker/src/policy-main.ts)");
+      throw new PolicyError("usage: policy-main.js build | sign | append | show | breaker-show | breaker-clear (see apps/worker/src/policy-main.ts)");
   }
 }
 

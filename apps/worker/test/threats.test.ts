@@ -6,7 +6,9 @@ import { EVALUATION_CADENCE, type SourceDebit } from "@monadeum/reallocation";
 import { baseToQuote, planHashOf, type BuyFill, type PreparedTrade, type SellFill, type TradeCounts, type TradingService } from "@monadeum/trading";
 import type { PaymentTotals } from "@monadeum/x402";
 import { encodeFunctionData, erc20Abi, getAddress, maxUint256, type Hex } from "viem";
+import { clearBreaker } from "../src/breaker.js";
 import { bootWorker } from "../src/main.js";
+import { runPolicyCli } from "../src/policy-main.js";
 import { RiskGatedSettlement } from "../src/reallocation.js";
 import { ATTACKER, DECIMALS, REALLOC, UNIT, assertOnlyApprovedPlansSent, world } from "./harness.js";
 
@@ -278,6 +280,97 @@ test("accounting: the dashboard's numbers, read from the Postgres stores, match 
     assert.ok(Math.abs(state.net - expected) < 1e-9, `net ${state.net} vs ${expected}`);
   } finally {
     await booted.close();
+    await pg.close();
+  }
+});
+
+// Scenario D, the population-level circuit breaker (SECURITY.md section 9, layer 3).
+
+const seriesOf = (good: boolean) => Array.from({ length: 30 }, (_, i) => (i % 3 === 0 ? -0.001 : good ? 0.002 : 0.0001));
+
+test("scenario D, breaker: capital at risk above the threshold trips it, halts every tick and reallocation, survives a restart, and only a clear resumes", async () => {
+  // Three agents of 100 units each: 300 at risk against a threshold of 250.
+  const w = await world({ reallocationOwners: ["a"], breaker: { capitalAtRisk: 250n * UNIT, reallocationVolume: null } });
+  const { worker } = await w.boot();
+  for (let tick = 1; tick < EVALUATION_CADENCE; tick++) for (const id of ["1", "2", "3"]) await worker.tick(id, tick);
+  const traded = sessions(w);
+  assert.ok(traded > 0, "below an evaluation the breaker has not looked yet, and agents trade");
+
+  const evaluation = await worker.evaluate(EVALUATION_CADENCE);
+  assert.equal(evaluation.breaker?.signal, "capital-at-risk");
+  assert.equal(evaluation.breaker?.threshold, 250n * UNIT);
+  assert.ok(evaluation.breaker!.observed > 250n * UNIT);
+  assert.deepEqual([evaluation.settled, evaluation.plan.moves], [[], []], "reallocation paused");
+  assert.equal(w.contract.executed.length, 0);
+  assert.equal(evaluation.fitness.length, 3, "fitness is still computed");
+
+  // Halted: no tick runs, nothing is claimed or sent, and a restarted worker over the same stores is still halted.
+  for (let tick = EVALUATION_CADENCE + 1; tick <= EVALUATION_CADENCE + 4; tick++) {
+    for (const id of ["1", "2", "3"]) assert.equal(await worker.tick(id, tick), null);
+  }
+  const restarted = (await w.boot()).worker;
+  assert.equal(await restarted.tick("1", EVALUATION_CADENCE + 5), null);
+  assert.equal(await w.stores.ticks.get(`1:${EVALUATION_CADENCE + 5}`), undefined, "no tick record was claimed");
+  assert.equal(sessions(w), traded, "nothing was sent while tripped");
+  // The capital falling back under the threshold does not release it: only a human does.
+  w.token.balances.set(w.accounts.get("3")!.toLowerCase(), 0n);
+  assert.equal((await restarted.evaluate(2 * EVALUATION_CADENCE)).settled.length, 0);
+  assert.equal(await restarted.tick("1", 2 * EVALUATION_CADENCE + 1), null);
+
+  await clearBreaker(w.stores.breaker, { actor: "operator", reason: "reviewed: agent 3 drained by the test", now: new Date() });
+  await assert.rejects(clearBreaker(w.stores.breaker, { actor: "operator", reason: "again", now: new Date() }), /not tripped/);
+  const resumed = await restarted.tick("1", 2 * EVALUATION_CADENCE + 3);
+  assert.notEqual(resumed, null, "ticks resume after the clear");
+});
+
+test("scenario D, breaker: a reallocation plan moving more than the volume threshold trips it before any debit is submitted", async () => {
+  const w = await world({
+    reallocationOwners: ["a"], breaker: { capitalAtRisk: null, reallocationVolume: 5n * UNIT },
+    agents: [{ agentId: "1", owner: "a" }, { agentId: "2", owner: "a" }],
+  });
+  for (const [id, good] of [["1", true], ["2", false]] as const) {
+    const state = await w.stores.agents.state(id);
+    await w.stores.agents.saveState(id, { ...state, returns: seriesOf(good), tradeCounts: seriesOf(good).map(() => 1) });
+  }
+  const { worker, risk } = await w.boot();
+  const evaluation = await worker.evaluate(EVALUATION_CADENCE);
+  assert.equal(evaluation.plan.moves.length, 1, "the plan would move 20 units");
+  assert.equal(evaluation.breaker?.signal, "reallocation-volume");
+  assert.equal(evaluation.breaker?.observed, 20n * UNIT);
+  assert.deepEqual(evaluation.settled, []);
+  assert.equal(risk.approved.length, 0);
+  assert.equal(w.contract.executed.length, 0);
+  assert.deepEqual([await w.token.balanceOf(w.accounts.get("1")!), await w.token.balanceOf(w.accounts.get("2")!)], [100n * UNIT, 100n * UNIT]);
+  assert.equal(await worker.tick("1", EVALUATION_CADENCE + 1), null, "and ticks halt");
+});
+
+test("scenario D, breaker: on Postgres the trip outlives the worker, and the policy operator's CLI shows and clears it", async () => {
+  const pg = new PGlite();
+  const onto: Connect = () => ({ db: pgliteDatabase(pg), close: async () => {} });
+  const booted = await bootWorker({ env: { DATABASE_URL: "postgres://test", DATABASE_MIGRATIONS: "apply" }, connect: onto });
+  try {
+    const w = await world({ agents: [{ agentId: "1", owner: "a" }], stores: booted.stores, breaker: { capitalAtRisk: 50n * UNIT, reallocationVolume: null } });
+    const first = await w.boot();
+    assert.equal((await first.worker.evaluate(EVALUATION_CADENCE)).breaker?.signal, "capital-at-risk");
+    await booted.close();
+
+    const again = await bootWorker({ env: { DATABASE_URL: "postgres://test" }, connect: onto });
+    try {
+      assert.equal((await again.stores.breaker.latest())?.kind, "trip", "the trip is durable");
+      const logs: string[] = [];
+      const io = { log: (m: string) => logs.push(m), readFile: async () => "", writeFile: async () => {}, connect: onto };
+      const env = { DATABASE_URL: "postgres://operator@db/monadeum" };
+      await runPolicyCli(["breaker-show"], env, io);
+      assert.match(logs.join("\n"), /population breaker TRIPPED .* capital-at-risk/);
+      await assert.rejects(runPolicyCli(["breaker-clear", "--by", "operator"], env, io), /--reason is required/);
+      await runPolicyCli(["breaker-clear", "--by", "operator", "--reason", "capital reviewed"], env, io);
+      await runPolicyCli(["breaker-show"], env, io);
+      assert.match(logs.at(-1)!, /not tripped/);
+      assert.equal((await again.stores.breaker.latest())?.kind, "clear");
+    } finally {
+      await again.close();
+    }
+  } finally {
     await pg.close();
   }
 });

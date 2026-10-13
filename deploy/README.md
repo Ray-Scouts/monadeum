@@ -455,6 +455,15 @@ dc --profile operator run --rm policy show              # "in effect now: versio
 
 **Stop.** Set `WORKER_TICK_RUNNER=disabled` and `dc up -d worker`: no new tick runs. A tick whose operation was already sent is reconciled when the runner is enabled again.
 
+**Population breaker.** At each evaluation the worker compares the capital at risk across all agents with `WORKER_BREAKER_CAPITAL_AT_RISK` (`SECURITY.md` section 9, layer 3). Above it, the worker records a trip and every tick and reallocation stops, across restarts, with `not ticked` lines in `dc logs worker`. The capital falling back does not release it. After reviewing why it tripped:
+
+```bash
+dc --profile operator run --rm policy breaker-show       # "population breaker TRIPPED at ...: capital-at-risk ... is above the threshold ..."
+dc --profile operator run --rm policy breaker-clear --by "<your name>" --reason "<what was reviewed>"
+```
+
+Ticks resume on the next scheduled tick. Raising the threshold instead needs `WORKER_BREAKER_CAPITAL_AT_RISK` changed and the worker restarted, and still a clear.
+
 **Change a cap or the pair.** Build the next version with `build` (it reads the stored chain, so `version` and `previousHash` are filled in; pass `--effective-from` for a later start), sign its hash, `append`. The worker picks it up at its `effectiveFrom`, without a restart. A version is never edited or deleted.
 
 ## Before mainnet

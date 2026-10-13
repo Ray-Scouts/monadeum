@@ -1,5 +1,6 @@
 import { TradingConfigError, loadTradingConfig, type TradingConfig } from "@monadeum/trading";
 import { getAddress, isAddress, type Address } from "viem";
+import type { BreakerThresholds } from "./breaker.js";
 import type { ConsumerSettings } from "./consumer/handlers.js";
 
 export class WorkerConfigError extends Error {
@@ -112,6 +113,8 @@ export type TickRunnerConfig =
       /** Slippage bound written into every TradeIntent. */
       maxSlippageBps: number;
       marketData: MarketDataLimits;
+      /** The population breaker's thresholds (SECURITY.md section 9, layer 3). */
+      breaker: BreakerThresholds;
     };
 
 /**
@@ -120,6 +123,7 @@ export type TickRunnerConfig =
  * and `WORKER_SETTLEMENT_ASSET_ADDRESS`. The x402 payer must stay off: the runner's X402Client has no payer and buys
  * nothing (ARCHITECTURE.md section 16.3, open question 1). Optional: `WORKER_MAX_SLIPPAGE_BPS` (default 100),
  * `WORKER_MARKET_MAX_AGE_SECONDS` (default 60), and `WORKER_MARKET_MAX_SPREAD_BPS` (default 200), starting values.
+ * The population breaker's capital-at-risk threshold is required (`loadBreakerThresholds`).
  */
 export function loadTickRunnerConfig(env: Env): TickRunnerConfig {
   const flag = env.WORKER_TICK_RUNNER?.trim() || "disabled";
@@ -149,5 +153,27 @@ export function loadTickRunnerConfig(env: Env): TickRunnerConfig {
     policySigner: getAddress(signer),
     maxSlippageBps: slippage,
     marketData: { maxAgeSeconds: integer(env, "WORKER_MARKET_MAX_AGE_SECONDS", 60, 1), maxSpreadBps },
+    breaker: loadBreakerThresholds(env),
   };
+}
+
+/** A positive integer number of settlement-asset base units, or null when the variable is unset. */
+function baseUnits(env: Env, name: string): bigint | null {
+  const raw = env[name]?.trim();
+  if (!raw) return null;
+  if (!/^[1-9]\d{0,38}$/.test(raw)) throw new WorkerConfigError(`${name} must be a positive integer number of settlement-asset base units`);
+  return BigInt(raw);
+}
+
+/**
+ * The population breaker's thresholds (SECURITY.md section 9, layer 3). `WORKER_BREAKER_CAPITAL_AT_RISK` is required: a
+ * runner that trades has a capital-at-risk limit or does not start. `WORKER_BREAKER_REALLOCATION_VOLUME` is optional,
+ * since the runner settles no reallocation; unset, that signal is not checked.
+ */
+export function loadBreakerThresholds(env: Env): BreakerThresholds {
+  const capitalAtRisk = baseUnits(env, "WORKER_BREAKER_CAPITAL_AT_RISK");
+  if (capitalAtRisk === null) {
+    throw new WorkerConfigError("WORKER_TICK_RUNNER is enabled and WORKER_BREAKER_CAPITAL_AT_RISK is not set: the population breaker needs a threshold");
+  }
+  return { capitalAtRisk, reallocationVolume: baseUnits(env, "WORKER_BREAKER_REALLOCATION_VOLUME") };
 }

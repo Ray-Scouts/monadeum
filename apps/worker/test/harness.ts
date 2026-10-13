@@ -48,11 +48,12 @@ import {
   type Hex,
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { MemoryEvaluationStore, type EvaluationStore } from "@monadeum/agent-registry";
+import { MemoryBreakerStore, MemoryEvaluationStore, type BreakerStore, type EvaluationStore } from "@monadeum/agent-registry";
 import { MemoryAgentStore, type AgentRecord, type AgentRegistry } from "../src/agents.js";
 import type { ChainReader, MarketReading, MarketSource } from "../src/ports.js";
 import { MemoryDebitStore, OwnerPolicies, RiskGatedSettlement, UnconfiguredReallocationExecutor, type ReallocationExecutor } from "../src/reallocation.js";
 import type { WorkerStores } from "../src/stores.js";
+import { PopulationBreaker, type BreakerThresholds } from "../src/breaker.js";
 import { AgentWorker, type WorkerSettings } from "../src/worker.js";
 
 // In-process integration harness for the worker loop, and the base for the end-to-end suite of issue #47. Every
@@ -317,6 +318,8 @@ export interface WorldOptions {
    */
   market?: "native" | "weth";
   tradedAssetInPolicy?: boolean;
+  /** The population breaker's thresholds; omitted, the worker runs without a breaker. */
+  breaker?: BreakerThresholds;
 }
 
 export async function world(options: WorldOptions = {}) {
@@ -346,6 +349,7 @@ export async function world(options: WorldOptions = {}) {
     trades: new MemoryTradeStore() as TradeStore, positions: new MemoryPositionStore() as PositionStore, payments: new MemoryPaymentLog() as PaymentLog,
     ticks: new MemoryTickStore() as TickStore, agents: new MemoryAgentStore() as AgentRegistry,
     debits: new MemoryDebitStore(), evaluations: new MemoryEvaluationStore() as EvaluationStore,
+    breaker: new MemoryBreakerStore() as BreakerStore,
   };
   if (options.stores) Object.assign(stores, options.stores);
   const policies = new OwnerPolicies(DECIMALS);
@@ -442,6 +446,7 @@ export async function world(options: WorldOptions = {}) {
     const worker = new AgentWorker({
       agents: stores.agents, ticks: stores.ticks, evaluations: stores.evaluations, chain: token, market, strategy: new StrategyService(), risk, x402, trading,
       fitness: new FitnessService(), reallocation, settings,
+      breaker: options.breaker ? new PopulationBreaker(stores.breaker, options.breaker, settings.clock) : undefined,
     });
     return { worker, risk, trading };
   }
