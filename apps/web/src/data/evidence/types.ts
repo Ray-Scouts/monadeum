@@ -46,6 +46,11 @@ export interface Evidence {
     callAllowed: EvidenceCategory<EvidenceEvent & { target: string; selector: string; allowed: boolean }>;
     spent: EvidenceCategory<EvidenceEvent & { amount: string; windowTotal: string }>;
   };
+  reallocations: {
+    moved: EvidenceCategory<EvidenceEvent & { sink: string; amount: string; evaluation: string }>;
+    retired: EvidenceCategory<EvidenceEvent>;
+    evaluationsAdvanced: EvidenceCategory<EvidenceEvent & { evaluation: string }>;
+  };
   trades: EvidenceCategory<EvidenceTrade>;
   payments: EvidenceCategory<EvidencePayment>;
 }

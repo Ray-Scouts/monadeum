@@ -50,6 +50,7 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
       assert.equal(res.body.chainId, 10143);
       assert.ok(!Number.isNaN(Date.parse(res.body.generatedAt)));
       for (const kind of ["deployed", "limitsSet", "callAllowed", "spent"]) assert.deepEqual(res.body.events[kind], { count: 0, items: [] });
+      for (const kind of ["moved", "retired", "evaluationsAdvanced"]) assert.deepEqual(res.body.reallocations[kind], { count: 0, items: [] });
       assert.deepEqual(res.body.trades, { count: 0, items: [] });
       assert.deepEqual(res.body.payments, { count: 0, items: [] });
     });
@@ -64,6 +65,9 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
         { kind: "spend.limits-set", data: { perTxCap: "1000000", dailyCap: "5000000" } },
         { kind: "spend.call-allowed", data: { target: "0x00000000000000000000000000000000000000b1", selector: "0x12345678", allowed: true } },
         { kind: "spend.spent", data: { amount: "250000", windowTotal: "250000" } },
+        { kind: "reallocation.sent", data: { owner: owner.address.toLowerCase(), source: account.toLowerCase(), sink: "0x00000000000000000000000000000000000000cd", amount: "40000", evaluation: "3" } },
+        { kind: "reallocation.agent-retired", data: { owner: owner.address.toLowerCase(), by: owner.address.toLowerCase() } },
+        { kind: "reallocation.evaluation-advanced", data: { evaluation: "3" } },
       ]);
 
       const worker = b.db ? roleScoped(b.db, "monadeum_worker") : null;
@@ -82,6 +86,13 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
         assert.equal(events[kind].items[0].account, account.toLowerCase());
         assert.match(events[kind].items[0].transactionHash, /^0x[0-9a-f]{64}$/);
       }
+      const re = res.body.reallocations;
+      assert.equal(re.moved.count, 1);
+      assert.equal(re.moved.items[0].amount, "40000");
+      assert.equal(re.moved.items[0].sink, "0x00000000000000000000000000000000000000cd");
+      assert.equal(re.retired.count, 1);
+      assert.equal(re.evaluationsAdvanced.items[0].evaluation, "3");
+      for (const k of ["moved", "retired", "evaluationsAdvanced"]) assert.match(re[k].items[0].transactionHash, /^0x[0-9a-f]{64}$/);
       assert.equal(events.limitsSet.items[0].perTxCap, "1000000");
       assert.equal(events.spent.items[0].amount, "250000");
 

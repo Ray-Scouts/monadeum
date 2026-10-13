@@ -1,4 +1,4 @@
-Ran 12 test suites in 45.38s (136.60s CPU time): 178 tests passed, 0 failed, 2 skipped (180 total tests)
+Ran 15 test suites in 90.83s (294.65s CPU time): 188 tests passed, 0 failed, 3 skipped (191 total tests)
 
 ╭------------------------------+-------------------+-------------------+-----------------+-----------------╮
 | File                         | % Lines           | % Statements      | % Branches      | % Funcs         |

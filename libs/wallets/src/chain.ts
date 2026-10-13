@@ -113,4 +113,13 @@ export interface WalletsChain {
   x402Installed(account: Address, validator: Address): Promise<boolean>;
   /** The validator's live configuration for the account is exactly `expected`, every listed payee included. */
   x402Configured(account: Address, validator: Address, expected: X402ValidatorConfig): Promise<boolean>;
+
+  /** `AgentCommitments.commitmentOf(account)` on `registry`; both hashes are zero when the account committed nothing. */
+  agentCommitment(registry: Address, account: Address): Promise<AgentHashes>;
+}
+
+/** The genome and strategy-version hashes an account commits when it is deployed (ARCHITECTURE.md section 9). */
+export interface AgentHashes {
+  genomeHash: Hex;
+  strategyVersionHash: Hex;
 }

@@ -24,6 +24,11 @@ export function isEvidence(v: unknown): v is Evidence {
     isCategory(e.events.limitsSet) &&
     isCategory(e.events.callAllowed) &&
     isCategory(e.events.spent) &&
+    typeof e.reallocations === "object" &&
+    e.reallocations !== null &&
+    isCategory(e.reallocations.moved) &&
+    isCategory(e.reallocations.retired) &&
+    isCategory(e.reallocations.evaluationsAdvanced) &&
     isCategory(e.trades) &&
     isCategory(e.payments)
   );

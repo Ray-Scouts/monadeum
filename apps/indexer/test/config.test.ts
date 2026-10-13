@@ -19,6 +19,8 @@ test("loads defaults and lowercases addresses", () => {
   assert.equal(config.pollIntervalMs, 1000);
   assert.equal(config.rpcUrl, undefined);
   assert.equal(config.settlementAsset, "0x754704bc059f8c67012fed69bc8a327a5aafb603");
+  assert.equal(config.reallocation, null);
+  assert.equal(loadIndexerConfig({ ...base, INDEXER_REALLOCATION_ADDRESS: "0x4e7500415e81017670a9cFb8763f873EE6694A7f" }).reallocation, "0x4e7500415e81017670a9cfb8763f873ee6694a7f");
 });
 
 test("rejects missing, malformed, or unsupported values", () => {
@@ -34,6 +36,7 @@ test("rejects missing, malformed, or unsupported values", () => {
     { ...base, INDEXER_KERNEL_FACTORY_ADDRESS: "0x1234" },
     { ...base, INDEXER_SETTLEMENT_ASSET_ADDRESS: "" },
     { ...base, INDEXER_SETTLEMENT_ASSET_ADDRESS: "0x12" },
+    { ...base, INDEXER_REALLOCATION_ADDRESS: "0x12" },
   ]) {
     assert.throws(() => loadIndexerConfig(env), IndexerConfigError, JSON.stringify(env));
   }

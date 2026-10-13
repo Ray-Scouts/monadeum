@@ -11,6 +11,7 @@ export { PgPaymentLog, PgPositionStore, PgTickStore, PgTradeStore, PgX402SlotSto
 export { PgReadModelStore } from "./indexer.js";
 export { PgPolicyVersions } from "./policy.js";
 export { PgMidSampleStore } from "./market.js";
+export { PgBreakerStore } from "./breaker.js";
 export { PgAgentStore, PgDebitStore, PgEvaluationStore } from "./agents.js";
 export { GROUP_ROLES, MIN_ROLE_PASSWORD_LENGTH, PROCESS_LOGIN_ROLES, ProvisionError, provisionLoginRoles } from "./provision.js";
 export type { GroupRole, LoginRole } from "./provision.js";

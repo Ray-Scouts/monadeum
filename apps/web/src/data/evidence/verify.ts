@@ -198,6 +198,10 @@ export function evidenceTasks(reader: ChainReader, d: DeploymentRecord, e: Evide
   for (const ev of e.events.deployed.items) {
     add({ key: keys.event(ev.transactionHash, ev.logIndex), run: () => verifyReceipt(reader, ev.transactionHash, { block: BigInt(ev.blockNumber), log: { address: ev.contract, logIndex: ev.logIndex } }) });
   }
+  const realloc = d.contracts.AgentReallocation;
+  for (const ev of [...e.reallocations.moved.items, ...e.reallocations.retired.items, ...e.reallocations.evaluationsAdvanced.items]) {
+    add({ key: keys.event(ev.transactionHash, ev.logIndex), run: () => verifyReceipt(reader, ev.transactionHash, { block: BigInt(ev.blockNumber), log: { address: ev.contract, logIndex: ev.logIndex }, emitter: { actual: ev.contract, expected: realloc } }) });
+  }
   for (const ev of spendEvents) {
     add({ key: keys.event(ev.transactionHash, ev.logIndex), run: () => verifyReceipt(reader, ev.transactionHash, { block: BigInt(ev.blockNumber), log: { address: ev.contract, logIndex: ev.logIndex }, emitter: { actual: ev.contract, expected: policy } }) });
   }

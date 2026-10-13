@@ -2,18 +2,22 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { keccak256 } from "viem";
+import { decodeFunctionData, keccak256 } from "viem";
 import {
+  AGENT_COMMITMENTS_ABI,
   CanonicalizationError,
+  agentCommitmentCall,
   buildAgentCreationCommitment,
   buildPolicyCommitment,
   canonicalJson,
+  contractAgentCommitmentReader,
   hashCommitment,
   hashGenome,
   hashReallocationPolicy,
   hashStrategyVersion,
   normalizeGenome,
   taggedHash,
+  verifyAgentCommitment,
   verifyCommitment,
   type GenomeV1,
 } from "../src/index.js";
@@ -193,4 +197,40 @@ test("creation and policy commitments carry the section 16.4 hashes", () => {
   });
   const signature = `0x${"11".repeat(65)}` as const;
   assert.deepEqual(buildPolicyCommitment(POLICY, signature), { owner: POLICY.owner, policyHash: hashReallocationPolicy(POLICY), signature });
+});
+
+test("the agent commitment call is IAgentCommitments.commit with the two hashes, value 0", () => {
+  const registry = "0x00000000000000000000000000000000000000c0";
+  const commitment = { genomeHash: hashGenome(GENOME), strategyVersionHash: hashStrategyVersion(STRATEGY) };
+  const call = agentCommitmentCall(registry, commitment);
+  assert.equal(call.to, registry);
+  assert.equal(call.value, 0n);
+  // Selector of `commit(bytes32,bytes32)`, as contracts/src/IAgentCommitments.sol declares it.
+  assert.equal(call.data.slice(0, 10), keccak256(new TextEncoder().encode("commit(bytes32,bytes32)")).slice(0, 10));
+  const decoded = decodeFunctionData({ abi: AGENT_COMMITMENTS_ABI, data: call.data });
+  assert.deepEqual(decoded.args, [commitment.genomeHash, commitment.strategyVersionHash]);
+});
+
+test("an agent's genome and strategy version verify against the account's commitment, and every gap is an alert", async () => {
+  const account = "0x00000000000000000000000000000000000000a1";
+  const registry = "0x00000000000000000000000000000000000000c0";
+  const stored = { genomeHash: hashGenome(GENOME), strategyVersionHash: hashStrategyVersion(STRATEGY) };
+  const reads: unknown[] = [];
+  const reader = contractAgentCommitmentReader({ readContract: async (args) => (reads.push(args), stored) }, registry);
+  const onChain = await reader.readAgentCommitment(account);
+  assert.deepEqual(reads, [{ address: registry, abi: AGENT_COMMITMENTS_ABI, functionName: "commitmentOf", args: [account] }]);
+  assert.deepEqual(verifyAgentCommitment("agent-1", { genome: GENOME, strategyVersion: STRATEGY }, onChain).map((r) => r.ok), [true, true]);
+
+  const otherCode = { ...STRATEGY, codeDigest: `0x${"22".repeat(32)}` };
+  const zero = `0x${"0".repeat(64)}` as const;
+  const outcomes = [
+    verifyAgentCommitment("agent-1", { genome: { ...GENOME, timeHorizon: GENOME.timeHorizon + 1 }, strategyVersion: STRATEGY }, onChain),
+    verifyAgentCommitment("agent-1", { genome: GENOME, strategyVersion: otherCode }, onChain),
+    verifyAgentCommitment("agent-1", { genome: GENOME, strategyVersion: STRATEGY }, { genomeHash: zero, strategyVersionHash: zero }),
+  ].map((pair) => pair.map((r) => (r.ok ? "ok" : `${r.alert.kind}:${r.alert.reason}`)));
+  assert.deepEqual(outcomes, [
+    ["genome:hash-mismatch", "ok"],
+    ["ok", "strategyVersion:hash-mismatch"],
+    ["genome:no-on-chain-commitment", "strategyVersion:no-on-chain-commitment"],
+  ]);
 });

@@ -19,6 +19,7 @@ const emptyEvidence: Evidence = {
   chainId: 10143,
   indexedThrough: null,
   events: { deployed: { count: 0, items: [] }, limitsSet: { count: 0, items: [] }, callAllowed: { count: 0, items: [] }, spent: { count: 0, items: [] } },
+  reallocations: { moved: { count: 0, items: [] }, retired: { count: 0, items: [] }, evaluationsAdvanced: { count: 0, items: [] } },
   trades: { count: 0, items: [] },
   payments: { count: 0, items: [] },
 };
@@ -36,6 +37,8 @@ describe("empty states", () => {
     expect(t).toContain("0 accepted operations recorded");
     expect(t).toContain("Rejected operations: 0 listed, and that is not a claim that none happened");
     expect(t).toContain("0 trades");
+    expect(t).toContain("0 reallocations indexed");
+    expect(t).toContain("0 retirements indexed");
     expect(t).toContain("0 x402 payments");
     expect(t).toContain("0 ERC-8004 identities registered");
     expect(t).toContain("0 accepted");
@@ -100,6 +103,7 @@ describe("records", () => {
       callAllowed: { count: 0, items: [] },
       spent: { count: 0, items: [] },
     },
+    reallocations: { moved: { count: 1, items: [{ account: ACCOUNT, contract: DEPLOYMENT.contracts.AgentReallocation, transactionHash: H(14), blockNumber: "22", logIndex: 0, sink: "0x00000000000000000000000000000000000000cd", amount: "40000", evaluation: "3" }] }, retired: { count: 0, items: [] }, evaluationsAdvanced: { count: 0, items: [] } },
     trades: { count: 1, items: [{ account: ACCOUNT, transactionHash: H(12), blockNumber: "21", pair: "WMON/USDC", side: "sell", baseAmount: "2000000000000000000", quoteAmount: "1100000", executedPrice: "550000", fee: { asset: "quote", amount: "0", source: "taker-fee-bps" }, costs: { gasWei: "1000000000000000", gas: "100", fees: "0", slippage: "0" }, realizedPnl: "-5000" }] },
     payments: { count: 1, items: [{ provider: "nansen", price: "30000", settlementTransaction: H(13), reconciliation: "anomaly", anomaly: "duplicate-grant" }] },
   };
@@ -121,6 +125,8 @@ describe("records", () => {
     expect(t).toContain("-0.005 USDC");
     expect(t).toContain("1.1 USDC");
     expect(t).toContain("anomaly: duplicate-grant");
+    expect(t).toContain("Reallocations (1)");
+    expect(t).toContain("0.04 USDC, evaluation 3");
     expect(t).toContain("1 with a settlement tx");
   });
 

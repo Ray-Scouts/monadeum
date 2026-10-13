@@ -5,6 +5,7 @@ import { PgAgentStore } from "@monadeum/db";
 import { hashReallocationPolicy } from "@monadeum/commitment";
 import { REALLOCATION_DISABLED, REALLOCATION_OFF_REASON } from "@monadeum/reallocation/switch";
 import { RECOVERY_DELAY_MS } from "@monadeum/recovery";
+import type { Address } from "viem";
 import { accessToken, boot, call, createAgent, index, issueKey, newWallet, ORIGIN, privySignIn, settings, signRequest, signThrough, walletSignIn, type Backend, type Booted } from "./harness.js";
 
 // End-to-end: the Nest application on Fastify, driven through HTTP injection, over WalletsModule's test chain. Every
@@ -205,6 +206,46 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
       assert.deepEqual((await call(b.app, "GET", "/capital-flow", { auth: malloryAuth })).body.spends, []);
       assert.equal((await call(b.app, "GET", "/agents/no-such-agent", { auth: aliceAuth })).status, 404);
       assert.equal((await call(b.app, "GET", `/agents/${agentId}`)).status, 401);
+    });
+
+    it("serves indexed reallocations once per move, only when the read-model records the configured contract", async () => {
+      const fresh = await boot(backend);
+      try {
+        const owner = newWallet();
+        const { cookie } = await walletSignIn(fresh.app, owner);
+        const auth = { cookie };
+        // Recorded before the first batch, as the indexer does at start.
+        await fresh.indexer.recordIndexedContract("reallocation", "0x000000000000000000000000000000000000a110");
+        const source = await createAgent(fresh.app, auth, owner, "source");
+        const sink = await createAgent(fresh.app, auth, owner, "sink");
+        const move = { owner: owner.address.toLowerCase(), source: source.account.toLowerCase(), sink: sink.account.toLowerCase(), amount: "2000000", evaluation: "3" };
+        await fresh.indexer.apply({
+          events: [
+            { kind: "reallocation.sent", account: move.source as Address, address: "0x000000000000000000000000000000000000a110", blockNumber: 900n, blockHash: `0x${"09".repeat(32)}`, transactionHash: `0x${"0a".repeat(32)}`, logIndex: 4, data: move },
+            { kind: "reallocation.received", account: move.sink as Address, address: "0x000000000000000000000000000000000000a110", blockNumber: 900n, blockHash: `0x${"09".repeat(32)}`, transactionHash: `0x${"0a".repeat(32)}`, logIndex: 4, data: move },
+          ],
+          blocks: [{ number: 900n, hash: `0x${"09".repeat(32)}` }],
+          discovered: [{ account: move.source as Address, firstBlock: 900n }, { account: move.sink as Address, firstBlock: 900n }],
+          cursor: { number: 900n, hash: `0x${"09".repeat(32)}` },
+          pruneBelow: 0n,
+        });
+        const flow = (await call(fresh.app, "GET", "/capital-flow", { auth })).body;
+        assert.equal(flow.reallocationsIndexed, true);
+        assert.deepEqual(flow.reallocations, [{ evaluation: 3, source: move.source, sink: move.sink, sourceAgentId: source.agentId, sinkAgentId: sink.agentId, amount: "2000000", transactionHash: `0x${"0a".repeat(32)}`, blockNumber: "900" }]);
+      } finally {
+        await fresh.close();
+      }
+      // A read-model that records no contract, or another one, does not count as indexing it.
+      const other = await boot(backend, { settings: settings({ reallocationContract: "0x000000000000000000000000000000000000B220" }) });
+      try {
+        await other.indexer.recordIndexedContract("reallocation", "0x000000000000000000000000000000000000a110");
+        const { cookie } = await walletSignIn(other.app, newWallet());
+        const flow = (await call(other.app, "GET", "/capital-flow", { auth: { cookie } })).body;
+        assert.equal(flow.reallocationsIndexed, false);
+        assert.deepEqual(flow.reallocations, []);
+      } finally {
+        await other.close();
+      }
     });
 
     it("refuses to stop, redeploy, or sign for another user's agent", async () => {

@@ -1,6 +1,7 @@
 import type { EvaluationRecord, AgentRecord as WorkerAgentRecord } from "@monadeum/agent-registry";
 import type { Principal, UserRecord } from "@monadeum/auth";
 import { projectAccount, type AccountView, type ChainEvent } from "@monadeum/indexer";
+import type { TradeCosts } from "@monadeum/trading";
 import type { AgentWalletRecord } from "@monadeum/wallets";
 import type { PaymentSpend } from "@monadeum/x402";
 import { getAddress, isAddressEqual, type Address } from "viem";
@@ -101,6 +102,13 @@ export interface AgentView {
   retirement: { rule: string; evaluation: number } | null;
   genome: GenomeView | null;
   capitalHistory: { evaluation: number; capital: string }[] | null;
+  /**
+   * What reallocation did to the agent at its latest evaluation, as the worker recorded it (`evaluationOutcomes`), or
+   * null when nothing was recorded: before the first evaluation, or while the deployment's reallocation switch is off.
+   */
+  reallocationOutcome: ReallocationOutcomeView | null;
+  /** Net earnings after costs since creation, and its parts (EVOLUTION.md section 2.1). Null only when no store answered. */
+  earnings: EarningsView | null;
 
   owner: Address;
   index: string;
@@ -167,6 +175,16 @@ export function agentView(
     retirement: latest?.retired && latest.retirementRule ? { rule: latest.retirementRule, evaluation: latest.sequence } : null,
     genome: genomeView(agent, worker),
     capitalHistory: latest ? history.map((r) => ({ evaluation: r.sequence, capital: r.capital.toString() })) : null,
+    reallocationOutcome: latest?.reallocation
+      ? {
+          evaluation: latest.sequence,
+          kind: latest.reallocation.kind,
+          reason: latest.reallocation.reason,
+          amount: latest.reallocation.amount === null ? null : latest.reallocation.amount.toString(),
+          rank: latest.reallocation.rank,
+        }
+      : null,
+    earnings: activity ? earningsView(activity) : null,
     owner: getAddress(agent.owner),
     index: agent.index.toString(),
     registryId: agent.registryId,
@@ -207,18 +225,110 @@ export function x402View(spend: PaymentSpend): X402View {
 export interface AgentActivity {
   tradeCount: number;
   x402: PaymentSpend;
+  /** Summed gas, fees, and slippage of every trade that carries costs. */
+  costs: TradeCosts;
+  /** Cumulative realized P&L from the agent's position, signed base units. */
+  realized: bigint;
+}
+
+export interface ReallocationOutcomeView {
+  /** The worker's evaluation sequence the outcome belongs to. */
+  evaluation: number;
+  kind: "off" | "unranked" | "sent" | "received" | "held" | "retired";
+  reason: string | null;
+  /** Base units submitted, for `sent` and `received`. */
+  amount: string | null;
+  rank: { position: number; of: number; quota: number } | null;
 }
 
 /**
- * The activity of each of `agentIds`, in two reads however many agents there are. The caller passes only agents it has
+ * Net earnings since creation, the NEP terms of EVOLUTION.md section 2.1 summed over every trade and purchase so far,
+ * settlement-asset base units as signed decimal strings: `net = realizedPnl - x402 - gas - fees - slippage`. `gasWei`
+ * is the same gas in MON's wei. Unrealized P&L on an open position is not included, as in NEP.
+ */
+export interface EarningsView {
+  realizedPnl: string;
+  x402: string;
+  gas: string;
+  gasWei: string;
+  fees: string;
+  slippage: string;
+  net: string;
+}
+
+export function earningsView(a: AgentActivity): EarningsView {
+  const net = a.realized - a.x402.spent - a.costs.gas - a.costs.fees - a.costs.slippage;
+  return {
+    realizedPnl: a.realized.toString(),
+    x402: a.x402.spent.toString(),
+    gas: a.costs.gas.toString(),
+    gasWei: a.costs.gasWei.toString(),
+    fees: a.costs.fees.toString(),
+    slippage: a.costs.slippage.toString(),
+    net: net.toString(),
+  };
+}
+
+/**
+ * The activity of each of `agentIds`, in four reads however many agents there are. The caller passes only agents it has
  * already authorized (`ownedAgent`, or the caller's own `listByOwner`): these stores are keyed by agent ID alone.
  */
 export async function activityOf(deps: ApiDependencies, agentIds: readonly string[]): Promise<Map<string, AgentActivity>> {
-  const [trades, spend] = await Promise.all([deps.trades.filledByAgent(agentIds), deps.payments.spendByAgent(agentIds)]);
-  return new Map(agentIds.map((id) => [id, { tradeCount: trades.get(id) ?? 0, x402: spend.get(id) ?? { purchases: 0, spent: 0n, byProvider: [] } }]));
+  const [trades, spend, costs, realized] = await Promise.all([
+    deps.trades.filledByAgent(agentIds),
+    deps.payments.spendByAgent(agentIds),
+    deps.trades.costsByAgent(agentIds),
+    deps.positions.realizedByAgent(agentIds),
+  ]);
+  return new Map(
+    agentIds.map((id) => [
+      id,
+      {
+        tradeCount: trades.get(id) ?? 0,
+        x402: spend.get(id) ?? { purchases: 0, spent: 0n, byProvider: [] },
+        costs: costs.get(id) ?? { gasWei: 0n, gas: 0n, fees: 0n, slippage: 0n },
+        realized: realized.get(id) ?? 0n,
+      },
+    ]),
+  );
 }
 
 /** Every indexed `Spent` event of the account, oldest first. */
 export async function spendsOf(deps: ApiDependencies, account: Address): Promise<ChainEvent[]> {
   return deps.readModel.events({ kind: "spend.spent", account: account.toLowerCase() as Address });
+}
+
+/** One selection event of the caller's agents, built from the worker's evaluation records. */
+export type SelectionEvent =
+  | { kind: "retirement"; evaluation: number; at: number; agentId: string; rule: string }
+  | {
+      kind: "reallocation";
+      evaluation: number;
+      at: number;
+      /** Base units submitted per agent: debits of the sources, credits of the sinks. */
+      sources: { agentId: string; amount: string }[];
+      sinks: { agentId: string; amount: string }[];
+    };
+
+/**
+ * The selection events in `records`, newest evaluation first: one per retirement, and one per evaluation in which the
+ * worker submitted a reallocation between the owner's agents, with what each source sent and each sink received.
+ * Within an evaluation the reallocation comes first, then retirements by agent ID. The records are what the worker
+ * submitted; whether a debit settled on chain is what the indexed moves in `GET /capital-flow` show.
+ */
+export function selectionEvents(records: readonly EvaluationRecord[]): SelectionEvent[] {
+  const bySequence = new Map<number, EvaluationRecord[]>();
+  for (const r of records) bySequence.set(r.sequence, [...(bySequence.get(r.sequence) ?? []), r]);
+  const events: SelectionEvent[] = [];
+  for (const sequence of [...bySequence.keys()].sort((a, b) => b - a)) {
+    const at = [...bySequence.get(sequence)!].sort((a, b) => (a.agentId < b.agentId ? -1 : a.agentId > b.agentId ? 1 : 0));
+    const moved = (kind: "sent" | "received") =>
+      at.filter((r) => r.reallocation?.kind === kind && r.reallocation.amount !== null).map((r) => ({ agentId: r.agentId, amount: r.reallocation!.amount!.toString() }));
+    const sources = moved("sent");
+    const sinks = moved("received");
+    const time = Math.max(...at.map((r) => r.evaluatedAt));
+    if (sources.length > 0 || sinks.length > 0) events.push({ kind: "reallocation", evaluation: sequence, at: time, sources, sinks });
+    for (const r of at) if (r.retired && r.retirementRule) events.push({ kind: "retirement", evaluation: sequence, at: r.evaluatedAt, agentId: r.agentId, rule: r.retirementRule });
+  }
+  return events;
 }

@@ -69,6 +69,13 @@ export interface Evidence {
     callAllowed: EvidenceCategory<EvidenceEvent & { target: string; selector: string; allowed: boolean }>;
     spent: EvidenceCategory<EvidenceEvent & { amount: string; windowTotal: string }>;
   };
+  /** AgentReallocation events the indexer stored. Owner addresses are not included. */
+  reallocations: {
+    /** One per move, from the source side (`reallocation.sent`); `account` is the source. */
+    moved: EvidenceCategory<EvidenceEvent & { sink: string; amount: string; evaluation: string }>;
+    retired: EvidenceCategory<EvidenceEvent>;
+    evaluationsAdvanced: EvidenceCategory<EvidenceEvent & { evaluation: string }>;
+  };
   trades: EvidenceCategory<EvidenceTrade>;
   payments: EvidenceCategory<EvidencePayment>;
 }
@@ -116,11 +123,14 @@ function paymentOf(entry: PaymentLogEntry): EvidencePayment {
 
 /** Builds the public evidence document from the read-only stores. */
 export async function buildEvidence(deps: ApiDependencies): Promise<Evidence> {
-  const [deployed, limitsSet, callAllowed, spent, cursor, filledTotal, filled, settled] = await Promise.all([
+  const [deployed, limitsSet, callAllowed, spent, moved, retired, evaluationsAdvanced, cursor, filledTotal, filled, settled] = await Promise.all([
     category(deps, "account.deployed", (e) => ({ ...base(e), factory: str(e.data.factory), paymaster: str(e.data.paymaster), userOpHash: str(e.data.userOpHash) })),
     category(deps, "spend.limits-set", (e) => ({ ...base(e), perTxCap: str(e.data.perTxCap), dailyCap: str(e.data.dailyCap) })),
     category(deps, "spend.call-allowed", (e) => ({ ...base(e), target: str(e.data.target), selector: str(e.data.selector), allowed: e.data.allowed === true })),
     category(deps, "spend.spent", (e) => ({ ...base(e), amount: str(e.data.amount), windowTotal: str(e.data.windowTotal) })),
+    category(deps, "reallocation.sent", (e) => ({ ...base(e), sink: str(e.data.sink), amount: str(e.data.amount), evaluation: str(e.data.evaluation) })),
+    category(deps, "reallocation.agent-retired", (e) => base(e)),
+    category(deps, "reallocation.evaluation-advanced", (e) => ({ ...base(e), evaluation: str(e.data.evaluation) })),
     deps.readModel.cursor(),
     deps.trades.filledTotal(),
     deps.trades.filledRecords(EVIDENCE_LIMIT),
@@ -134,6 +144,7 @@ export async function buildEvidence(deps: ApiDependencies): Promise<Evidence> {
     chainId: deps.settings.chainId,
     indexedThrough: cursor ? cursor.number.toString() : null,
     events: { deployed, limitsSet, callAllowed, spent },
+    reallocations: { moved, retired, evaluationsAdvanced },
     trades: { count: filledTotal, items: trades },
     payments: { count: settled.count, items: settled.entries.map(paymentOf) },
   }) as Evidence;

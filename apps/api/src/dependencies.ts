@@ -3,7 +3,7 @@ import type { AgentStore, EvaluationStore } from "@monadeum/agent-registry";
 import type { AuthService } from "@monadeum/auth";
 import type { ReallocationPolicyWriter } from "@monadeum/commitment";
 import type { ReadModelStore } from "@monadeum/indexer";
-import type { PositionStore, TradeCounts } from "@monadeum/trading";
+import type { PositionStore, RealizedPnl, TradeCounts } from "@monadeum/trading";
 import type { AgentWalletStore, WalletsService } from "@monadeum/wallets";
 import type { PaymentTotals } from "@monadeum/x402";
 import { HttpException } from "@nestjs/common";
@@ -49,8 +49,8 @@ export interface ApiDependencies {
   trades: TradeCounts;
   /** X402Module's payment log, read for x402 spend, through `monadeum_reader` on Postgres. */
   payments: PaymentTotals;
-  /** The worker's per-agent positions, read only: the realized P&L of each trade on the public evidence page. */
-  positions: Pick<PositionStore, "get">;
+  /** TradingModule's positions, read for realized P&L, through `monadeum_reader` on Postgres; `get` serves the public evidence page. */
+  positions: RealizedPnl & Pick<PositionStore, "get">;
   relay: SignatureRelay;
   /** The relayed funding transfer. Null when no relayer is configured: the funding endpoints answer 503. */
   funding: FundingDependencies | null;

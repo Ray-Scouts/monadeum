@@ -171,6 +171,7 @@ describe("evidence records", () => {
       callAllowed: { count: 0, items: [] },
       spent: { count: 0, items: [] },
     },
+    reallocations: { moved: { count: 1, items: [{ ...ev, contract: d.contracts.AgentReallocation, transactionHash: H(14), logIndex: 0, sink: account, amount: "1", evaluation: "1" }] }, retired: { count: 0, items: [] }, evaluationsAdvanced: { count: 0, items: [] } },
     trades: { count: 1, items: [{ account, transactionHash: H(12), blockNumber: "21", pair: "WMON/USDC", side: "buy", baseAmount: "1", quoteAmount: "1", executedPrice: "1", fee: { asset: "base", amount: "0", source: "trade-events" }, costs: null, realizedPnl: null }] },
     payments: { count: 1, items: [{ provider: "nansen", price: "30000", settlementTransaction: H(13), reconciliation: "settled", anomaly: null }] },
   };
@@ -181,6 +182,7 @@ describe("evidence records", () => {
     c.receipts.set(H(11), receipt({ blockNumber: 20n, logs: [{ address: policy, logIndex: 2 }] }));
     c.receipts.set(H(12), receipt({ blockNumber: 21n }));
     c.receipts.set(H(13), receipt({ blockNumber: 22n }));
+    c.receipts.set(H(14), receipt({ blockNumber: 20n, logs: [{ address: d.contracts.AgentReallocation, logIndex: 0 }] }));
     c.code.set(account, 100);
     c.reads.set(`${d.contracts.AgentReallocation.toLowerCase()}:agent`, { owner: "0x0", status: 1, principal: 0n });
     return c;
@@ -191,6 +193,7 @@ describe("evidence records", () => {
     const out = await run(c, evidenceTasks(c, d, evidence));
     expect(out.get(keys.event(H(10), 1))?.state).toBe("verified");
     expect(out.get(keys.event(H(11), 2))?.state).toBe("verified");
+    expect(out.get(keys.event(H(14), 0))?.state).toBe("verified");
     expect(out.get(keys.trade(H(12)))?.state).toBe("verified");
     expect(out.get(keys.payment(H(13)))?.state).toBe("verified");
     expect(out.get(keys.code(account))?.state).toBe("verified");

@@ -120,6 +120,21 @@ export function EvidenceReport(props: ReportProps) {
     { id: "check", header: "Chain check", cell: (p) => <VerifyBadge v={r(keys.payment(p.settlementTransaction))} /> },
   ];
 
+  const moved = e?.reallocations.moved.items ?? [];
+  const movedCols: Column<(typeof moved)[number]>[] = [
+    { id: "tx", header: "Reallocated tx", cell: (m) => <Hash kind="tx" value={m.transactionHash} /> },
+    { id: "from", header: "From account", cell: (m) => <Hash kind="address" value={m.account} /> },
+    { id: "to", header: "To account", cell: (m) => <Hash kind="address" value={m.sink} /> },
+    { id: "amount", header: "Amount, evaluation", cell: (m) => <span className="tabular">{usdc(m.amount)}, evaluation {m.evaluation}</span> },
+    { id: "check", header: "Chain check", cell: (m) => <VerifyBadge v={r(keys.event(m.transactionHash, m.logIndex))} /> },
+  ];
+  const retired = e?.reallocations.retired.items ?? [];
+  const retiredCols: Column<(typeof retired)[number]>[] = [
+    { id: "tx", header: "AgentRetired tx", cell: (m) => <Hash kind="tx" value={m.transactionHash} /> },
+    { id: "account", header: "Account", cell: (m) => <Hash kind="address" value={m.account} /> },
+    { id: "check", header: "Chain check", cell: (m) => <VerifyBadge v={r(keys.event(m.transactionHash, m.logIndex))} /> },
+  ];
+
   const statuses = deployed.map((a) => ({ account: a.account, v: r(keys.agentStatus(a.account)) }));
   const statusCols: Column<(typeof statuses)[number]>[] = [
     { id: "account", header: "Account", cell: (s) => <Hash kind="address" value={s.account} /> },
@@ -214,12 +229,16 @@ export function EvidenceReport(props: ReportProps) {
         {!e ? <Unavailable apiConfigured={apiConfigured} error={error} /> : payments.length === 0 ? <Empty>0 x402 payments. No payment with a settlement transaction has been recorded.</Empty> : <Records caption="x402 payments" rows={payments} columns={payCols} rowKey={(p) => p.settlementTransaction} />}
       </Section>
 
-      <Section id="reallocation" title="Reallocations and retirements" note="Read live from AgentReallocation. The public RPC limits eth_getLogs to 100 blocks, so history is not scanned; the evaluation counter and each account's status are read directly.">
+      <Section id="reallocation" title="Reallocations and retirements" note="Indexed AgentReallocation events, plus live reads of the contract. The public RPC limits eth_getLogs to 100 blocks, so this page does not scan history itself; the evaluation counter and each account's status are read directly.">
         <dl className="grid gap-2 text-sm sm:grid-cols-2">
           <div className="rounded-[10px] border border-line-soft bg-surface-2 p-3"><dt className="text-xs text-muted">currentEvaluation(): reallocation evaluations advanced</dt><dd className="mt-1"><VerifyBadge v={r(keys.read(reallocation, "currentEvaluation"))} /></dd></div>
           <div className="rounded-[10px] border border-line-soft bg-surface-2 p-3"><dt className="text-xs text-muted">lastEvaluationAt(): timestamp of the latest one</dt><dd className="mt-1"><VerifyBadge v={r(keys.read(reallocation, "lastEvaluationAt"))} /></dd></div>
         </dl>
         <p className="text-sm text-muted">A currentEvaluation of 0 means no evaluation has been advanced on this contract, so no reallocation has been possible. Reallocation is also off by default in the platform.</p>
+        <h3 className="mt-2 text-base font-bold">Reallocations {e ? `(${e.reallocations.moved.count})` : ""}</h3>
+        {!e ? <Unavailable apiConfigured={apiConfigured} error={error} /> : moved.length === 0 ? <Empty>0 reallocations indexed. No Reallocated event from AgentReallocation is in the read-model.</Empty> : <Records caption="Reallocations" rows={moved} columns={movedCols} rowKey={(m) => `${m.transactionHash}:${m.logIndex}`} />}
+        <h3 className="mt-2 text-base font-bold">Retirements {e ? `(${e.reallocations.retired.count})` : ""}</h3>
+        {!e ? <Unavailable apiConfigured={apiConfigured} error={error} /> : retired.length === 0 ? <Empty>0 retirements indexed. No AgentRetired event is in the read-model.</Empty> : <Records caption="Retirements" rows={retired} columns={retiredCols} rowKey={(m) => `${m.transactionHash}:${m.logIndex}`} />}
         {!e ? <Unavailable apiConfigured={apiConfigured} error={error} /> : statuses.length === 0 ? <Empty>0 agent accounts to read a status for, so 0 retirements can be shown.</Empty> : <Records caption="Agent status on AgentReallocation" rows={statuses} columns={statusCols} rowKey={(s) => s.account} />}
       </Section>
 

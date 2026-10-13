@@ -1,4 +1,4 @@
-import { SettlementAssetMismatchError, type BlockHash, type ChainEvent, type EventFilter, type ReadModelStore, type SyncBatch } from "@monadeum/read-model";
+import { SettlementAssetMismatchError, checkIndexedContract, type BlockHash, type ChainEvent, type EventFilter, type ReadModelStore, type SyncBatch } from "@monadeum/read-model";
 import type { Address, Hex } from "viem";
 import type { Database } from "./database.js";
 
@@ -115,6 +115,20 @@ export class PgReadModelStore implements ReadModelStore {
     await this.db.query("INSERT INTO indexer_settings (id, settlement_asset) VALUES (1, $1) ON CONFLICT (id) DO NOTHING", [lower]);
     const recorded = await this.settlementAsset();
     if (recorded !== lower) throw new SettlementAssetMismatchError(recorded ?? ("none" as Address), lower);
+  }
+
+  async indexedContracts(): Promise<Record<string, Address>> {
+    const { rows } = await this.db.query<{ name: string; address: string }>("SELECT name, address FROM indexer_contracts ORDER BY name");
+    return Object.fromEntries(rows.map((r) => [r.name, r.address as Address]));
+  }
+
+  /** Inserts the row once (migration 0016), and only into a read-model with no cursor yet; see `checkIndexedContract`. */
+  async recordIndexedContract(name: string, address: Address): Promise<void> {
+    const lower = address.toLowerCase() as Address;
+    const recorded = (await this.indexedContracts())[name];
+    if (!checkIndexedContract(recorded, name, lower, (await this.cursor()) !== null)) return;
+    await this.db.query("INSERT INTO indexer_contracts (name, address) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING", [name, lower]);
+    checkIndexedContract((await this.indexedContracts())[name], name, lower, false);
   }
 
   async events(filter: EventFilter = {}): Promise<ChainEvent[]> {

@@ -28,7 +28,7 @@ The `backend` network is `internal`: Postgres and Redis have no route out and no
 
 - Owners can sign in, create agents, sign the account deployment, and stop an agent. Session keys and x402 keys live in the local encrypted vault on the `vault` volume, shared by `api` and `worker`.
 - Owners can fund an agent from the agent page ("Fund this agent"): they sign an EIP-3009 authorization moving testnet USDC from their owner wallet to the agent's deployed account, and the API's relayer submits it and pays the gas in testnet MON. The relayer key lives in its own encrypted vault on the `relayer_vault` volume, mounted into `api` only. Until the relayer holds MON, every submission is refused with `503 relayer-balance-low` and nothing is sent (step 5).
-- The indexer indexes the spend policy, account deployments, session key events, and settlement-asset transfers of followed accounts, from `INDEXER_START_BLOCK`.
+- The indexer indexes the spend policy, account deployments, session key events, and settlement-asset transfers of followed accounts, from `INDEXER_START_BLOCK`. It indexes the reallocation contract's events only with `INDEXER_REALLOCATION_ADDRESS` set, which the example leaves empty; the 2026-10-11 read-model was synced without it, so turning it on there needs the read-model rebuilt first (`apps/indexer/README.md`, "Rebuilding the read-model").
 - The worker runs its `sync`, `principal`, and `x402-reconcile` jobs. It runs no trading tick until the owner enables the tick runner (`WORKER_TICK_RUNNER=enabled`, step 9; `ARCHITECTURE.md` section 11, "Tick runner"): while it is `disabled`, the default, every tick and evaluation job is skipped and nothing is sent. Enabled, it still runs no tick without a signed risk policy version in effect. The worker reads and validates the trading market (`TRADING_*`) either way and logs it.
 - Agents trade WMON/USDC on testnet, on a market we create and seed (step 2b), not WETH/USDC as on mainnet. The liquidity is ours, so testnet prices and agents' P&L carry no economic meaning (`ARCHITECTURE.md` section 10, "Testnet market").
 - The x402 payer is off (`WORKER_X402_PAYER_ENABLED=false`) and reallocation is off (`MONADEUM_REALLOCATION_ENABLED=false`), both decided.
@@ -43,6 +43,8 @@ The deployment this runbook produced, as of 2026-10-11. Every item is FACT, chec
 - **Privy.** The app is in development mode, with email and Google sign-in enabled and identity tokens turned on (the API reads the embedded wallet only from the identity token). Privy's embedded wallets appear in that token as `privy-v2`; the API accepts them since PR #130.
 - **ZeroDev.** One project for chain 10143. The bundler and the paymaster use the same v3 endpoint, so `WALLETS_BUNDLER_URL` and `WALLETS_PAYMASTER_URL` hold the same value. Gas sponsorship is set to sponsor all transactions, which is acceptable on testnet only. Recommended: set a sponsorship limit for the chain in the ZeroDev dashboard, so a loop or a leaked endpoint cannot drain the testnet gas balance (`ARCHITECTURE.md` section 7).
 - **First agent.** Created through the web app; its Kernel account was deployed with sponsored gas, and the indexer recorded `account.deployed`, `spend.limits-set`, and `spend.call-allowed` for it.
+
+What this deployment has and has not yet shown, item by item against `SECURITY.md` section 10, is tracked in `docs/testnet-validation-checklist.md`. Record each transaction hash and account address there as a step below is run.
 
 ## 1. Prepare the VPS
 
@@ -158,6 +160,26 @@ cast call "$REALLOC" "settlementAsset()(address)" --rpc-url $R
 ```
 
 Then copy the three addresses, the deployer, and the deployment block into `contracts/deployments/monad-testnet.json`, set `status` to `deployed`, and commit it through a pull request. Addresses are public; the committed file is the record of the deployment. Source verification on the explorer is not set up (open question below).
+
+### 2a. Deploy the genome commitment contract (not done yet)
+
+`AgentCommitments` (`ARCHITECTURE.md` section 9, issue #32) has no constructor arguments and no roles; it is deployed by its own script, so the three contracts above are not redeployed. Not broadcast yet: until it is, `WALLETS_AGENT_COMMITMENTS_ADDRESS` stays unset, deployments commit nothing on chain, and the tick runner logs that genomes are not verified.
+
+```bash
+cd contracts
+# Simulate (sends nothing, needs no key):
+MONADEUM_EXPECTED_DEPLOYER=0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3 \
+forge script script/DeployAgentCommitments.s.sol:DeployAgentCommitments \
+  --rpc-url https://testnet-rpc.monad.xyz --sender 0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3 -vvv
+# Broadcast (one transaction, prompts for the keystore password):
+MONADEUM_EXPECTED_DEPLOYER=0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3 \
+forge script script/DeployAgentCommitments.s.sol:DeployAgentCommitments \
+  --rpc-url https://testnet-rpc.monad.xyz --account monadeum-testnet-deployer \
+  --sender 0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3 --broadcast --slow -vvv
+cat deployments/monad-testnet-commitments.latest.json
+```
+
+Then add the address and block to `contracts/deployments/monad-testnet.json` under `contracts.AgentCommitments`, and set `WALLETS_AGENT_COMMITMENTS_ADDRESS` in the API's and the worker's environment (section 3). Agents created before that have no commitment: once the address is set, the tick runner raises the `SECURITY.md` section 12 alert for each of them and does not tick them, so on testnet they are replaced by new agents. Every later change to `libs/strategy/src/propose.ts` is a new strategy version and has the same effect on every live agent (`ARCHITECTURE.md` section 16.4, rule 7).
 
 ## 2b. Create and seed the testnet WMON/USDC market (owner's workstation)
 
@@ -454,6 +476,15 @@ dc --profile operator run --rm policy show              # "in effect now: versio
 - A buy is `executed (executed)`; check it with `cast call $M "bestBidAsk()(uint256,uint256)"` and the agent's WMON balance. Reseed (step 2b) when the asks are gone.
 
 **Stop.** Set `WORKER_TICK_RUNNER=disabled` and `dc up -d worker`: no new tick runs. A tick whose operation was already sent is reconciled when the runner is enabled again.
+
+**Population breaker.** At each evaluation the worker compares the capital at risk across all agents with `WORKER_BREAKER_CAPITAL_AT_RISK` (`SECURITY.md` section 9, layer 3). Above it, the worker records a trip and every tick and reallocation stops, across restarts, with `not ticked` lines in `dc logs worker`. The capital falling back does not release it. After reviewing why it tripped:
+
+```bash
+dc --profile operator run --rm policy breaker-show       # "population breaker TRIPPED at ...: capital-at-risk ... is above the threshold ..."
+dc --profile operator run --rm policy breaker-clear --by "<your name>" --reason "<what was reviewed>"
+```
+
+Ticks resume on the next scheduled tick. Raising the threshold instead needs `WORKER_BREAKER_CAPITAL_AT_RISK` changed and the worker restarted, and still a clear.
 
 **Change a cap or the pair.** Build the next version with `build` (it reads the stored chain, so `version` and `previousHash` are filled in; pass `--effective-from` for a later start), sign its hash, `append`. The worker picks it up at its `effectiveFrom`, without a restart. A version is never edited or deleted.
 

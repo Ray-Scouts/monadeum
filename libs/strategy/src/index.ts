@@ -14,3 +14,4 @@ export {
   genomePreset,
 } from "./presets.js";
 export type { GenomePreset } from "./presets.js";
+export { STRATEGY_CODE_FILE, STRATEGY_VERSION } from "./version.js";

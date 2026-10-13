@@ -32,12 +32,19 @@ export {
 export type { ReallocationDomain, ReallocationPolicyV1 } from "./reallocation.js";
 export { verifyCommitment } from "./verify.js";
 export type { CommitmentAlert, MismatchReason, VerificationResult } from "./verify.js";
-export { buildAgentCreationCommitment, buildPolicyCommitment } from "./onchain.js";
+export {
+  AGENT_COMMITMENTS_ABI,
+  agentCommitmentCall,
+  buildAgentCreationCommitment,
+  buildPolicyCommitment,
+  contractAgentCommitmentReader,
+  verifyAgentCommitment,
+} from "./onchain.js";
 export type {
   AgentCommitmentReader,
-  AgentCommitmentRecord,
-  AgentCommitmentWriter,
   AgentCreationCommitment,
+  CommitmentReadClient,
+  OnChainAgentCommitment,
   ReallocationPolicyCommitment,
   ReallocationPolicyReader,
   ReallocationPolicyWriter,

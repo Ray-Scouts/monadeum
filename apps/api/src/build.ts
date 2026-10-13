@@ -14,7 +14,7 @@ import { MemoryAgentStore, MemoryEvaluationStore, type AgentStore, type Evaluati
 import type { ReallocationPolicyWriter } from "@monadeum/commitment";
 import { PgAgentStore, PgAgentWalletStore, PgChallengeStore, PgEvaluationStore, PgPaymentLog, PgPositionStore, PgReadModelStore, PgSessionStore, PgSponsorshipLedger, PgTradeStore, PgUserStore, type Database } from "@monadeum/db";
 import { InMemoryReadModelStore, type ReadModelStore } from "@monadeum/indexer";
-import { MemoryPositionStore, MemoryTradeStore, type PositionStore, type TradeCounts } from "@monadeum/trading";
+import { MemoryPositionStore, MemoryTradeStore, type PositionStore, type RealizedPnl, type TradeCounts } from "@monadeum/trading";
 import { MemoryAgentWalletStore, MemorySponsorshipLedger, type AgentWalletStore, type SponsorshipLedger, type WalletsService } from "@monadeum/wallets";
 import { MemoryPaymentLog, type PaymentTotals } from "@monadeum/x402";
 import type { ApiSettings } from "./config.js";
@@ -58,8 +58,8 @@ export interface ApiStores {
   /** The worker's trade store and x402 payment log, read only: the API never writes either. */
   trades: TradeCounts;
   payments: PaymentTotals;
-  /** The worker's positions (migration 0011), read only. */
-  positions: Pick<PositionStore, "get">;
+  /** The worker's positions (migration 0011), read only: each agent's realized P&L and, for the public evidence page, the position itself. */
+  positions: RealizedPnl & Pick<PositionStore, "get">;
   /** Relayed funding authorizations (migration 0014). */
   funding: FundingStore;
 }
