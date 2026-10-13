@@ -81,7 +81,7 @@ export function ReallocationPanel({
           <p className="text-sm text-muted">No evaluation has run since this agent was created.</p>
         )}
         {owner && (
-          <Link href={`/capital-flow?owner=${owner.id}`} className="mt-4 inline-flex items-center gap-1 text-[13px] font-semibold text-accent-hi hover:underline">
+          <Link href={`/capital-flow?owner=${owner.id}`} className="tap-y mt-4 inline-flex items-center gap-1 text-[13px] font-semibold text-accent-hi hover:underline">
             Capital flow for {owner.name}
             <Icon name="arrow" className="size-3.5" />
           </Link>

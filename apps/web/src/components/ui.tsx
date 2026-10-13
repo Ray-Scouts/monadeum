@@ -14,7 +14,7 @@ const TONE: Record<Tone, string> = {
 
 export function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${TONE[tone]}`}>
+    <span className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${TONE[tone]}`}>
       <span className="size-1.5 rounded-full bg-current" />
       {children}
     </span>
@@ -45,7 +45,7 @@ export function Kpi({ label, value, detail }: { label: string; value: ReactNode;
   return (
     <div className="flex min-w-0 flex-col gap-1.5 rounded-[14px] border border-line-soft bg-surface px-[18px] py-4">
       <span className="eyebrow">{label}</span>
-      <span className="font-display text-[26px] leading-tight font-bold tabular">{value}</span>
+      <span className="long-value font-display text-[26px] leading-tight font-bold tabular">{value}</span>
       {detail && <span className="text-xs text-muted">{detail}</span>}
     </div>
   );
@@ -77,7 +77,7 @@ export function Sparkline({ values, width = 110, height = 30, color = "var(--acc
   const y = (v: number) => height - 3 - ((v - min) / (max - min || 1)) * (height - 6);
   const d = values.map((v, i) => `${i ? "L" : "M"}${(i * sx).toFixed(1)},${y(v).toFixed(1)}`).join("");
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-auto max-w-full" role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
       <path d={`${d}L${width},${height}L0,${height}Z`} fill={color} opacity={0.12} />
       <path d={d} fill="none" stroke={color} strokeWidth={1.6} />
       <circle cx={width} cy={y(values[values.length - 1] ?? 0)} r={2.5} fill={color} />

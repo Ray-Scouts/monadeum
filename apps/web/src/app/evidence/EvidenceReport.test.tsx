@@ -133,7 +133,7 @@ describe("records", () => {
   test("tables and stacked cards come from the same rows, and touch targets are 44 px", () => {
     const html = render({ evidence });
     expect(html).toContain("<table");
-    expect(html).toContain("md:hidden");
+    expect(html).toContain("lg:hidden");
     expect(html).toContain("size-11");
     expect(html).toContain("min-h-11");
     expect(html).toContain("<caption");

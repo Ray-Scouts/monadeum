@@ -121,7 +121,7 @@ function StrategyCard({ agent }: { agent: ApiAgent }) {
               <li key={l}>{l}</li>
             ))}
           </ul>
-          <p className="mt-2 font-mono text-xs text-faint">
+          <p className="long-value mt-2 font-mono text-xs text-faint">
             {agent.genome.preset ? `Preset ${agent.genome.preset}, ` : ""}genome hash {agent.genome.hash}
           </p>
         </>
@@ -169,7 +169,7 @@ export function ApiAgent({ id }: { id: string }) {
         }
       />
       {agent.deployment !== "deployed" && <Redeploy agentId={agent.id} name={agent.name} onDone={reload} />}
-      <div className="grid gap-4 min-[900px]:grid-cols-2">
+      <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <CapitalHistoryCard agent={agent} settlement={settlement} />
         <StrategyCard agent={agent} />
       </div>

@@ -24,9 +24,19 @@
   -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid color-mix(in srgb, var(--line-soft) 60%, transparent);
 }
-.navtxt { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; padding: 8px 10px; border-radius: 8px; }
+.navtxt { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; padding: 12px 12px; border-radius: 8px; }
 .navtxt:hover { color: var(--fg); background: var(--surface-2); }
 @media (max-width: 980px) { .navtxt { display: none; } }
+/* Below 980px the section links collapse into a menu; the disclosure is a 44px target. */
+.menu { display: none; }
+.menu summary { display: grid; place-items: center; min-width: 44px; min-height: 44px; list-style: none; cursor: pointer; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--fg); font-size: 14px; font-weight: 500; padding: 0; }
+.menu summary::-webkit-details-marker { display: none; }
+.menuList { position: absolute; right: clamp(16px, 4vw, 48px); top: calc(100% + 8px); z-index: 20; display: grid; width: min(240px, calc(100vw - 32px)); padding: 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
+.menuList a { display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; color: var(--fg); text-decoration: none; font-size: 15px; }
+.menuList a:hover { background: var(--surface-2); }
+@media (max-width: 980px) { .menu { display: block; } }
+@media (max-width: 380px) { .nav { gap: 8px; } }
+@media (max-width: 420px) { .wordmark { display: none; } }
 
 /* sections */
 .section { max-width: 1280px; margin: 0 auto; padding: 56px clamp(16px, 4vw, 48px); scroll-margin-top: 72px; }
@@ -117,7 +127,7 @@
 /* genome */
 .genomeCard { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 22px; box-shadow: var(--shadow); min-width: 0; }
 .gene { display: grid; grid-template-columns: 150px minmax(0, 1fr) 70px; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line-soft); font-size: 14px; }
-.gene small { display: block; color: var(--faint); font-size: 11px; font-family: var(--f-mono); }
+.gene small { display: block; color: var(--faint); font-size: 12px; font-family: var(--f-mono); }
 .gbar { height: 10px; border-radius: 99px; background: var(--surface-2); position: relative; }
 .gbar span { position: absolute; inset: 0 auto 0 0; border-radius: 99px; transition: width .7s cubic-bezier(.2, .8, .2, 1); }
 .gbar i { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--fg); opacity: .5; right: 0; }
@@ -138,7 +148,7 @@
 .segUp { background: var(--mint); border-radius: 12px; }
 .segDown { background: var(--sun); border-radius: 12px; }
 .thr { position: absolute; top: -8px; bottom: -8px; width: 2px; background: var(--berry); }
-.thr em { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font: 500 11px var(--f-mono); font-style: normal; color: var(--berry); white-space: nowrap; }
+.thr em { position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font: 500 12px var(--f-mono); font-style: normal; color: var(--berry); white-space: nowrap; }
 .rCap { font-size: 15px; min-height: 2.6em; }
 
 /* shrinkage */
@@ -149,8 +159,8 @@
 .shrinkNums .hl b { color: var(--sky); }
 @media (max-width: 560px) { .shrinkNums { grid-template-columns: minmax(0, 1fr); } }
 .chart { width: 100%; height: auto; display: block; }
-.chart text { fill: var(--faint); font: 11px var(--f-mono); }
-.range { width: 100%; accent-color: var(--sky); }
+.chart text { fill: var(--faint); font: 12px var(--f-mono); }
+.range { width: 100%; min-height: 44px; cursor: pointer; accent-color: var(--sky); }
 
 /* security */
 .layers { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 32px; align-items: center; margin-top: 28px; }

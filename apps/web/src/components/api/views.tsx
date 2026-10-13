@@ -31,7 +31,7 @@ import { formatEther } from "viem";
 
 type Settlement = WebConfig["settlement"];
 
-const TH = "whitespace-nowrap border-b border-line-soft px-2.5 py-2.5 text-left font-mono text-[11px] font-medium tracking-[0.08em] text-faint uppercase";
+const TH = "whitespace-nowrap border-b border-line-soft px-2.5 py-2.5 text-left font-mono text-xs font-medium tracking-[0.08em] text-faint uppercase";
 const TD = "whitespace-nowrap border-b border-line-soft px-2.5 py-2.5 align-middle";
 
 export function LiveBadge() {
@@ -119,7 +119,7 @@ export function AgentsTable({ agents, settlement }: { agents: ApiAgent[]; settle
     (x, y) => Number(isRetired(x)) - Number(isRetired(y)) || (y.fitnessPercentile ?? -1) - (x.fitnessPercentile ?? -1),
   );
   return (
-    <div className="-mx-5 overflow-x-auto px-5">
+    <div className="-mx-5 scroll-hint overflow-x-auto px-5">
       <table className="w-full border-collapse text-sm">
         <caption className="sr-only">Your agents</caption>
         <thead>
@@ -260,7 +260,7 @@ export function PopulationView({
         Platform totals across all owners, then your own agents. No other owner&apos;s agent is identified here. Fitness is a percentile within the
         agent&apos;s niche, adjusted for risk and for the amount of evidence, not raw profit.
       </ScreenHead>
-      <section aria-label="Platform totals" className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+      <section aria-label="Platform totals" className="grid grid-cols-1 gap-4 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <Kpi
           label="Agents"
           value={population.agents}
@@ -332,7 +332,7 @@ export function ExplainerCard({ explainer, owner = null }: { explainer: Explaine
 export function SpendsTable({ spends, settlement }: { spends: AgentSpend[]; settlement: Settlement }) {
   if (spends.length === 0) return <p className="text-sm text-muted">No spends indexed for this account yet.</p>;
   return (
-    <div className="overflow-x-auto">
+    <div className="scroll-hint overflow-x-auto">
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr>
@@ -390,7 +390,7 @@ export function AgentFacts({ agent, settlement, actions }: { agent: ApiAgent; se
         </div>
       </div>
       {actions}
-      <section aria-label="Key figures" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      <section aria-label="Key figures" className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Kpi
           label="Capital"
           value={agent.capital == null ? PENDING : <span className="text-[19px]">{amount(agent.capital, settlement)}</span>}
@@ -417,7 +417,7 @@ export function AgentFacts({ agent, settlement, actions }: { agent: ApiAgent; se
           detail={agent.chain ? "All indexed spends of the account" : "No account address yet"}
         />
       </section>
-      <section aria-label="Limits and session key" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <section aria-label="Limits and session key" className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 lg:grid-cols-3">
         <Kpi label="Per-transaction cap" value={<span className="text-[19px]">{amount(agent.limits.perTxCap, settlement)}</span>} detail="Enforced on chain" />
         <Kpi label="Daily cap" value={<span className="text-[19px]">{amount(agent.limits.dailyCap, settlement)}</span>} detail="Rolling 24 hours, on chain" />
         <Kpi
@@ -508,7 +508,7 @@ export function CapitalFlowView({ flow, agents, owner, settlement }: { flow: Cap
         Your capital: what moved between your agents through reallocation, and what each agent spent on chain.
       </ScreenHead>
       <ReallocationOffNote owner={owner} />
-      <section aria-label="Summary" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <section aria-label="Summary" className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 lg:grid-cols-3">
         <Kpi label="Your agents" value={agents.length} />
         {reallocationEnabled(owner) ? (
           <Kpi
@@ -527,7 +527,7 @@ export function CapitalFlowView({ flow, agents, owner, settlement }: { flow: Cap
           flow.reallocations.length === 0 ? (
             <p className="text-sm text-muted">No reallocation has moved your capital.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="scroll-hint overflow-x-auto">
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr>
@@ -548,7 +548,7 @@ export function CapitalFlowView({ flow, agents, owner, settlement }: { flow: Cap
                       ].map(([id, account]) => (
                         <td key={account} className={TD}>
                           {id ? (
-                            <Link href={`/agents/${encodeURIComponent(id)}`} className="text-accent-hi hover:underline">
+                            <Link href={`/agents/${encodeURIComponent(id)}`} className="tap inline-flex items-center text-accent-hi hover:underline">
                               {name.get(id) ?? id}
                             </Link>
                           ) : (
@@ -580,7 +580,7 @@ export function CapitalFlowView({ flow, agents, owner, settlement }: { flow: Cap
         {flow.spends.length === 0 ? (
           <p className="text-sm text-muted">No spends indexed for your agents yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="scroll-hint overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr>
@@ -594,7 +594,7 @@ export function CapitalFlowView({ flow, agents, owner, settlement }: { flow: Cap
                 {flow.spends.map((s) => (
                   <tr key={`${s.transactionHash}-${s.agentId}-${s.amount}`}>
                     <td className={TD}>
-                      <Link href={`/agents/${encodeURIComponent(s.agentId)}`} className="text-accent-hi hover:underline">
+                      <Link href={`/agents/${encodeURIComponent(s.agentId)}`} className="tap inline-flex items-center text-accent-hi hover:underline">
                         {name.get(s.agentId) ?? s.agentId}
                       </Link>
                     </td>

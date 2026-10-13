@@ -28,7 +28,7 @@ export function SignatureRequestView({ operation, name, busy, error, onSign, exp
     <div className="flex flex-col gap-3 rounded-xl border border-line bg-surface-2 p-4 text-sm">
       <span className="eyebrow">Your signature is needed</span>
       <p className="font-medium">{e.summary}</p>
-      <ul className="m-0 list-disc pl-5 text-muted">
+      <ul className="long-value m-0 list-disc pl-5 text-muted">
         {e.details.map((d) => (
           <li key={d}>{d}</li>
         ))}
@@ -41,7 +41,7 @@ export function SignatureRequestView({ operation, name, busy, error, onSign, exp
       )}
       {request && (
         <details>
-          <summary className="cursor-pointer text-muted">Raw data your wallet will sign ({request.kind === "typed-data" ? "EIP-712 typed data" : "EIP-191 message"})</summary>
+          <summary className="tap-y flex cursor-pointer items-center text-muted">Raw data your wallet will sign ({request.kind === "typed-data" ? "EIP-712 typed data" : "EIP-191 message"})</summary>
           <pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-surface p-3 font-mono text-xs break-all whitespace-pre-wrap">{rawPayload(request)}</pre>
         </details>
       )}

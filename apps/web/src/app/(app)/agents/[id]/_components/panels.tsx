@@ -4,13 +4,13 @@ import { Card, CardHead, Pill, Tag } from "@/components/ui";
 import type { Agent, Provider, Trade, X402Purchase } from "@/data/types";
 import { usd } from "@/lib/format";
 
-const TH = "whitespace-nowrap border-b border-line-soft px-3 py-2.5 text-left font-mono text-[11px] font-medium tracking-[0.08em] text-faint uppercase";
+const TH = "whitespace-nowrap border-b border-line-soft px-3 py-2.5 text-left font-mono text-xs font-medium tracking-[0.08em] text-faint uppercase";
 const TD = "whitespace-nowrap border-b border-line-soft px-3 py-3 align-middle";
 const R = "text-right";
 
 function Table({ caption, head, children }: { caption: string; head: ReactNode; children: ReactNode }) {
   return (
-    <div className="-mx-5 overflow-x-auto px-5">
+    <div className="-mx-5 scroll-hint overflow-x-auto px-5">
       <table className="w-full border-collapse text-sm">
         <caption className="sr-only">{caption}</caption>
         <thead>
@@ -80,7 +80,7 @@ export function GenomePanel({ agent }: { agent: Agent }) {
               <th scope="row" className={`${TD} text-left font-semibold`}>{r.field}</th>
               <td className={`${TD} font-mono`}>{r.value}</td>
               <td className={TD}>
-                <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] tracking-[0.06em] uppercase ${chip}`}>{label}</span>
+                <span className={`rounded px-1.5 py-0.5 font-mono text-xs tracking-[0.06em] uppercase ${chip}`}>{label}</span>
               </td>
               <td className={`${TD} text-muted`}>{r.limit}</td>
             </tr>

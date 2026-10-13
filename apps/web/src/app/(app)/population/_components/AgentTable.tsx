@@ -68,11 +68,11 @@ export function AgentTable({ rows: all, evaluations }: { rows: Row[]; evaluation
         <h2 className="text-lg font-bold">Agents</h2>
         <Segmented label="Filter by status" options={FILTERS} value={filter} onChange={setFilter} />
       </div>
-      <div className="-mx-5 overflow-x-auto px-5">
+      <div className="-mx-5 scroll-hint overflow-x-auto px-5">
         <table className="w-full border-collapse text-sm">
           <caption className="sr-only">Agents in the population, filtered by {FILTERS.find((f) => f.value === filter)!.label.toLowerCase()}</caption>
           <thead>
-            <tr className="border-b border-line-soft text-left font-mono text-[11px] tracking-[0.08em] text-faint uppercase">
+            <tr className="border-b border-line-soft text-left font-mono text-xs tracking-[0.08em] text-faint uppercase">
               <th scope="col" className="px-3 py-2.5 font-medium whitespace-nowrap">Agent</th>
               <th scope="col" className="px-3 py-2.5 font-medium whitespace-nowrap">Status</th>
               <th scope="col" className="px-3 py-2.5 text-right font-medium whitespace-nowrap">Capital</th>

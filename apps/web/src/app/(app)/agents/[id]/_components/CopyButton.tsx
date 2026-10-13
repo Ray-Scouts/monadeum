@@ -32,7 +32,7 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
         onClick={copy}
         aria-label={label}
         title={label}
-        className={`inline-flex rounded-md p-0.5 ${state === "copied" ? "text-good" : state === "failed" ? "text-bad" : "text-muted hover:text-fg"}`}
+        className={`inline-flex size-11 flex-none items-center justify-center rounded-md ${state === "copied" ? "text-good" : state === "failed" ? "text-bad" : "text-muted hover:text-fg"}`}
       >
         <Icon name={state === "copied" ? "check" : state === "failed" ? "x" : "copy"} className="size-4" />
       </button>

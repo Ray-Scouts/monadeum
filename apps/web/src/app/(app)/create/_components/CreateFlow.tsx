@@ -23,7 +23,7 @@ const CLASS_STYLE: Record<FieldClass, string> = {
 };
 
 function ClassChip({ kind }: { kind: FieldClass }) {
-  return <span className={`ml-2 rounded px-1.5 py-0.5 align-[2px] font-mono text-[10px] tracking-[0.06em] uppercase ${CLASS_STYLE[kind]}`}>{kind}</span>;
+  return <span className={`ml-2 rounded px-1.5 py-0.5 align-[2px] font-mono text-xs tracking-[0.06em] uppercase ${CLASS_STYLE[kind]}`}>{kind}</span>;
 }
 
 function Field({ children }: { children: ReactNode }) {
@@ -49,7 +49,7 @@ function FieldHead({ htmlFor, label, kind, output }: { htmlFor?: string; label: 
 
 function Scale({ lo, hi }: { lo: string; hi: string }) {
   return (
-    <div className="flex justify-between font-mono text-[11px] text-faint">
+    <div className="flex justify-between font-mono text-xs text-faint">
       <span>{lo}</span>
       <span>{hi}</span>
     </div>
@@ -273,7 +273,7 @@ export function CreateFlow({ pairs }: { pairs: readonly string[] }) {
                         <label
                           key={p}
                           htmlFor={id}
-                          className="inline-flex cursor-pointer items-center gap-2 rounded-[10px] border border-line bg-surface-2 px-3 py-2 font-mono text-[13px] has-checked:border-accent has-checked:bg-accent-wash has-focus-visible:outline-2 has-focus-visible:outline-accent-hi"
+                          className="tap-y inline-flex cursor-pointer items-center gap-2 rounded-[10px] border border-line bg-surface-2 px-3 py-2 font-mono text-[13px] has-checked:border-accent has-checked:bg-accent-wash has-focus-visible:outline-2 has-focus-visible:outline-accent-hi"
                         >
                           <input id={id} type="checkbox" checked={draft.assetUniverse.includes(p)} onChange={(e) => togglePair(p, e.target.checked)} className="accent-accent" />
                           {p}
@@ -313,7 +313,7 @@ export function CreateFlow({ pairs }: { pairs: readonly string[] }) {
                   id={ids.model}
                   value={draft.modelConfiguration}
                   onChange={(e) => set("modelConfiguration", e.target.value as Model)}
-                  className="rounded-[10px] border border-line bg-surface-2 px-3 py-2 font-mono text-sm"
+                  className="rounded-[10px] border border-line bg-surface-2 px-3 py-2 font-mono text-base"
                 >
                   {PROTOCOL.allowedModels.map((m) => (
                     <option key={m} value={m}>

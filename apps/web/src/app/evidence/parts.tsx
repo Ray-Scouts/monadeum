@@ -136,7 +136,7 @@ export interface Column<T> {
 export function Records<T>({ caption, rows, columns, rowKey }: { caption: string; rows: readonly T[]; columns: readonly Column<T>[]; rowKey(row: T, index: number): string }) {
   return (
     <>
-      <div className="hidden md:block">
+      <div className="hidden lg:block">
         <table className="w-full table-fixed border-collapse text-left text-sm">
           <caption className="sr-only">{caption}</caption>
           <thead>
@@ -161,7 +161,7 @@ export function Records<T>({ caption, rows, columns, rowKey }: { caption: string
           </tbody>
         </table>
       </div>
-      <ul aria-label={caption} className="grid gap-3 md:hidden">
+      <ul aria-label={caption} className="grid gap-3 lg:hidden">
         {rows.map((row, i) => (
           <li key={rowKey(row, i)} className="min-w-0 rounded-[14px] border border-line-soft bg-surface-2 p-3.5">
             <dl className="grid gap-y-2.5 sm:grid-cols-[minmax(0,8rem)_minmax(0,1fr)] sm:items-center sm:gap-x-3 sm:gap-y-1">

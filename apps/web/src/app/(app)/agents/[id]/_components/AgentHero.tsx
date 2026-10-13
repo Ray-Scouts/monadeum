@@ -65,7 +65,7 @@ export function AgentHero({
             {owner && (
               <span>
                 Owned by{" "}
-                <Link href={`/capital-flow?owner=${owner.id}`} className="font-semibold text-accent-hi hover:underline">
+                <Link href={`/capital-flow?owner=${owner.id}`} className="tap inline-flex items-center font-semibold text-accent-hi hover:underline">
                   {owner.name}
                 </Link>
               </span>

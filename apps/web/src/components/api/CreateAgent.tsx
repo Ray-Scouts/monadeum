@@ -47,7 +47,7 @@ export function CreateFormView({ presets, form, settlement, busy, error, onChang
           {presets.presets.map((p) => (
             <label key={p.name} className="flex cursor-pointer items-start gap-3 rounded-xl border border-line-soft p-3.5 has-[:checked]:border-accent has-[:checked]:bg-accent-wash">
               <input type="radio" name="preset" value={p.name} checked={form.preset === p.name} onChange={() => onChange({ ...form, preset: p.name })} className="mt-1" />
-              <span className="grid gap-1 text-sm">
+              <span className="grid min-w-0 gap-1 text-sm">
                 <span className="font-semibold capitalize">
                   {p.name} {p.name === presets.default && <Pill tone="accent">Default</Pill>}
                 </span>
@@ -56,7 +56,7 @@ export function CreateFormView({ presets, form, settlement, busy, error, onChang
                     <li key={l}>{l}</li>
                   ))}
                 </ul>
-                <span className="font-mono text-xs text-faint" title="The hash of the genome this preset commits, for the configured pair">
+                <span className="long-value font-mono text-xs text-faint" title="The hash of the genome this preset commits, for the configured pair">
                   Genome hash {p.genomeHash}
                 </span>
               </span>

@@ -3,7 +3,7 @@
 import { Icon } from "./Icon";
 
 /** Flips between light and dark, starting from whatever is showing now, and remembers the choice. */
-export function ThemeToggle({ size = "size-9" }: { size?: string }) {
+export function ThemeToggle({ size = "size-11" }: { size?: string }) {
   const toggle = () => {
     const root = document.documentElement;
     const dark = root.dataset.theme ? root.dataset.theme === "dark" : !matchMedia("(prefers-color-scheme: light)").matches;
