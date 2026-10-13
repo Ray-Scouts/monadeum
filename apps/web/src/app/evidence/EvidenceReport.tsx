@@ -167,7 +167,7 @@ export function EvidenceReport(props: ReportProps) {
 
       {error && (
         <p role="alert" className="rounded-[10px] border border-bad bg-bad-wash px-3.5 py-3 text-sm">
-          The evidence endpoint could not be read: {error} The sections that depend on it show no records instead of zeros. The deployment checks below still run against the chain.
+          The evidence endpoint could not be read: {error.replace(/\.?$/, ".")} The sections that depend on it show no records instead of zeros. The deployment checks below still run against the chain.
         </p>
       )}
 
@@ -232,7 +232,7 @@ export function EvidenceReport(props: ReportProps) {
           {commands.map((c) => (
             <div key={c.id} className="min-w-0 rounded-[14px] border border-line-soft bg-surface-2 p-3.5">
               <h3 className="text-base font-bold">{c.title}</h3>
-              <p className="mb-2 text-sm text-muted">Expect: {c.expect}</p>
+              <p className="mb-2 text-sm [overflow-wrap:anywhere] text-muted">Expect: {c.expect}</p>
               {(["cast", "viem"] as const).map((tool) => (
                 <div key={tool} className="mb-2 last:mb-0">
                   <div className="flex items-center justify-between gap-2">

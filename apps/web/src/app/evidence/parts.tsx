@@ -74,17 +74,17 @@ export function VerifyBadge({ v }: { v: Verification | undefined }) {
   const state = v ?? { state: "checking" as const };
   if (state.state === "verified") {
     return (
-      <span className="inline-flex flex-col items-start gap-0.5">
+      <span className="inline-flex min-w-0 max-w-full flex-col items-start gap-0.5">
         <Pill tone="good">verified</Pill>
-        <span className="text-xs break-words text-muted">{state.detail}</span>
+        <span className="text-xs [overflow-wrap:anywhere] text-muted">{state.detail}</span>
       </span>
     );
   }
   if (state.state === "unverified") {
     return (
-      <span className="inline-flex flex-col items-start gap-0.5">
+      <span className="inline-flex min-w-0 max-w-full flex-col items-start gap-0.5">
         <Pill tone="bad">unverified</Pill>
-        <span className="text-xs break-words text-muted">{state.reason}</span>
+        <span className="text-xs [overflow-wrap:anywhere] text-muted">{state.reason}</span>
       </span>
     );
   }
@@ -108,7 +108,7 @@ export function Section({ id, title, count, children, note }: { id: string; titl
         </h2>
         {count !== undefined && <span className="font-mono text-sm text-muted tabular">{count}</span>}
       </div>
-      {note && <p className="max-w-[72ch] text-sm text-muted">{note}</p>}
+      {note && <p className="max-w-[72ch] text-sm [overflow-wrap:anywhere] text-muted">{note}</p>}
       {children}
     </section>
   );
@@ -117,7 +117,7 @@ export function Section({ id, title, count, children, note }: { id: string; titl
 /** An honest empty state: the category stays visible with its zero and the reason. */
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <p role="note" className="rounded-[10px] border border-dashed border-line bg-surface-2 px-3.5 py-3 text-sm text-muted">
+    <p role="note" className="rounded-[10px] border border-dashed border-line bg-surface-2 px-3.5 py-3 text-sm [overflow-wrap:anywhere] text-muted">
       {children}
     </p>
   );
@@ -164,9 +164,9 @@ export function Records<T>({ caption, rows, columns, rowKey }: { caption: string
       <ul aria-label={caption} className="grid gap-3 md:hidden">
         {rows.map((row, i) => (
           <li key={rowKey(row, i)} className="min-w-0 rounded-[14px] border border-line-soft bg-surface-2 p-3.5">
-            <dl className="grid grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
+            <dl className="grid gap-y-2.5 sm:grid-cols-[minmax(0,8rem)_minmax(0,1fr)] sm:items-center sm:gap-x-3 sm:gap-y-1">
               {columns.map((c) => (
-                <div key={c.id} className="contents">
+                <div key={c.id} className="flex min-w-0 flex-col sm:contents">
                   <dt className="text-xs text-muted">{c.header}</dt>
                   <dd className="min-w-0 break-words">{c.cell(row)}</dd>
                 </div>
