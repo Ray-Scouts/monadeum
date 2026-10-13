@@ -37,6 +37,24 @@ An account is followed only when the transaction in which it first appears on th
 
 Rows are decoded events, and current state (limits, allowlist, session permissions) is projected from them as views, so a rollback never leaves a stale derived row. The indexer is the only writer of chain-sourced rows. The worker never depends on it for a decision, and a test fails if the worker declares or imports the indexer package. One worker job, `principal`, reads the read-model, up to the finalized bound only. An indexer outage therefore delays a principal change and nothing else.
 
+## How Envio is used
+
+Envio HyperSync is used in one place, and it is optional. It is an independent second source of logs that the public evidence page uses to check the indexer's own rows. The indexer itself still reads chain logs through viem and an RPC; HyperIndex and HyperRPC are not used.
+
+What is implemented:
+
+- The API computes a cross-check of the indexed `account.deployed`, `spend.*`, and `reallocation.*` rows against HyperSync for the same recent block window, using the same comparison code as the operator script `bun run indexer:crosscheck`. Matching is by block number, log index, and kind, then account, emitting address, block hash, transaction hash, and every decoded field.
+- `GET /public/evidence` returns the result as a separate `crossCheck` field: `source` (`envio-hypersync`), `status` (`match`, `mismatch`, or `unverified`), the block range, the row counts in the indexer and in HyperSync, the matched, missing, and field-mismatch counts, the HyperSync height, and `checkedAt`. It contains no row, address, hash, or amount.
+- The evidence page shows it as the card "Independently cross-checked with Envio HyperSync". Only `match` is shown as passing. An unreachable source, a source behind the range, a failed or stale run, or a field of an unexpected shape is shown as unverified.
+- The comparison never runs on the request path. The API serves a cached result and refreshes it in the background, with one shared cache, a single refresh in flight, and a bound on refreshes per minute, so a public caller cannot trigger more HyperSync calls than that bound and the evidence data never waits on Envio.
+- It is off unless `ENVIO_API_TOKEN` is set in the API environment. With no token the API makes no call to Envio and the field is absent.
+
+What it does not cover: trades and x402 payments (they are not read from indexed logs), which accounts are followed, and the decoding code, which is shared with the indexer.
+
+To run it live, the owner creates a free token at https://app.envio.dev/api-tokens and sets `ENVIO_API_TOKEN` in the API environment (`deploy/README.md`, step 3).
+
+Not yet observed live: no run against the real HyperSync service with a real token has been made, so the behavior above is covered only by tests with fakes. Whether the free token's rate limit suffices for the window, and whether HyperSync's block hash for a Monad block always equals the RPC's, are hypotheses.
+
 ## Not yet indexed
 
 The identity registry has no contract yet. `AgentCommitments` exists but is not deployed and has no handler, because the worker reads it directly. The reallocation handlers are tested only against an in-memory chain: the testnet read-model was synced without the contract, so enabling them there needs the read-model rebuilt first (`apps/indexer/README.md`), and the contract has emitted no `Reallocated` event because reallocation is off. An opt-in run on 2026-10-10 synced a finalized batch without error but indexed no rows because the spend policy was not yet deployed. Since 2026-10-11 (start block 70167444) the first agent's rows have been indexed.
