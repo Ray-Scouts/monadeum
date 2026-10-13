@@ -1,0 +1,41 @@
+---
+title: "Indexer"
+description: "How the indexer syncs finalized chain events into the read-model, how it handles reorgs, what it indexes today, and why the worker never depends on it for a decision."
+---
+
+Source of truth: `ARCHITECTURE.md` section 10 (indexer entry) and `apps/indexer/README.md`.
+
+<Frame caption="Indexer sync: finalized batches, cursor written with each batch, reorg rollback, and projections. Source: ARCHITECTURE.md section 10.">
+  <img src="/images/diagrams/10-indexer-sync.svg" alt="Diagram of the indexer sync loop: read finalized logs in bounded batches, compare the stored cursor hash with the chain, apply rows and the cursor in one transaction, and roll back to the newest canonical stored hash on mismatch." />
+</Frame>
+
+## Sync
+
+The indexer is a plain Node process, not a NestJS application, because it has no request handling that Nest would organize. It uses viem to poll `eth_getLogs` in bounded batches and writes a cursor atomically with each batch. Polling was chosen over a subscription because a subscription still needs the same cursor and gap-filling logic after any disconnect, so polling is the one path that has to be right. The default batch of 100 blocks fits the smallest `eth_getLogs` range limit that Monad's documentation lists for public providers.
+
+## Finality
+
+By default the indexer reads only up to the block the RPC reports for the `finalized` tag. Monad's documentation, checked 2026-10-10, maps `latest` to Proposed (speculative), `safe` to Voted, and `finalized` to Finalized, described as irreversible without a hard fork and reached two blocks, about 600 ms, after proposal. It also warns that responses including non-finalized data can change on a later identical request. Indexing finalized blocks only means the read-model never shows a fact the chain can still retract, at the cost of about two blocks of latency. A confirmation-depth mode (default 10 blocks) exists for an RPC that does not serve the tag, and the indexer never falls back to it on its own.
+
+Finalized is taken as sufficient, not Verified. That is an assumption, recorded so that a consumer that settles value from this data revisits it: nothing the indexer writes authorizes moving capital.
+
+## Reorgs
+
+Kept even in finalized mode, as a defence against a node serving inconsistent data. Before each batch the stored cursor hash is compared with the chain. On a mismatch the indexer rolls back to the newest stored block hash that is still canonical, deletes every row above it, and re-indexes. A divergence deeper than the configured window stops the process rather than guessing.
+
+## What it indexes today
+
+- `AgentSpendPolicy`: `LimitsSet`, `CallAllowed`, `Spent` (and the traded-asset event).
+- EntryPoint v0.7 `AccountDeployed`, and Kernel v3.1 `PermissionInstalled`, `PermissionUninstalled`, and `NonceInvalidated`.
+- The settlement asset's ERC-20 `Transfer` where `from` or `to` is a followed account, from the configured contract only, never a token named by a client.
+- With `INDEXER_REALLOCATION_ADDRESS` set: `Reallocated`, stored once per followed side (`reallocation.sent` and `reallocation.received`), `AgentRegistered`, `PrincipalSet`, and `AgentRetired` for followed accounts, and `PolicyCommitted`, `PolicyRevoked`, and `EvaluationAdvanced`. Event signatures are parsed from `contracts/src/IAgentReallocation.sol` and tested against it.
+
+An account is followed only when the transaction in which it first appears on the configured spend policy also deployed it through the configured Kernel factory. The factory is public, so anyone can still produce a followed account. The API therefore joins the followed set against its own agent records rather than treating it as proof of platform ownership.
+
+## Read-model and writers
+
+Rows are decoded events, and current state (limits, allowlist, session permissions) is projected from them as views, so a rollback never leaves a stale derived row. The indexer is the only writer of chain-sourced rows. The worker never depends on it for a decision, and a test fails if the worker declares or imports the indexer package. One worker job, `principal`, reads the read-model, up to the finalized bound only. An indexer outage therefore delays a principal change and nothing else.
+
+## Not yet indexed
+
+The identity registry has no contract yet. `AgentCommitments` exists but is not deployed and has no handler, because the worker reads it directly. The reallocation handlers are tested only against an in-memory chain: the testnet read-model was synced without the contract, so enabling them there needs the read-model rebuilt first (`apps/indexer/README.md`), and the contract has emitted no `Reallocated` event because reallocation is off. An opt-in run on 2026-10-10 synced a finalized batch without error but indexed no rows because the spend policy was not yet deployed. Since 2026-10-11 (start block 70167444) the first agent's rows have been indexed.

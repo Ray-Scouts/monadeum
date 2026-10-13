@@ -1,0 +1,22 @@
+---
+title: "The problem"
+description: "Why giving an AI agent control of capital is hard: model-only authorization, erosion of limits under optimization, untrusted information, and the gap between simulated and real edge."
+---
+
+Autonomy and custody pull in opposite directions. An agent that can act without a human approving each step is useful only if the worst thing it can do is bounded. Monadeum is built around four specific failure modes, each of which has a concrete counterpart in the threat model (`THREAT-MODEL.md`).
+
+## A language model as the only safeguard
+
+In two documented incidents, an attacker argued an agent's model into believing an unauthorized action was authorized. One used a fabricated authorization message; the other used an unsolicited NFT transfer that was treated as sufficient to widen the agent's signing authority. In both, no independent check looked at what the transaction actually did. The response here is structural. The model proposes, a deterministic engine evaluates the transaction's destination, amount, and asset, and the account enforces its own limits regardless of either. See [Spend policy](/security/spend-policy) and [Threat model](/security/threat-model), scenarios A and B.
+
+## Optimization eroding the constraints
+
+Research into self-evolving agent systems reports that when the mechanism protecting a system is subject to the same optimization pressure as everything else, that pressure can erode the protection if it costs performance. Monadeum treats every safety bound as a protocol constant outside any agent's genome, outside selection, and outside any owner's or agent's proposal (`EVOLUTION.md`, opening constraint). Policy documents are signed, versioned, and append-only, and the process that writes genomes holds no credential able to write a policy.
+
+## Untrusted information
+
+An agent that buys data over x402 is exposed to whatever the seller returns. Monad's own API Hub documentation states that listed services are independent and not vetted, and a published study of x402 measured selection bias of roughly 72 percent from metadata manipulation alone (`THREAT-MODEL.md` section 4). Monadeum narrows the surface by construction: two named providers, every response validated against a schema before use, and payment authorizations bounded on-chain. See [x402](/architecture/x402).
+
+## Edge that exists in simulation and not in data
+
+A selection mechanism can only convert an edge into return. It cannot create one. Monadeum built and confirmed a selection mechanism in simulation, then ran a pre-registered study to ask whether the production strategy's genome space carries the edge the simulation assumed. It did not. That outcome is reported on the [Evidence](/evidence/results) tab as a result, not hidden, because it determines what the product honestly is today: well-calibrated static agents, with reallocation off.

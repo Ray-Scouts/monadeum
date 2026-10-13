@@ -1,0 +1,38 @@
+---
+title: "Backend"
+description: "The API's modules and decisions: credentials, per-request authorization, owner-signed operations without an owner key, database roles, and what the API serves today."
+---
+
+Source of truth: `ARCHITECTURE.md` section 10, `apps/api/README.md`, and `libs/db`.
+
+The API is a Fastify-backed NestJS 11 application. Its job is authentication, reads of the Postgres read-model, owner-signed operations, and the funding relay. It contains no autonomous agent loop: the brief forbids infinite agent loops in the API process, and doing so would couple the API's uptime to the worker's bursty, external-API-bound load.
+
+## Credentials
+
+There are two, never combined. A Privy access token is sent as an `Authorization: Bearer` header and verified locally against the key Privy publishes for the app, selected by the token's `kid`. The external wallet path uses an opaque session token that travels only in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie. A request carrying both is refused rather than resolved by precedence. A state-changing request authenticated by the cookie must carry the web app's origin as `Origin`, so cross-site request forgery is refused by the API itself.
+
+The embedded wallet address is taken only from Privy's signed identity token, never from the client. Privy guest users are refused, because a guest's embedded wallet has no login method to recover it.
+
+## Authorization per request
+
+A session identifies the caller and authorizes nothing by itself. Every per-agent handler reads the agent's owner from the API's own registry, never from the request, and compares it with the caller's one owner wallet. WalletsModule's record must name the same owner or the request fails closed. An agent the caller does not own answers `404`, exactly like a missing one, so the API does not disclose which agent IDs exist.
+
+## Owner-signed operations without an owner key
+
+Deployment, activation, revocation, and the reallocation policy run as operations whose signer relays every signing call to the owner's wallet. The call is parked, the request is returned to the client, and the posted signature is verified against the owner wallet before the call continues. An unanswered request fails closed after a timeout. The cost is that an operation lives in one process's memory, so a restart fails every open operation, which is safe because each is idempotent. A known limit: the owner signs a user operation hash it cannot check against the calls (a blind-signing gap recorded in `apps/api/README.md`).
+
+## Database layer
+
+Postgres implementations of every module store live in `libs/db`, using the `pg` driver with no ORM. Guarantees are constraints: inserts are `INSERT ... ON CONFLICT DO NOTHING` on a primary key, so a per-tick record, a trade, a payment, and a reallocation debit are each claimed once across processes. A store write resolves only after commit, so the record that guards an operation is on disk before the operation is sent.
+
+Each process connects as its own login role in a group role: `monadeum_indexer` writes the read-model, `monadeum_worker` holds `SELECT`, `INSERT`, and `UPDATE` on the tables its modules use and nothing else, `monadeum_reader` can only read, `monadeum_api` is the only role with privileges on the auth tables, and `monadeum_policy_operator` is the only role that may append a policy version. No role holds `DELETE` or `TRUNCATE` on the module tables, and a trigger rejects `UPDATE`, `DELETE`, and `TRUNCATE` on the policy table for every role, including its owner. No private key, session key, or plaintext bearer token is stored in Postgres, and a session row holds only a SHA-256 digest, enforced by a `CHECK` constraint.
+
+Migrations are ordered SQL files applied in one transaction under an advisory lock, recorded with their checksum. A deployed process connects in `verify` mode and refuses to start on a schema older or newer than its code. `MONADEUM_ENV=production` refuses the in-memory fallback.
+
+## What the API serves
+
+Agent creation, with a server-built genome and the population cap (default 50) checked under a lock; owner reads including trade counts, x402 spend, and evaluation records; stop, activate, and funding endpoints; and the reallocation policy endpoints, which answer `409 reallocation-disabled` while the switch is off. `GET /events` serves the caller's retirements and the reallocations the worker submitted, and `GET /capital-flow` serves indexed reallocations once the indexer reads the reallocation contract. Per-agent views include net earnings after costs, the terms of `EVOLUTION.md` section 2.1 summed over every trade and purchase, and what reallocation did at the latest evaluation. Fields that no service produces yet are returned as null, not invented. Agent retirement is not built.
+
+## Rate limiting
+
+`@nestjs/throttler` guards the sign-in, challenge, and link endpoints, per client IP and endpoint. The default of 10 requests per 60 seconds is not derived from a measurement, and the storage is in-process, correct for one instance only.

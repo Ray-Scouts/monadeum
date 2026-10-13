@@ -1,0 +1,43 @@
+---
+title: "Worker and the tick"
+description: "How the worker runs an agent tick and an evaluation: idempotency, fail-closed behavior, the signed policy gate, the market signal, and why the tick runner is off by default."
+---
+
+Source of truth: `ARCHITECTURE.md` sections 11 and 14, `apps/worker`, and `libs/tick`.
+
+<Frame caption="One tick: observe, optional information purchase, propose, build the plan, evaluate it, submit the approved plan hash, measure. Source: ARCHITECTURE.md section 11.">
+  <img src="/images/diagrams/08-worker-tick.svg" alt="Flow diagram of a worker tick: sample the market, verify the signed policy, observe, decide on information, propose, build the execution plan, risk engine evaluation, submit only the approved plan hash, record the outcome and measure fitness." />
+</Frame>
+
+## The loop
+
+A tick runs as: observe, decide whether to buy information and buy it through x402 after the risk check, propose, build the execution plan with the trading module, evaluate that plan with the risk engine, submit only the approved plan hash through the wallets library, and measure. The risk engine evaluates the plan, not the intent, because only the built calls have the structural shape (destination, amount, asset) that `SECURITY.md` section 4 requires the check to run on.
+
+## Queue and scheduling
+
+One BullMQ queue carries four job types: `sync` (keeps one repeatable `trigger` schedule per active agent), `principal` (recomputes principal from finalized transfers), `trigger` (derives a tick number from the clock and enqueues the `tick` and, on the evaluation cadence, the `evaluate` job), and the `tick` and `evaluate` jobs themselves. The tick number is whole tick intervals since the Unix epoch, so every process derives the same key for the same interval. The tick length is decided at one hour (`WORKER_TICK_INTERVAL_MS=3600000`); changing it renumbers ticks and skips some, which fails closed.
+
+Per-agent concurrency of 1 comes from a Redis lock per agent, since BullMQ's open-source edition has no per-group concurrency. The lock lifetime (default 10 minutes) must exceed the longest tick. That is an assumption, not a measurement, and the tick-key claims still prevent any single tick from acting twice if it were violated.
+
+## Idempotency and restart
+
+Every job carries a key derived from (agent ID, tick number). The tick record is claimed under that key, the risk approval is written to it before submission, and an x402 purchase is recorded before it is paid. A restarted tick resumes the approved plan, reconciles with the bundler and the chain by tick key before anything is resent, and never decides again. A tick whose execution outcome is unknown stays open and is reconciled by the next run of the same key.
+
+## Fail closed
+
+An unreadable chain or market source, an invalid token field, an information request over its caps, any x402 failure, a plan the trading module cannot build, a risk rejection, or a signer refusal ends the tick with no action. That is final for the key, and the next scheduled tick runs normally. A missed tick is a bounded cost of one cycle of inaction, never a reason to bypass a check.
+
+## Tick runner, off by default
+
+With `WORKER_TICK_RUNNER=enabled` the worker builds the production runner. It requires every dependency before opening anything: an RPC URL, the pinned policy signer, the wallets configuration, a market, and the settlement asset. Off, the consumer skips every tick and evaluation and sends nothing. `MONADEUM_ENV=production` refuses to start with it off.
+
+- **Population breaker.** At every evaluation the worker compares capital at risk with `WORKER_BREAKER_CAPITAL_AT_RISK`, which is required when the runner is enabled. A trip is appended to an append-only log, and while it is the latest entry no tick runs, including across restarts, until the policy operator clears it. The worker cannot clear its own trip. The testnet starting threshold of 1000 USDC is a hypothesis.
+- **Genome commitment.** With `WALLETS_AGENT_COMMITMENTS_ADDRESS` set, the runner verifies the agent's genome and strategy version against its on-chain commitment before each tick, and skips the tick with a `security-12-commitment-mismatch` alert on a mismatch. In production the runner refuses to start without it. The contract is not deployed on testnet.
+- **Signed policy.** Before every tick the runner reads every stored policy version, verifies the signatures and hash chain against `WORKER_POLICY_SIGNER`, and requires the version in effect to cover the configured market. With none, the tick is skipped before anything is claimed or sent.
+- **Market signal.** The strategy's signal is the trailing mean of per-tick mid returns over the agent's `timeHorizon`, minus its `entryThreshold`: the same harness signal the pre-registered study scored. One mid per market per tick is stored once, so every agent of a tick reads the same value. The runner fails closed if the book cannot be read, a side is empty or crossed, the spread exceeds 200 bps, the block is more than 60 seconds old, or any sample in the window is missing. With the `conservative` preset the window is 25 ticks, so on a new market no agent trades until it is whole. The two bounds are starting values, not measurements.
+- **No information purchases.** The runner refuses `WORKER_X402_PAYER_ENABLED=true`, because it buys no information.
+- **Reallocation.** Even with the switch on, the runner has no owner policy source and no executor, so an evaluation plans and settles nothing. Evaluations still compute fitness and apply retirement.
+
+## Known limits of the runner (2026-10-12)
+
+No tick has run against the live deployment. On our own seeded testnet book the mid does not move unless someone trades or the owner reseeds, so a flat mid is a signal of 0, below the entry threshold, and every agent proposes `flat`. The default seed leaves about 1.2 USDC on the ask side, so a few 1 USDC buys can empty it. The policy's caps are deployment-wide, so for an agent whose owner chose lower on-chain caps the risk engine is not tighter than the chain, which still binds. Reconciling a reallocation debit of unknown outcome needs the contract's `Reallocated` events, so such a debit is never resubmitted and is left for review.

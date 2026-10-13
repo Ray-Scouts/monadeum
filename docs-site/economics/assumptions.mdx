@@ -1,0 +1,53 @@
+---
+title: "Assumptions"
+description: "Every numeric constant and design choice in Monadeum that is a proposed default or an assumption rather than a measured fact, in one table, with where it is defined."
+---
+
+Source of truth: the constants and "proposed default" labels throughout `EVOLUTION.md`, `ECONOMICS.md`, `ARCHITECTURE.md`, and `SECURITY.md`. None of the values below is final. Each is provisional pending simulation and testnet evidence, and a change to any must update the source document in the same change.
+
+## Protocol constants
+
+| Constant | Value | Status | Defined in |
+| --- | --- | --- | --- |
+| `reallocation_cap` | 0.2 | Tested value of the pre-registered confirmation run | `EVOLUTION.md` 3.1 |
+| `slot_ceiling` | 4 times principal | Tested value of that run | `EVOLUTION.md` 3.1 |
+| Capital floor | 0.06 (settlement units) | Proposed default | `EVOLUTION.md` 6 |
+| Evaluation cadence | every 20 ticks | Proposed default | `EVOLUTION.md` 3.1 |
+| Starvation `K` | 3 consecutive evaluations | Proposed default | `EVOLUTION.md` 6 |
+| Shrinkage `k` | 20 | Proposed default | `EVOLUTION.md` 2.3 |
+| Trailing fitness window | 100 ticks | Proposed default | `EVOLUTION.md` 2.4 |
+| `riskTolerance` range | 0.01 to 0.25 | Proposed default | `EVOLUTION.md` 1 |
+| `executionFrequency` range | 1 to 50 ticks | Proposed default | `EVOLUTION.md` 1 |
+| Population cap | 50 on testnet | Proposed default | `EVOLUTION.md` 4 |
+| Tick length | 1 hour | Decided by the owner | `ARCHITECTURE.md` 11 |
+
+The reallocation contract fixes the cap, ceiling, and floor at deployment as `REALLOCATION_CAP_BPS = 2000`, `SLOT_CEILING_BPS = 40000`, and `6 * 10^decimals / 100` base units. Changing one means updating `EVOLUTION.md` first and deploying a new contract, after which every owner signs a new policy.
+
+## Operational defaults
+
+| Setting | Value | Status |
+| --- | --- | --- |
+| Relayed funding transfers | 3 per user per rolling 24 hours, at most 100 USDC each on testnet | Starting values, not measurements |
+| Market spread bound for the signal and gas price | 200 bps | Starting value |
+| Market data staleness bound | 60 seconds | Starting value |
+| Slippage bound per order | 100 bps | Starting value |
+| Agent lock lifetime | 10 minutes | Must exceed the longest tick. An assumption |
+| API rate limit | 10 requests per 60 seconds on sign-in endpoints | Not derived from a measurement |
+| Bulk recovery hold | 3 agents, 60 minutes, 15 minute delay | Proposed defaults |
+| Reallocation spacing | 36,000 seconds (10 hours) | Half the 20 hour cadence, so a late evaluation followed by an on-time one is not refused |
+| x402 `maxValue`, `paymentsPerEpoch`, `maxValidity` | 0.05 USDC, 4, 300 seconds | Decided by the owner |
+
+## Assumptions about the world
+
+- The Kuru fee plus slippage of 15 bps in the simulations is an assumption. The measured fee is 0 bps and the measured half-spread about 7.4 to 7.8 bps.
+- The genome-edge result, measured on MON/USDC, is extended to WETH/USDC as an assumption, not a finding.
+- Owner-size distribution in the confirmation run (sizes 1, 1, 1, 2, 2, 3, 5, 10, 25) has no usage data behind it. One owner's agents are assumed independent, though real owners may run correlated strategies.
+- Nansen and DeFiLlama are assumed to serve x402 v2 on Monad.
+- Privy's embedded wallet signature over EIP-3009 and Kernel enable data is assumed to be accepted by the token and by Kernel respectively.
+- The testnet USDC being Circle's official testnet deployment is an assumption.
+- Finalized blocks are assumed sufficient for the indexer, because nothing it writes authorizes moving capital.
+- A router sell's fee is assumed to be charged in the quote received. At the measured 0 bps it changes nothing.
+
+## How to read a "researched" label
+
+A researched value was read from a primary source or from chain state on the stated date. It is a snapshot. Monad, vendor, and protocol behavior changes, and every such claim should be re-verified before it is relied on for anything capital-critical.

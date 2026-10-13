@@ -1,0 +1,116 @@
+---
+title: "Contract interfaces"
+description: "The Solidity interfaces of AgentSpendPolicy and AgentReallocation as specified in ARCHITECTURE.md, the x402 validator's signature layout, and the rule that money crosses a boundary as an integer."
+---
+
+Source of truth: `contracts/src/IAgentSpendPolicy.sol`, `contracts/src/IAgentReallocation.sol`, and `contracts/src/X402PaymentValidator.sol`, with the specification in `ARCHITECTURE.md` sections 16.3 and 16.5. The excerpts below are the parts other components depend on. If an excerpt and a file disagree, the file is authoritative.
+
+## One rule across every seam
+
+Money crosses a boundary as an integer in the settlement asset's base units, never as a float. The chain compares `uint256` values, and an application check done in floating point can put an amount on the other side of a cap from the chain's own check. Conversion to base units happens once, when a proposal is built, rounding down, and the settlement asset's `decimals` is read from the token contract, not assumed.
+
+```ts
+type Hex = `0x${string}`;
+/** Integer amount in settlement-asset base units. bigint in memory, decimal string in JSON. */
+type BaseUnits = bigint;
+```
+
+## `IAgentSpendPolicy`
+
+Deployed at `0xe54512401B8fCD0DCc3f4Aa4929b99F05AbA3f05` on Monad testnet.
+
+```solidity
+interface IAgentSpendPolicy {
+    struct Limits { uint128 perTxCap; uint128 dailyCap; }   // settlement-asset base units
+    struct Call { address target; uint256 value; bytes data; }
+
+    error CallNotAllowed(address target, bytes4 selector);   // also for target == address(this) or the account
+    error RecipientNotAllowed(address recipient);
+    error NativeValueNotAllowed(uint256 value);
+    error PerTxCapExceeded(uint256 amount, uint256 cap);
+    error DailyCapExceeded(uint256 windowTotal, uint256 cap);
+    error UncountedSettlementSelector(bytes4 selector);
+    error TradedAssetSelector(address target, bytes4 selector);
+    error TradedAssetNotAllowed(address token);
+
+    function check(address account, Call[] calldata calls) external view returns (uint256 total);   // validation
+    function record(Call[] calldata calls) external;   // execution, msg.sender is the account
+
+    function settlementAsset() external view returns (address);
+    function limits(address account) external view returns (Limits memory);
+    function isAllowed(address account, address target, bytes4 selector) external view returns (bool);
+    function isRecipientAllowed(address account, address recipient) external view returns (bool);
+    function isTradedAsset(address account, address token) external view returns (bool);
+    function windowTotal(address account) external view returns (uint256);
+
+    function setLimits(Limits calldata newLimits) external;                         // owner only
+    function setAllowed(address target, bytes4 selector, bool allowed) external;   // owner only
+    function setTradedAsset(address token, bool traded) external;                   // owner only
+}
+```
+
+`check` runs in the validation phase and applies the allowlist, recipient rule, zero native value, and the per-transaction cap to the sum of all calls. `record` runs in the execution phase through Kernel's pre-execution hook and applies the rolling daily cap. The rationale is on [Spend policy](/security/spend-policy).
+
+## `IAgentReallocation`
+
+Deployed at `0x4e7500415e81017670a9cFb8763f873EE6694A7f` on Monad testnet.
+
+```solidity
+interface IAgentReallocation {
+    enum Status { Unregistered, Active, Retired }
+    struct Agent { address owner; Status status; uint256 principal; }
+    struct Policy { address owner; address[] agents; uint16 capBps; uint32 slotCeilingBps; uint256 capitalFloor; uint256 nonce; }
+    struct Credit { address sink; uint256 amount; }
+
+    event Reallocated(address indexed owner, address indexed source, address indexed sink, uint256 amount, uint256 evaluation);
+    event AgentRetired(address indexed account, address indexed owner, address indexed by);
+
+    function reallocate(uint256 evaluation, bytes32 policyHash, Credit[] calldata credits) external returns (uint256 total); // msg.sender is the source
+    function commitPolicy(Policy calldata policy) external returns (bytes32 policyHash);
+    function commitPolicyBySig(Policy calldata policy, bytes calldata signature) external returns (bytes32 policyHash);
+    function revokePolicy() external;
+    function revokePolicyBySig(address owner, uint256 nonce, bytes calldata signature) external;
+    function registerAgent(address account, address owner, uint256 principal) external;   // operator
+    function setPrincipal(address account, uint256 principal) external;                   // operator
+    function advanceEvaluation() external returns (uint256 evaluation);                   // operator, at most once per minEvaluationInterval
+    function retire(address account) external;                                            // operator or the agent's owner
+}
+```
+
+The file also exposes views: `settlementAsset`, `capitalFloor`, `agent`, `currentEvaluation`, `minEvaluationInterval`, `lastEvaluationAt`, `lastDebitEvaluation`, `policyCommitment`, `policyNonce`, `isCovered`, `hashPolicy`, and `domainSeparator`.
+
+### Owner policy typed data
+
+The policy is an EIP-712 struct `ReallocationPolicy(address owner, address[] agents, uint16 capBps, uint32 slotCeilingBps, uint256 capitalFloor, uint256 nonce)` in the domain `Monadeum Reallocation`, version `1`, bound to the chain id and the contract address. A commit is refused unless `capBps` is between 1 and 2000, `slotCeilingBps` between 1 and 40000, `capitalFloor` is at least the protocol floor, and the list names at least two Active agents registered to the signer. Only signatures from externally owned accounts are accepted, and the high-`s` form is rejected. Each commit or revocation consumes the owner's nonce.
+
+### Protocol constants, fixed at deployment with no setter
+
+`REALLOCATION_CAP_BPS = 2000` (the 0.2 cap), `SLOT_CEILING_BPS = 40000` (the ceiling of 4), and a capital floor of `6 * 10^decimals / 100` base units (0.06).
+
+## `IAgentCommitments`
+
+Not deployed. Each agent account commits its own genome hash and strategy-version hash once, in the owner-signed operation that deploys it. There is no update, delete, admin, or upgrade path, and a zero hash reverts.
+
+```solidity
+interface IAgentCommitments {
+    struct Commitment { bytes32 genomeHash; bytes32 strategyVersionHash; }
+
+    event AgentCommitted(address indexed account, bytes32 genomeHash, bytes32 strategyVersionHash);
+
+    error AlreadyCommitted(address account);
+    error ZeroHash();
+
+    function commit(bytes32 genomeHash, bytes32 strategyVersionHash) external;   // msg.sender is the account
+    function commitmentOf(address account) external view returns (Commitment memory);
+}
+```
+
+## `X402PaymentValidator`
+
+Deployed at `0xCA918F53FFc7507Bd41602c0bD1ef72558705991` on Monad testnet. It is a Kernel v3.1 validator module (`isValidSignatureWithSender` is its only accepting path, and `validateUserOp` always fails). Its ERC-1271 signature layout is:
+
+```
+0x01 | validator | abi.encode(to, value, validAfter, validBefore, slot) | r | s | v
+```
+
+Public views include `nonceFor(account, epoch, slot)`, `authorizationDigest(...)`, `kernelWrappedHash(account, digest)`, `config(account)`, `isPayee(account, payee)`, and `maxOutflowPer24h(account)`, which returns `26 * paymentsPerEpoch * maxValue`. The enforced bounds are on [x402 validator](/security/x402-validator).

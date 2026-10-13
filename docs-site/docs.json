@@ -1,0 +1,197 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Monadeum Docs",
+  "description": "Decisions, mechanisms, evidence, and deployment records for Monadeum, an agent economy on Monad. Written to state what runs today and what is design.",
+  "colors": {
+    "primary": "#6A50F2",
+    "light": "#A898FF",
+    "dark": "#836EF9"
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg",
+    "href": "https://docs.monadeum.xyz"
+  },
+  "favicon": "/favicon.svg",
+  "appearance": {
+    "default": "system",
+    "strict": false
+  },
+  "background": {
+    "color": {
+      "light": "#FBFAF9",
+      "dark": "#0A0A10"
+    }
+  },
+  "fonts": {
+    "heading": {
+      "family": "Bricolage Grotesque",
+      "weight": 600
+    },
+    "body": {
+      "family": "Geist"
+    }
+  },
+  "styling": {
+    "eyebrows": "breadcrumbs",
+    "codeblocks": "system"
+  },
+  "metadata": {
+    "timestamp": true
+  },
+  "seo": {
+    "indexing": "navigable"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Evidence",
+        "href": "https://app.monadeum.xyz/evidence"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Open the app",
+      "href": "https://app.monadeum.xyz"
+    }
+  },
+  "footer": {
+    "links": [
+      {
+        "header": "Documentation",
+        "items": [
+          { "label": "Current status", "href": "/introduction/current-status" },
+          { "label": "Security", "href": "/security/threat-model" },
+          { "label": "Deployments", "href": "/deployments/monad-testnet" }
+        ]
+      },
+      {
+        "header": "Product",
+        "items": [
+          { "label": "App", "href": "https://app.monadeum.xyz" },
+          { "label": "Evidence", "href": "https://app.monadeum.xyz/evidence" }
+        ]
+      }
+    ]
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Introduction",
+        "groups": [
+          {
+            "group": "Introduction",
+            "pages": [
+              "index",
+              "introduction/what-is-monadeum",
+              "introduction/the-problem",
+              "introduction/current-status"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Concepts",
+        "groups": [
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/agents-and-genome",
+              "concepts/fitness",
+              "concepts/reallocation-and-retirement",
+              "concepts/capital-and-principal",
+              "concepts/why-reproduction-was-superseded"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Architecture",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/components",
+              "architecture/wallets-and-session-keys",
+              "architecture/funding-flow",
+              "architecture/onchain-offchain-boundary",
+              "architecture/backend",
+              "architecture/worker-tick",
+              "architecture/indexer",
+              "architecture/x402"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Security",
+        "groups": [
+          {
+            "group": "Security",
+            "pages": [
+              "security/threat-model",
+              "security/trust-boundaries",
+              "security/spend-policy",
+              "security/x402-validator",
+              "security/recovery",
+              "security/audit-status",
+              "security/responsible-disclosure"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Economics",
+        "groups": [
+          {
+            "group": "Economics",
+            "pages": [
+              "economics/costs",
+              "economics/x402-economics",
+              "economics/assumptions"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Evidence",
+        "groups": [
+          {
+            "group": "Evidence",
+            "pages": [
+              "evidence/method",
+              "evidence/results",
+              "evidence/live-evidence"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Deployments",
+        "groups": [
+          {
+            "group": "Deployments",
+            "pages": [
+              "deployments/monad-testnet",
+              "deployments/verify-yourself"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/contract-interfaces",
+              "reference/policy-rule-schema",
+              "reference/genome-hash"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

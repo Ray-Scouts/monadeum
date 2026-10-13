@@ -1,0 +1,31 @@
+---
+title: "Trust boundaries"
+description: "The ten places where control passes from one part of Monadeum to another, what is trusted at each, and why the frontend is never trusted for authorization."
+---
+
+Source of truth: `THREAT-MODEL.md` section 3.
+
+<Frame caption="Trust boundaries across the model, the risk engine, the account, external providers, and the owner's wallet. Source: THREAT-MODEL.md section 3.">
+  <img src="/images/diagrams/09-trust-boundaries.svg" alt="Diagram of ten trust boundaries: model to risk engine, risk engine to on-chain validator, worker to x402 responses, account to external addresses, account to account at reallocation, root wallet to session key, Postgres to chain commitments, agent to agent, paymaster budget, and frontend to API." />
+</Frame>
+
+| # | Boundary | What crosses it, and what is trusted |
+| --- | --- | --- |
+| 1 | Model to the risk engine | A proposal, never an authorization. Nothing downstream trusts the model's claim that an action is safe, approved, or urgent |
+| 2 | Risk engine to the on-chain validator | The application engine is not the sole enforcement point. The chain must hold even if the application layer is fully compromised |
+| 3 | Worker to any x402 response | Every response is untrusted input, including anything later stored, logged, or fed back into a prompt |
+| 4 | Account to arbitrary addresses and contracts | An explicit allowlist. There is no default-allow path |
+| 5 | One account to another of the same owner, at reallocation | Capital only, through the reallocation contract, only while the owner's policy is in force, within cap, floor, and ceiling. Genomes never cross. The boundary between owners is closed to the mechanism entirely |
+| 6 | Root wallet to a session key | Revocable at any time by the owner, independent of the agent's own state |
+| 7 | Postgres to the on-chain commitment | The database is a read-model. Security-critical facts are verifiable against a hash or event |
+| 8 | One agent to another | No shared mutable state and no direct transfer path outside owner-scoped reallocation |
+| 9 | Paymaster budget to an agent's gas use | Capped per agent. Session-key revocation is the one exception, and it is owner-signed |
+| 10 | Frontend to backend API | The frontend renders state and captures intent. It is never trusted for an authorization decision |
+
+## Boundary 10 in practice
+
+The API authenticates the caller itself, re-derives ownership from its own records and the chain, and re-validates every value the frontend sends: a requested spend limit, a funding amount, an agent ID. A request that reaches an agent's capital also passes the risk engine and the on-chain validator exactly as if the frontend did not exist. The web app's login-first redirects are UX gating, not access control. Every endpoint that serves data answers `401` without a session, and only `GET /health`, which reads nothing, is unauthenticated.
+
+## Operator trust
+
+The platform operator runs the API, workers, and paymaster, and is trusted for the MVP. A fully adversarial operator is a stated non-goal. Within that scope, the operator's powers over the reallocation contract are bounded and enumerated on [Threat model](/security/threat-model), and the operator and admin roles are held by a 2-of-3 Safe, never a single key.

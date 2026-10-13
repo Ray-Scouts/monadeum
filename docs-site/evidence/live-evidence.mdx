@@ -1,0 +1,32 @@
+---
+title: "Live evidence page"
+description: "A public page that lets anyone check Monadeum's on-chain activity without signing in, re-reading every listed record from the public Monad testnet RPC in the browser."
+---
+
+The simulation results are about mechanisms in a model. The live evidence page is about what the deployment has actually done on chain. It is at [app.monadeum.xyz/evidence](https://app.monadeum.xyz/evidence).
+
+<Note>
+  This page describes the evidence page as it is specified in the repository on 2026-10-12. The page itself is built separately and may not be live, or may differ in detail, when you read this. This documentation quotes no figures from it, because any figure belongs on the page, where it is verified against the chain at the time you load it.
+</Note>
+
+## What it is designed to show
+
+- **Deployments with live reads.** The three testnet contracts from [Monad testnet deployments](/deployments/monad-testnet), with the documented reads (`operator`, `admin`, `minEvaluationInterval`, `capitalFloor`, `settlementAsset`).
+- **Agents and indexed events.** Account deployments, spend-policy limits and allowlist events, and recorded spends, each with its transaction hash and block.
+- **Trades and x402 payments.** Filled trades and x402 payments that carry a settlement transaction reference.
+- **Reallocation and retirement reads.** Only what live contract reads support, namely the evaluation counter and the per-account status.
+- **Copyable `cast` and viem commands** to repeat the checks yourself.
+
+## How it avoids asking you to trust it
+
+The server is not trusted by the page. The endpoint that feeds it serves only records that have a transaction hash behind them. The browser then re-reads each listed hash and address from the public RPC `https://testnet-rpc.monad.xyz`: the receipt status, block, sender, and recipient of each transaction, and the code size of each contract. A row is shown as `verified` only when every comparison matches the record. A mismatch, a missing or reverted receipt, or an unreachable RPC shows `unverified`, and no state is shown as verified before its check has completed.
+
+## What it deliberately does not show
+
+User identifiers, emails, owner wallet addresses, agent names, session keys, signed policies, evaluation records, and funding authorizations are not exposed. Agents are identified only by their public account address.
+
+It also states what it cannot show. A rejection by the spend-policy contract reverts and emits no event, and a rejection by the application risk engine never reaches the chain, so neither has a transaction hash and the page lists no count for them. Reallocation and retirement events and ERC-8004 registrations are not indexed, and the page says so instead of showing a zero as though it were a result.
+
+## How to read it
+
+Treat testnet trading figures on it as plumbing evidence only. The testnet market is seeded by the project, so profit or loss there is a transfer to or from that seed, not evidence of skill (see [Current status](/introduction/current-status)).
