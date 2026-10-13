@@ -1,8 +1,8 @@
-import { ACCOUNT_DEPLOYED, SETTLEMENT_TRANSFER_IN, SETTLEMENT_TRANSFER_OUT } from "@monadeum/read-model";
+import { ACCOUNT_DEPLOYED, REALLOCATION_RECEIVED, REALLOCATION_SENT, SETTLEMENT_TRANSFER_IN, SETTLEMENT_TRANSFER_OUT } from "@monadeum/read-model";
 import type { Address, Hex } from "viem";
 import { HandlerRegistry } from "../registry.js";
 import type { EventHandler, HandledEvent } from "../types.js";
-import { entryPointEvents, kernelEvents, spendPolicyEvents, transferEvents } from "./abi.js";
+import { entryPointEvents, kernelEvents, pickEvents, reallocationEvents, spendPolicyEvents, transferEvents } from "./abi.js";
 
 const lower = (value: unknown): Address => String(value).toLowerCase() as Address;
 const int = (value: unknown): string => BigInt(value as bigint).toString();
@@ -111,6 +111,80 @@ export function settlementTransferHandlers(asset: Address): [EventHandler, Event
 }
 
 /**
+ * `AgentReallocation` (contracts/src/AgentReallocation.sol, ARCHITECTURE.md sections 9 and 16.5), as three handlers on
+ * the one configured contract:
+ *
+ * - `Reallocated`, once per side, like the settlement transfers: `reallocation.sent` for a followed source (topic 2)
+ *   and `reallocation.received` for a followed sink (topic 3). Reallocation never crosses owners, so a move between two
+ *   of one owner's followed agents is stored twice, under the two kinds, with the same transaction and log index.
+ * - The per-agent events, for followed accounts (topic 1): registration with its principal, a principal change, and
+ *   retirement with who retired it.
+ * - The owner-level and contract-level events, with no account: a committed or revoked policy, and each evaluation
+ *   the operator advances. Operator and admin changes are not stored; nothing reads them from the read-model.
+ *
+ * The rows are facts. Nothing here decides what an agent may do; the contract's own state is authoritative.
+ */
+export function reallocationHandlers(address: Address): EventHandler[] {
+  const contract = lower(address);
+  const moved = (side: "sent" | "received"): EventHandler => {
+    const kind = side === "sent" ? REALLOCATION_SENT : REALLOCATION_RECEIVED;
+    return {
+      name: `reallocation-${side}`,
+      source: { kind: "contract-by-account", address: contract, accountTopic: side === "sent" ? 2 : 3 },
+      events: pickEvents(reallocationEvents, ["Reallocated"]),
+      kinds: [kind],
+      handle({ args }) {
+        const source = lower(args.source);
+        const sink = lower(args.sink);
+        return {
+          kind,
+          account: side === "sent" ? source : sink,
+          data: { owner: lower(args.owner), source, sink, amount: int(args.amount), evaluation: int(args.evaluation) },
+        };
+      },
+    };
+  };
+  const agents: EventHandler = {
+    name: "reallocation-agents",
+    source: { kind: "contract-by-account", address: contract, accountTopic: 1 },
+    events: pickEvents(reallocationEvents, ["AgentRegistered", "PrincipalSet", "AgentRetired"]),
+    kinds: ["reallocation.agent-registered", "reallocation.principal-set", "reallocation.agent-retired"],
+    handle({ eventName, args }): HandledEvent | null {
+      const account = lower(args.account);
+      switch (eventName) {
+        case "AgentRegistered":
+          return { kind: "reallocation.agent-registered", account, data: { owner: lower(args.owner), principal: int(args.principal) } };
+        case "PrincipalSet":
+          return { kind: "reallocation.principal-set", account, data: { principal: int(args.principal) } };
+        case "AgentRetired":
+          return { kind: "reallocation.agent-retired", account, data: { owner: lower(args.owner), by: lower(args.by) } };
+        default:
+          return null;
+      }
+    },
+  };
+  const owners: EventHandler = {
+    name: "reallocation-owners",
+    source: { kind: "contract", address: contract },
+    events: pickEvents(reallocationEvents, ["PolicyCommitted", "PolicyRevoked", "EvaluationAdvanced"]),
+    kinds: ["reallocation.policy-committed", "reallocation.policy-revoked", "reallocation.evaluation-advanced"],
+    handle({ eventName, args }): HandledEvent | null {
+      switch (eventName) {
+        case "PolicyCommitted":
+          return { kind: "reallocation.policy-committed", account: null, data: { owner: lower(args.owner), policyHash: String(args.policyHash).toLowerCase(), nonce: int(args.nonce) } };
+        case "PolicyRevoked":
+          return { kind: "reallocation.policy-revoked", account: null, data: { owner: lower(args.owner), nonce: int(args.nonce) } };
+        case "EvaluationAdvanced":
+          return { kind: "reallocation.evaluation-advanced", account: null, data: { evaluation: int(args.evaluation) } };
+        default:
+          return null;
+      }
+    },
+  };
+  return [moved("sent"), moved("received"), agents, owners];
+}
+
+/**
  * The handlers for every contract that exists today. Further handlers are added with `registry.register`.
  *
  * Admission: an account is followed only if the transaction in which it first touches the spend policy also deployed
@@ -119,15 +193,23 @@ export function settlementTransferHandlers(asset: Address): [EventHandler, Event
  * deploy a Kernel account through the same public factory and configure the policy in one operation, so the API still
  * joins the followed set against its own agent records (THREAT-MODEL.md boundary 10).
  */
-export function defaultRegistry(input: { spendPolicy: Address; entryPoint: Address; kernelFactory: Address; settlementAsset: Address }): HandlerRegistry {
+export function defaultRegistry(input: {
+  spendPolicy: Address;
+  entryPoint: Address;
+  kernelFactory: Address;
+  settlementAsset: Address;
+  /** The reallocation contract, when this read-model indexes it. */
+  reallocation?: Address | null;
+}): HandlerRegistry {
   const deployed = accountDeployedHandler(input.entryPoint);
   const factory = lower(input.kernelFactory);
   const [transferIn, transferOut] = settlementTransferHandlers(input.settlementAsset);
-  return new HandlerRegistry()
+  const registry = new HandlerRegistry()
     .register(spendPolicyHandler(input.spendPolicy))
     .register(deployed)
     .register(kernelSessionHandler())
     .register(transferIn)
-    .register(transferOut)
-    .admitWith({ handler: deployed, admits: (row, log, seen) => row.data.factory === factory && log.transactionHash === seen.transactionHash });
+    .register(transferOut);
+  for (const handler of input.reallocation ? reallocationHandlers(input.reallocation) : []) registry.register(handler);
+  return registry.admitWith({ handler: deployed, admits: (row, log, seen) => row.data.factory === factory && log.transactionHash === seen.transactionHash });
 }

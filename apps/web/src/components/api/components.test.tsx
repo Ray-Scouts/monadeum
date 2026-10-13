@@ -300,8 +300,27 @@ describe("read views, continued", () => {
         <CapitalFlowView flow={{ ownerId: "u1", reallocations: [], reallocationsIndexed: false, spends: [] }} agents={[]} owner={null} settlement={settlement} />,
       ),
     );
-    expect(html).toContain("Reallocations are not indexed yet");
+    expect(html).toContain("Reallocations are not indexed on this deployment");
     expect(html).toContain("does not mean nothing moved");
+  });
+});
+
+describe("indexed reallocations", () => {
+  test("capital flow lists each indexed move with both agents, the amount, and the evaluation", () => {
+    const owner = { id: "u1", name: null, rootWallet: "0x1", reallocation: { enabled: true, reason: null }, policy: null };
+    const flow = {
+      ownerId: "u1",
+      reallocationsIndexed: true,
+      spends: [],
+      reallocations: [
+        { evaluation: 3, source: "0xaa", sink: "0xbb", sourceAgentId: "a", sinkAgentId: "b", amount: "2000000", transactionHash: `0x${"0a".repeat(32)}`, blockNumber: "900" },
+      ],
+    };
+    const html = text(renderToStaticMarkup(<CapitalFlowView flow={flow} agents={[apiAgent({ id: "a", name: "alpha" }), apiAgent({ id: "b", name: "beta" })]} owner={owner} settlement={settlement} />));
+    expect(html).toContain("alpha");
+    expect(html).toContain("beta");
+    expect(html).toContain("2 USDC");
+    expect(html).not.toContain("not indexed");
   });
 });
 

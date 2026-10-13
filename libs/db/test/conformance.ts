@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import type { AgentRecord, AgentRegistry, AgentState, DebitRecord, DebitStore, EvaluationRecord, EvaluationStore } from "@monadeum/agent-registry";
 import type { ChallengeStore, SessionStore, UserRecord, UserStore, WalletChallenge } from "@monadeum/auth";
 import type { TickRecord, TickStore } from "@monadeum/tick";
-import { SettlementAssetMismatchError, type BlockHash, type ChainEvent, type ReadModelStore, type SyncBatch } from "@monadeum/read-model";
+import { IndexedContractError, SettlementAssetMismatchError, type BlockHash, type ChainEvent, type ReadModelStore, type SyncBatch } from "@monadeum/read-model";
 import type { Position, PositionStore, TradeCounts, TradeRecord, TradeStore } from "@monadeum/trading";
 import type { AgentWalletRecord, AgentWalletStore, SponsorshipLedger, TickOperationRecord } from "@monadeum/wallets";
 import type { PaymentLog, PaymentLogEntry, PaymentTotals, SlotClaim, X402SlotStore } from "@monadeum/x402";
@@ -216,6 +216,20 @@ export function conformance(name: string, harness: Harness): void {
       assert.equal(await readModel.settlementAsset(), addr(700));
       await assert.rejects(readModel.recordSettlementAsset(addr(701)), SettlementAssetMismatchError);
       assert.equal(await readModel.settlementAsset(), addr(700));
+    });
+
+    it("records an indexed contract once, lowercase, only before the first batch, and refuses a different one", async () => {
+      const { readModel } = await harness.fresh();
+      assert.deepEqual(await readModel.indexedContracts(), {});
+      await readModel.recordIndexedContract("reallocation", mixed(addr(710)));
+      await readModel.recordIndexedContract("reallocation", addr(710));
+      assert.deepEqual(await readModel.indexedContracts(), { reallocation: addr(710) });
+      await assert.rejects(readModel.recordIndexedContract("reallocation", addr(711)), IndexedContractError);
+      await readModel.apply(batch(10, []));
+      // The same address after the first batch is fine; a new name would claim blocks that were read without it.
+      await readModel.recordIndexedContract("reallocation", addr(710));
+      await assert.rejects(readModel.recordIndexedContract("registry", addr(712)), IndexedContractError);
+      assert.deepEqual(await readModel.indexedContracts(), { reallocation: addr(710) });
     });
 
     it("prunes block hashes below the window but keeps the cursor block", async () => {

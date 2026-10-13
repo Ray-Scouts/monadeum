@@ -1,7 +1,8 @@
+import { CAPITAL_FLOOR, RETIREMENT_WINDOWS, SLOT_CEILING, STARVATION_PERCENTILE } from "@monadeum/reallocation/constants";
 import { REALLOCATION_OFF_REASON } from "@monadeum/reallocation/switch";
 import { formatUnits } from "viem";
 import type { WebConfig } from "../config";
-import type { ApiAgent, OwnerResponse, PopulationResponse } from "./types";
+import type { ApiAgent, CapitalFlowResponse, OwnerResponse, PopulationResponse } from "./types";
 
 type Settlement = WebConfig["settlement"];
 
@@ -115,13 +116,94 @@ export interface Explainer {
   lines: string[];
 }
 
+/** What the explainer reads besides the agent and its owner: the caller's capital flow and the settlement asset. */
+export interface ExplainContext {
+  flow: CapitalFlowResponse | null;
+  settlement: Settlement;
+}
+
+/** The capital floor (`EVOLUTION.md` section 6) in base units of the settlement asset. */
+export function floorBaseUnits(settlement: Settlement): bigint {
+  return BigInt(Math.round(CAPITAL_FLOOR * 10 ** settlement.decimals));
+}
+
+const others = (n: number) => (n === 1 ? "another of your agents" : `${n} of your other agents`);
+
 /**
- * What the reallocation and retirement mechanism did to this agent, from what the API serves today (issue #43). The
- * API does not serve evaluation outcomes yet, so this never claims a rank, a move, or a held reason it cannot see.
- * While the deployment's reallocation switch is off, every agent reads as off, whatever policy was recorded, and no
- * policy step is suggested.
+ * What the indexed reallocations did to this agent: its most recent evaluation with a move, what it sent and received
+ * there, or that nothing has moved. Never a rank: the API does not serve one.
  */
-export function explainAgent(agent: ApiAgent, owner: OwnerResponse | null): Explainer {
+function movementLines(agent: ApiAgent, context: ExplainContext | undefined): string[] {
+  const flow = context?.flow;
+  if (!context || !flow || !flow.reallocationsIndexed) {
+    return ["Reallocations are not indexed on this deployment, so this page cannot show whether capital moved at the last evaluation."];
+  }
+  const mine = flow.reallocations.filter((r) => r.sourceAgentId === agent.id || r.sinkAgentId === agent.id);
+  if (mine.length === 0) return ["No reallocation has moved capital into or out of this agent."];
+  const latest = Math.max(...mine.map((r) => r.evaluation));
+  const at = mine.filter((r) => r.evaluation === latest);
+  const total = (rs: typeof at) => rs.reduce((sum, r) => sum + (isBase(r.amount) ? BigInt(r.amount) : 0n), 0n).toString();
+  const sent = at.filter((r) => r.sourceAgentId === agent.id);
+  const received = at.filter((r) => r.sinkAgentId === agent.id);
+  const lines: string[] = [];
+  if (sent.length > 0) lines.push(`At evaluation ${latest}, its most recent move, it sent ${amount(total(sent), context.settlement)} to ${others(sent.length)}, because it ranked lowest among the agents your policy covers.`);
+  if (received.length > 0) lines.push(`At evaluation ${latest}, its most recent move, it received ${amount(total(received), context.settlement)} from ${others(received.length)}, because it ranked highest among the agents your policy covers.`);
+  return lines;
+}
+
+/** How close the agent is to the starvation rule and the capital floor, from its last evaluation record. */
+function proximityLines(agent: ApiAgent, context: ExplainContext | undefined): string[] {
+  if (agent.fitnessPercentile == null && agent.lowWindows == null && agent.capital == null) {
+    return ["Not ranked yet: there is no evaluation result for this agent, so there is no rank, starvation count, or distance to the capital floor to show."];
+  }
+  const lines: string[] = [];
+  lines.push(
+    agent.fitnessPercentile == null
+      ? "Not ranked at its last evaluation: it has no adjusted fitness yet, which needs trades in the evaluation window."
+      : `Fitness percentile in its niche: ${Math.round(agent.fitnessPercentile)}.`,
+  );
+  if (agent.lowWindows != null) {
+    lines.push(
+      `${agent.lowWindows} of ${RETIREMENT_WINDOWS} low windows: it retires if it sits in the bottom ${Math.round(STARVATION_PERCENTILE * 100)} percent of its niche for ${RETIREMENT_WINDOWS} evaluations in a row.`,
+    );
+  }
+  if (context && agent.capital != null && isBase(agent.capital)) {
+    const floor = floorBaseUnits(context.settlement);
+    const capital = BigInt(agent.capital);
+    lines.push(
+      capital >= floor
+        ? `Capital ${amount(agent.capital, context.settlement)}, ${amount((capital - floor).toString(), context.settlement)} above the ${amount(floor.toString(), context.settlement)} capital floor; an agent below the floor retires.`
+        : `Capital ${amount(agent.capital, context.settlement)} is below the ${amount(floor.toString(), context.settlement)} capital floor, so it retires at its next evaluation.`,
+    );
+  }
+  return lines;
+}
+
+/** The slot ceiling for a covered agent: how far reallocation could fill it, and the zero-downside flag. */
+function ceilingLines(agent: ApiAgent, slotCeiling: number | null, context: ExplainContext | undefined): string[] {
+  const lines: string[] = [];
+  const multiple = slotCeiling ?? SLOT_CEILING;
+  if (context && agent.principal != null && isBase(agent.principal) && BigInt(agent.principal) > 0n) {
+    const ceiling = (BigInt(agent.principal) * BigInt(Math.round(multiple * 10_000))) / 10_000n;
+    const capital = agent.capital != null && isBase(agent.capital) ? BigInt(agent.capital) : null;
+    const room = capital === null ? null : capital >= ceiling ? 0n : ceiling - capital;
+    lines.push(
+      `Through reallocation it never rises above ${multiple} times its principal, ${amount(ceiling.toString(), context.settlement)}` +
+        (room === null ? "." : room === 0n ? "; it is at that ceiling, so it cannot receive capital now." : `; it can receive up to ${amount(room.toString(), context.settlement)} more.`),
+    );
+  }
+  if (agent.zeroDownsideFlag) lines.push("It is flagged for zero downside: it had no losing tick in the window, so it keeps trading but cannot receive capital through reallocation while the flag is set.");
+  return lines;
+}
+
+/**
+ * What the reallocation and retirement mechanism did to this agent, from what the API serves (issue #43): retirement
+ * from its evaluation record, moves from the indexed reallocations in the caller's capital flow, and how close it is to
+ * the starvation rule, the capital floor, and its slot ceiling. The API serves no rank, so the explainer never claims
+ * one beyond what a move itself shows. While the deployment's reallocation switch is off, every agent reads as off,
+ * whatever policy was recorded, and no policy step is suggested.
+ */
+export function explainAgent(agent: ApiAgent, owner: OwnerResponse | null, context?: ExplainContext): Explainer {
   const lines: string[] = [];
   if (agent.retirement) {
     return {
@@ -144,15 +226,10 @@ export function explainAgent(agent: ApiAgent, owner: OwnerResponse | null): Expl
     lines.push("Your signed policy does not name this agent, so reallocation never moves its capital.");
   } else {
     headline = "Covered by your policy";
-    lines.push(
-      `Your signed policy (sequence ${policy.sequence}) names this agent. Reallocations are not indexed yet, so this page cannot show whether capital moved at the last evaluation.`,
-      "Where a policy is in force, reallocation can take an agent below its own principal while your total across your agents stays the same.",
-    );
+    lines.push(`Your signed policy (sequence ${policy.sequence}) names this agent.`, ...movementLines(agent, context));
+    lines.push("Where a policy is in force, reallocation can take an agent below its own principal while your total across your agents stays the same.");
+    lines.push(...ceilingLines(agent, policy.slotCeiling, context));
   }
-  lines.push(
-    agent.fitnessPercentile == null
-      ? "Not ranked here: the API does not serve evaluation results yet, so there is no rank, starvation count, or distance to the capital floor to show."
-      : `Fitness percentile in its niche: ${Math.round(agent.fitnessPercentile)}.`,
-  );
+  lines.push(...proximityLines(agent, context));
   return { headline, lines };
 }

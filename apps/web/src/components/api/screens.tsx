@@ -140,8 +140,8 @@ function StrategyCard({ agent }: { agent: ApiAgent }) {
 
 export function ApiAgent({ id }: { id: string }) {
   const { data, error, reload } = useApiData(async (s) => {
-    const [detail, owner] = await Promise.all([s.agent(id), s.owner()]);
-    return { ...detail, owner };
+    const [detail, owner, flow] = await Promise.all([s.agent(id), s.owner(), s.capitalFlow()]);
+    return { ...detail, owner, flow };
   }, `agent:${id}`);
   const back = (
     <Link href="/population" className="btn btn-ghost self-start pl-2">
@@ -150,7 +150,7 @@ export function ApiAgent({ id }: { id: string }) {
     </Link>
   );
   if (!data) return error ? <>{back}<ErrorNote error={error} /></> : <>{back}<Loading /></>;
-  const { agent, spends, owner } = data;
+  const { agent, spends, owner, flow } = data;
   return (
     <>
       {back}
@@ -172,7 +172,7 @@ export function ApiAgent({ id }: { id: string }) {
       </div>
       {agent.deployment === "deployed" && <FundAgent agent={agent} onChanged={reload} />}
       <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-        <ExplainerCard explainer={explainAgent(agent, owner)} owner={owner} />
+        <ExplainerCard explainer={explainAgent(agent, owner, { flow, settlement })} owner={owner} />
         <ApiX402Split x402={agent.x402} title="x402 spend" scope="this agent, by provider" settlement={settlement} />
       </div>
       <Card>
