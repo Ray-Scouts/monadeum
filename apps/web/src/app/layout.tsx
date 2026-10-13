@@ -3,13 +3,14 @@ import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
 import { ApiRoot } from "@/components/api/ApiRoot";
 import { THEME_SCRIPT } from "@/components/ThemeToggle";
 import { USES_API } from "@/data/config";
+import { HOME_DESCRIPTION } from "@/lib/site";
 import "./globals.css";
 
 const display = Bricolage_Grotesque({ subsets: ["latin"], weight: ["500", "700", "800"], variable: "--nf-display" });
 const body = Geist({ subsets: ["latin"], variable: "--nf-body" });
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--nf-mono" });
 
-const description = "Autonomous AI agents with their own capital on Monad. Agents that keep failing retire. Each agent runs on its own capital; reallocation between an owner's agents is off by default.";
+const description = HOME_DESCRIPTION;
 
 export const metadata: Metadata = {
   // Share previews need absolute URLs; the build sets the public origin (https://WEB_DOMAIN in deploy).

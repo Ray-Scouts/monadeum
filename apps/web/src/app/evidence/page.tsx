@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { EVIDENCE_DESCRIPTION } from "@/lib/site";
 import { EvidenceView } from "./EvidenceView";
 
 const title = "On-chain evidence";
-const description = "Verify Monadeum's real usage on Monad testnet: deployed contracts, agent accounts, spend policy events, trades, and x402 payments, each tied to a transaction hash and re-checked against the chain in your browser.";
+const description = EVIDENCE_DESCRIPTION;
 
 export const metadata: Metadata = {
   title,
