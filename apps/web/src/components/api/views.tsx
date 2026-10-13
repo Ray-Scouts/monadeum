@@ -470,12 +470,51 @@ export function CapitalFlowView({ flow, agents, owner, settlement }: { flow: Cap
           flow.reallocations.length === 0 ? (
             <p className="text-sm text-muted">No reallocation has moved your capital.</p>
           ) : (
-            <p className="text-sm text-muted">{flow.reallocations.length} reallocations are indexed; this page does not display them yet.</p>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr>
+                    <th className={TH}>Evaluation</th>
+                    <th className={TH}>From</th>
+                    <th className={TH}>To</th>
+                    <th className={TH}>Amount</th>
+                    <th className={TH}>Transaction</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {flow.reallocations.map((r) => (
+                    <tr key={`${r.transactionHash}-${r.source}-${r.sink}`}>
+                      <td className={`${TD} font-mono text-xs`}>{r.evaluation}</td>
+                      {[
+                        [r.sourceAgentId, r.source],
+                        [r.sinkAgentId, r.sink],
+                      ].map(([id, account]) => (
+                        <td key={account} className={TD}>
+                          {id ? (
+                            <Link href={`/agents/${encodeURIComponent(id)}`} className="text-accent-hi hover:underline">
+                              {name.get(id) ?? id}
+                            </Link>
+                          ) : (
+                            <span className="font-mono text-xs" title={account ?? ""}>
+                              {shortAddress(account ?? "")}
+                            </span>
+                          )}
+                        </td>
+                      ))}
+                      <td className={`${TD} tabular`}>{amount(r.amount, settlement)}</td>
+                      <td className={`${TD} font-mono text-xs`} title={r.transactionHash}>
+                        {shortAddress(r.transactionHash)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )
         ) : (
           <p className="text-sm text-muted">
-            Reallocations are not indexed yet: the reallocation contract is not deployed, so the API cannot report whether any capital moved between your agents.
-            An empty list here does not mean nothing moved.
+            Reallocations are not indexed on this deployment: the indexer does not read the reallocation contract, so the API cannot report whether any capital moved
+            between your agents. An empty list here does not mean nothing moved.
           </p>
         )}
       </Card>

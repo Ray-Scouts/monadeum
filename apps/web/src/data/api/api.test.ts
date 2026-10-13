@@ -259,7 +259,7 @@ describe("explainer states from the API", () => {
   test("no policy: reallocation is off for this owner, and no rank is invented", () => {
     const e = explainAgent(apiAgent(), owner(null));
     expect(e.headline).toBe("Reallocation is off for you");
-    expect(e.lines.join(" ")).toMatch(/does not serve evaluation results/);
+    expect(e.lines.join(" ")).toMatch(/no evaluation result for this agent/);
   });
 
   test("a policy names agents by agent ID, as the API records them, not by registry ID", () => {
@@ -270,8 +270,35 @@ describe("explainer states from the API", () => {
     expect(explainAgent(apiAgent({ id: "ag1", registryId: null }), owner(policy)).headline).toBe("Covered by your policy");
     const covered = explainAgent(apiAgent({ id: "ag1", registryId: "7" }), owner(policy));
     expect(covered.headline).toBe("Covered by your policy");
-    expect(covered.lines.join(" ")).toMatch(/not indexed yet/);
+    expect(covered.lines.join(" ")).toMatch(/not indexed on this deployment/);
     expect(covered.lines.join(" ")).toMatch(/below its own principal/);
+  });
+
+  const settlement = { symbol: "USDC", decimals: 6 };
+  const move = (over: Record<string, unknown>) => ({ evaluation: 3, source: "0xaa", sink: "0xbb", sourceAgentId: "ag1", sinkAgentId: "ag2", amount: "2000000", transactionHash: "0x01", blockNumber: "9", ...over });
+  const flow = (reallocations: ReturnType<typeof move>[], reallocationsIndexed = true) => ({ ownerId: "u1", reallocations, reallocationsIndexed, spends: [] });
+
+  test("covered: states what the last indexed move sent or received, or that nothing moved", () => {
+    const sent = explainAgent(apiAgent({ id: "ag1" }), owner(policy), { flow: flow([move({ evaluation: 2, amount: "1" }), move({})]), settlement }).lines.join(" ");
+    expect(sent).toMatch(/At evaluation 3, its most recent move, it sent 2 USDC to another of your agents, because it ranked lowest/);
+    const received = explainAgent(apiAgent({ id: "ag2" }), owner({ ...policy, agentIds: ["ag1", "ag2"] }), { flow: flow([move({})]), settlement }).lines.join(" ");
+    expect(received).toMatch(/it received 2 USDC from another of your agents, because it ranked highest/);
+    expect(explainAgent(apiAgent({ id: "ag1" }), owner(policy), { flow: flow([]), settlement }).lines.join(" ")).toMatch(/No reallocation has moved capital/);
+    expect(explainAgent(apiAgent({ id: "ag1" }), owner(policy), { flow: flow([], false), settlement }).lines.join(" ")).toMatch(/not indexed on this deployment/);
+  });
+
+  test("shows how close the agent is to the starvation rule, the floor, and its ceiling, without genome or formula", () => {
+    const agent = apiAgent({ id: "ag1", fitnessPercentile: 8.4, lowWindows: 2, capital: "5000000", principal: "2000000", zeroDownsideFlag: true });
+    const text = explainAgent(agent, owner(policy), { flow: flow([]), settlement }).lines.join(" ");
+    expect(text).toMatch(/2 of 3 low windows/);
+    expect(text).toMatch(/bottom 10 percent of its niche/);
+    expect(text).toMatch(/Capital 5 USDC, 4\.94 USDC above the 0\.06 USDC capital floor/);
+    expect(text).toMatch(/never rises above 4 times its principal, 8 USDC; it can receive up to 3 USDC more/);
+    expect(text).toMatch(/flagged for zero downside/);
+    expect(text).not.toMatch(/sortino|riskTolerance|entryThreshold/i);
+    const low = explainAgent(apiAgent({ capital: "50000", lowWindows: 0 }), owner(null, OFF), { flow: null, settlement }).lines.join(" ");
+    expect(low).toMatch(/below the 0\.06 USDC capital floor, so it retires at its next evaluation/);
+    expect(low).not.toMatch(/times its principal/);
   });
 
   test("the product-state note says reallocation is off and promises no returns", () => {

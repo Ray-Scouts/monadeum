@@ -12,8 +12,8 @@ export default async function Page() {
   if (USES_API) {
     return (
       <NotServedScreen title="Selection events">
-        The API does not serve an event feed yet. Reallocations are not indexed, and retirements and policy-engine decisions are not served, so this screen shows
-        nothing rather than sample events.
+        The API does not serve an event feed yet. Indexed reallocations are listed on the capital-flow screen, and each agent&apos;s retirement on its own page, but
+        retirements and policy-engine decisions are not served as a feed, so this screen shows nothing rather than sample events.
       </NotServedScreen>
     );
   }

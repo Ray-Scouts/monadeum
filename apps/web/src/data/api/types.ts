@@ -192,10 +192,25 @@ export interface AgentDetailResponse {
   spends: AgentSpend[];
 }
 
+/** One indexed reallocation into or out of one of the caller's agents, served once per move. */
+export interface CapitalFlowReallocation {
+  /** The reallocation contract's evaluation number. */
+  evaluation: number;
+  source: string;
+  sink: string;
+  /** The caller's agent at each side, or null if the API has no agent record for that account. */
+  sourceAgentId: string | null;
+  sinkAgentId: string | null;
+  /** Base units. */
+  amount: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
 /** `GET /capital-flow`. While `reallocationsIndexed` is false, `reallocations` is empty because nothing indexes them. */
 export interface CapitalFlowResponse {
   ownerId: string;
-  reallocations: unknown[];
+  reallocations: CapitalFlowReallocation[];
   reallocationsIndexed: boolean;
   spends: { agentId: string; amount: string; transactionHash: string; blockNumber: string }[];
 }
