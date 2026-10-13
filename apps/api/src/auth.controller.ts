@@ -50,6 +50,7 @@ function strings<K extends string>(body: unknown, ...keys: K[]): Record<K, strin
  */
 @Controller("auth")
 @UseGuards(ThrottlerGuard)
+@SkipThrottle({ public: true })
 export class AuthController {
   constructor(@Inject(API_DEPENDENCIES) private readonly deps: ApiDependencies) {}
 
