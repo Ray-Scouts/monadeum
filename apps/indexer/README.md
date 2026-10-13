@@ -45,6 +45,22 @@ The read path described in `ARCHITECTURE.md` sections 1, 9 and 10: a separately 
 | `DATABASE_MIGRATIONS` | no | `verify` (default) refuses to start unless every `libs/db` migration is applied; `apply` applies pending ones first. |
 | `MONADEUM_ENV` | no | `development` (default) or `production`; production refuses to start without `DATABASE_URL`. |
 
+## HyperSync cross-check
+
+An operator-run script that compares what the indexer stored with the logs an independent source, Envio HyperSync, returns for the same block range. The decision and its limits are in `ARCHITECTURE.md` section 10, indexer entry.
+
+```
+ENVIO_API_TOKEN=... DATABASE_URL=... INDEXER_CHAIN_ID=10143 INDEXER_SPEND_POLICY_ADDRESS=... INDEXER_SETTLEMENT_ASSET_ADDRESS=... INDEXER_START_BLOCK=... \
+  bun run indexer:crosscheck -- --from 70167444 --to 70168444
+```
+
+- **Does.** For `[from, to]`, at or below the stored cursor, it asks HyperSync for the logs the registered handlers select (queries built by the same code as the sync loop), decodes them with the same handlers, keeps rows for followed accounts, and compares them with the stored rows by block number, log index, and kind: the emitting address, account, block hash, transaction hash, and every decoded field. It prints a JSON report with no timestamps, so the same inputs give the same output: `status`, `range`, `counts`, `matched`, `missingInSource`, `missingInIndexer`, `fieldMismatches`, and `reason` when unverified.
+- **Exit codes.** 0 `match`, 1 `mismatch` (an alert for a person; nothing is corrected), 2 `unverified` (the comparison could not be made: no token, no database, an unreachable or erroring HyperSync, an archive below `to`, a range above the cursor or wider than `--max-blocks`, default 100000, or more than 200000 logs). `unverified` never means `match`.
+- **Does not.** It never writes the read-model (its store type has no write method) and never changes the indexer. It does not check which accounts are followed, because it reads that set from the store. It shares the handlers' decoding, so it checks log delivery and storage, not decoding. It covers the handlers the indexer registers from the same configuration: with `INDEXER_REALLOCATION_ADDRESS` set, the `AgentReallocation` handlers too (offline tests use a fake source for a reallocation log); without it, reallocation is not indexed and not checked. The x402 validator has no handler, so it is not covered.
+- **Configuration.** `ENVIO_API_TOKEN` (required, environment only, never printed; error text has it removed), `ENVIO_HYPERSYNC_URL` (optional, https, default `https://10143.hypersync.xyz`), `DATABASE_URL` and the `INDEXER_*` variables above. Connect through a role that can read the read-model; the script only calls `events`, `cursor`, and `trackedAccounts`.
+- **Verified on 2026-10-12.** HyperSync for Monad testnet is `https://10143.hypersync.xyz` (Envio's supported networks page). `GET /height` answers without a token; a query is refused without one, and with an unknown token it answers 403 "unknown or pending activation". The offline tests cover matching sets, a missing row, an extra row, a field mismatch, an unreachable source, and the response validation, with fakes only.
+- **Not verified.** A run with a real token against the deployment range. Whether the free token's rate limit covers a range of this size, and whether HyperSync's block hashes equal the RPC's for Monad blocks, are hypotheses until that run.
+
 ## Finality
 
 Checked against Monad's documentation on 2026-10-10 (`docs.monad.xyz`: Block States, JSON-RPC Overview, Deployment Summary for Developers):
