@@ -308,6 +308,8 @@ export interface WorldOptions {
   reallocation?: ReallocationSwitch;
   executor?: "fake" | "unconfigured";
   information?: boolean;
+  /** The optional Nansen Smart Money feed (`WorkerSettings.smartMoney`). Omitted is off. */
+  smartMoney?: { read(): Promise<number | null> };
   /** Replaces the module stores, for example with the Postgres ones a booted worker provides. */
   stores?: Omit<WorkerStores, "durable">;
   /**
@@ -423,6 +425,7 @@ export async function world(options: WorldOptions = {}) {
     maxSlippageBps: 200,
     information: options.information === false ? null : { resource: (pair) => `/signal?pair=${encodeURIComponent(pair)}`, maxPrice: 10_000n },
     reallocation: options.reallocation ?? (options.reallocationOwners ? REALLOCATION_ENABLED : undefined),
+    ...(options.smartMoney ? { smartMoney: options.smartMoney } : {}),
     clock: () => new Date("2026-10-10T12:00:00Z"),
   };
   const accounts = new Map((await stores.agents.list()).map((a) => [a.agentId, a.account]));

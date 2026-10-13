@@ -11,6 +11,7 @@ The capital, cost, and population model for Monadeum, plus preliminary simulatio
 | Gas per trade on Monad | $0.001 (a base-case value near the low end of a $0.0005-$0.007 researched range; the model does not separately test the high end) | Researched, back-of-envelope from Monad's own documented gas pricing model and current MON price; not independently measured from a real transaction receipt. |
 | Nansen x402 call | $0.05 (low end of a $0.01-$7.50 researched range) | Researched, taken from Nansen's own x402 manifest via Monad's API Hub. |
 | DeFiLlama x402 call | $0.01 flat | Researched, taken directly from Monad's API Hub catalog. |
+| Nansen Smart Money call via API key | 5 Nansen credits per call (free plan: 100 trial credits, then a daily top-up to 10) | Documentation, read 2026-10-12, time-sensitive. Not settlement asset spend: it is a separate credits budget (`ARCHITECTURE.md` section 8.1). |
 | Kuru trading fee + slippage | 10 bps + 5 bps (15 bps combined) | **Assumption, not researched.** Kuru sets fees per market with no platform-wide schedule found in research; no confirmed number exists yet for any specific pair. This is the single most important number in this document to replace with a real figure before any of the results below are trusted further. |
 | Paymaster gas sponsorship budget | Not yet modeled numerically | See `ARCHITECTURE.md` section 7 for the mechanism; this document does not yet price it because the per-agent sponsorship budget is a product decision (how many free transactions per agent) not a researched fact. |
 
