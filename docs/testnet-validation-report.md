@@ -1,6 +1,6 @@
 # Testnet validation report
 
-Status: written for issue #48, item 7.3 of `docs/testnet-validation-checklist.md`. State as of 2026-10-13, 06:51 UTC, re-observed at commit `4a7856b`. This report states what was verified, what was not, and whether the system is ready for a mainnet opt-in decision. Every observation below can be repeated with the command or URL given.
+Status: written for issue #48, item 7.3 of `docs/testnet-validation-checklist.md`. State as of 2026-10-13, 06:51 UTC (the market row updated after it was created later the same day), re-observed at commit `4a7856b`. This report states what was verified, what was not, and whether the system is ready for a mainnet opt-in decision. Every observation below can be repeated with the command or URL given.
 
 ## Conclusion
 
@@ -16,6 +16,7 @@ All observations were made on 2026-10-13 and are read-only.
 | The reallocation contract's roles and parameters are as decided | `cast call` on `0x4e7500415e81017670a9cFb8763f873EE6694A7f` at block 70615562 | `operator()` and `admin()` are the Safe `0x9671dB7Ab4Afa09fe76402Ce127896b166029897`, `pendingAdmin()` is zero, `minEvaluationInterval()` 36000, `capitalFloor()` 60000, `currentEvaluation()` 0, `lastEvaluationAt()` 0, `settlementAsset()` is `0x534b2f3A21130d7a60830c2Df862319e593943A3` |
 | The spend policy uses the same settlement asset | `cast call` on `0xe54512401B8fCD0DCc3f4Aa4929b99F05AbA3f05` | `settlementAsset()` is `0x534b2f3A21130d7a60830c2Df862319e593943A3` |
 | The Safe is 2 of 3 | `cast call` on the Safe | `getThreshold()` 2, `VERSION()` 1.4.1, three owners |
+| The WMON/USDC market on Kuru's testnet router exists and is seeded | `cast code` on the market and vault; `cast receipt` on the create transaction `0x2d574382e8eaf42bd5e83d49d79a046a0a2d398619ebbf9c59d2bf5826432688` and on the six seed transactions in `contracts/deployments/monad-testnet-wmon-market.json` | Market `0x46b66f84317941eC371E7791753f35653341aeBC` and vault `0x1fDa5CC22F809BC5e446e7F47c2b45DFC1Fc44F3` have code; create status 1 in block 70616912; all six seed transactions status 1 in blocks 70617279 to 70617295 |
 | The first agent's account was deployed and its limits set | `cast receipt 0xd69f7a2964494334f70b26882fa9e243ca9cce752fce7fe25ff42a86968765cd` and `cast code 0x604bd1f3ec0001abbd58404595005faf925a3955` | Receipt status 1 in block 70200443, sent to the EntryPoint v0.7, 12 logs, account code present (61 bytes) |
 | The indexer recorded that agent's setup | `GET https://api.monadeum.xyz/public/evidence` | 1 `account.deployed`, 1 `spend.limits-set` (per-transaction cap 1 USDC, daily cap 5 USDC), 4 `spend.call-allowed`, all in the transaction above |
 | The application is serving over TLS | `curl` against `https://api.monadeum.xyz/health`, `https://app.monadeum.xyz/`, `/evidence`, `/robots.txt`, `/sitemap.xml`, `/.well-known/api-catalog` | All return 200; `/health` returns `{"status":"ok","wallets":"configured","funding":"configured"}`; the home page carries the `Link` header; the indexer reports `indexedThrough` 70615622 |
@@ -28,7 +29,7 @@ Counts of public records at the time of writing, from `GET /public/evidence`: ag
 | --- | --- |
 | Spend validated through a bundler, over-cap refusal, daily-cap revert, delegatecall refusal (1.4 to 1.7, 6.1) | Needs a session key and a funded agent account on testnet. Passes on a fork only (`KernelV31Fork.t.sol`) |
 | Session key activation and revocation on chain (1.3, 1.8, 6.5) | Built, not run on testnet |
-| Real trade on Kuru, buy and close, reconciled by the worker (5.1 to 5.4, 4.5) | The WMON/USDC market is planned and simulated only: its predicted address `0x46b66f84317941eC371E7791753f35653341aeBC` has no code on 2026-10-13. The tick runner is off by default |
+| Real trade on Kuru, buy and close, reconciled by the worker (5.2 to 5.4, 4.5) | The WMON/USDC market now exists and is seeded (5.1, Evidenced). No tick has run against it: the tick runner is off by default, and the operator key, the signed risk policy, and the runner switch (`deploy/README.md` steps 9.1 to 9.6) are not done. `GET /public/evidence` shows 0 trades |
 | x402 payment settled through a facilitator on Monad (2.2, 2.3, 2.5) | Blocked on a facilitator confirmed to accept ERC-1271 signatures for EIP-3009 and on testnet pay-to addresses |
 | Relayed funding and principal accounting (4.1 to 4.4) | Built, not run on testnet |
 | Reallocation and retirement run on chain (3.2 to 3.7) | Off by decision. Needs a controlled run for test agents |
