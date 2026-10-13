@@ -1,0 +1,13 @@
+[2026-10-13 01:02:56.94] Compiling `test/X402PaymentValidator.t.sol`... WARNING: slither not found. Echidna uses Slither (https://github.com/crytic/slither) to perform source analysis, which makes fuzzing more effective. You should install it with 'pip3 install slither-analyzer --user'
+Calling the setUp() function failed (revert, out-of-gas, sending ether to a non-payable constructor, etc.):
+call HEVM::warp(1790000000) (contracts/test/utils/X402TestBase.sol:26)
+ └╴← 0x
+create 0xb4c79daB8f259C7Aee6E5b2Aa729821864227e84 (contracts/test/utils/X402TestBase.sol:27)
+ └╴← 3806 bytes of code
+create 0x62d69f6867A0A084C6d313943dC22023Bc263691 (contracts/test/utils/X402TestBase.sol:28)
+ └╴← 6566 bytes of code
+call HEVM::createWallet(«x402Key») (contracts/test/utils/X402TestBase.sol:29)
+ └╴error BadCheatCode "Cannot understand cheatcode." 0x7404f1d2 (contracts/test/utils/X402TestBase.sol:29)
+
+Done! (3.020999s)
+Analyzing contract: contracts/test/X402PaymentValidator.t.sol:X402PaymentValidatorTest

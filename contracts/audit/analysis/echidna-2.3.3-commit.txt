@@ -1,0 +1,19 @@
+[2026-10-13 01:03:17.72] Compiling `test/AgentCommitments.t.sol`... WARNING: slither not found. Echidna uses Slither (https://github.com/crytic/slither) to perform source analysis, which makes fuzzing more effective. You should install it with 'pip3 install slither-analyzer --user'
+Done! (2.495332s)
+Analyzing contract: contracts/test/AgentCommitments.t.sol:AgentCommitmentsTest
+[2026-10-13 01:03:21.80] [Worker 0] Test limit reached. Stopping.
+[2026-10-13 01:03:21.93] [Worker 2] Test limit reached. Stopping.
+[2026-10-13 01:03:21.93] [Worker 1] Test limit reached. Stopping.
+[2026-10-13 01:03:21.97] [Worker 3] Test limit reached. Stopping.
+testFuzz_onlyTheCallersOwnSlotIsWritten(address,address,bytes32,bytes32): passing
+
+Unique instructions: 3229
+Unique codehashes: 2
+Corpus size: 8
+Seed: 2011667163593600548
+Total calls: 50002
+
+[2026-10-13 01:03:21.97] Saving test reproducers... Done! (0.000001s)
+[2026-10-13 01:03:21.97] Saving corpus... Done! (0.000125s)
+[2026-10-13 01:03:21.97] Saving foundry reproducers... Done! (0.000069s)
+[2026-10-13 01:03:21.97] Saving coverage... Done! (0.190698s)

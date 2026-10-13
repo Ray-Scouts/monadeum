@@ -1,0 +1,39 @@
+Running 7 tests for test/AgentSpendPolicy.t.sol:AgentSpendPolicyTest
+WARNING  testFuzz_check_perTxCapOnBatchSum(uint64[6],uint8): all paths have been
+         reverted; the setup state or inputs may have been too restrictive.
+         (see https://github.com/a16z/halmos/wiki/warnings#revert-all)
+[ERROR] testFuzz_check_perTxCapOnBatchSum(uint64[6],uint8) (paths: 5, time: 0.02s, bounds: [])
+WARNING  testFuzz_check_perTxCapOnBatchSum(uint64[6],uint8): paths have not been
+         fully explored due to the loop unrolling bound: 4
+         (see https://github.com/a16z/halmos/wiki/warnings#loop-bound)
+[ERROR] testFuzz_check_perTxCapOnSingleCall(uint256) (paths: 10, time: 0.49s, bounds: [])
+WARNING  Encountered HalmosException: Unsupported cheat code:
+         expectRevert(bytes)
+         (see https://github.com/a16z/halmos/wiki/warnings#internal-error)
+[ERROR] testFuzz_check_rejectsNativeValue(uint256) (paths: 1, time: 0.41s, bounds: [])
+WARNING  Encountered HalmosException: Unsupported cheat code:
+         expectRevert(bytes)
+         (see https://github.com/a16z/halmos/wiki/warnings#internal-error)
+[ERROR] testFuzz_check_rejectsNonAllowlistedSelectorOnAllowlistedTarget(bytes4,uint256) (paths: 2, time: 0.41s, bounds: [])
+WARNING  Encountered HalmosException: Unsupported cheat code:
+         expectRevert(bytes)
+         (see https://github.com/a16z/halmos/wiki/warnings#internal-error)
+[ERROR] testFuzz_check_rejectsNonAllowlistedTargetRegardlessOfAmount(address,uint256,bytes4) (paths: 6, time: 0.48s, bounds: [])
+WARNING  Encountered HalmosException: Unsupported cheat code:
+         expectRevert(bytes)
+         (see https://github.com/a16z/halmos/wiki/warnings#internal-error)
+[ERROR] testFuzz_check_rejectsRecipientWithoutAllowedSelector(address,uint256,bool) (paths: 4, time: 0.85s, bounds: [])
+WARNING  Encountered HalmosException: Unsupported cheat code:
+         expectRevert(bytes)
+         (see https://github.com/a16z/halmos/wiki/warnings#internal-error)
+WARNING  Encountered HalmosException: Unsupported cheat code:
+         expectRevert(bytes)
+         (see https://github.com/a16z/halmos/wiki/warnings#internal-error)
+[ERROR] testFuzz_check_tradedAssetCallToAnyOtherRecipientIsRejected(address,uint256,bool) (paths: 4, time: 0.85s, bounds: [])
+WARNING  Encountered HalmosException: Unsupported cheat code:
+         expectRevert(bytes)
+         (see https://github.com/a16z/halmos/wiki/warnings#internal-error)
+WARNING  Encountered HalmosException: Unsupported cheat code:
+         expectRevert(bytes)
+         (see https://github.com/a16z/halmos/wiki/warnings#internal-error)
+Symbolic test result: 0 passed; 7 failed; time: 4.49s
