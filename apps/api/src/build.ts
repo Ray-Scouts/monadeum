@@ -12,9 +12,9 @@ import {
 } from "@monadeum/auth";
 import { MemoryAgentStore, MemoryEvaluationStore, type AgentStore, type EvaluationStore } from "@monadeum/agent-registry";
 import type { ReallocationPolicyWriter } from "@monadeum/commitment";
-import { PgAgentStore, PgAgentWalletStore, PgChallengeStore, PgEvaluationStore, PgPaymentLog, PgReadModelStore, PgSessionStore, PgSponsorshipLedger, PgTradeStore, PgUserStore, type Database } from "@monadeum/db";
+import { PgAgentStore, PgAgentWalletStore, PgChallengeStore, PgEvaluationStore, PgPaymentLog, PgPositionStore, PgReadModelStore, PgSessionStore, PgSponsorshipLedger, PgTradeStore, PgUserStore, type Database } from "@monadeum/db";
 import { InMemoryReadModelStore, type ReadModelStore } from "@monadeum/indexer";
-import { MemoryTradeStore, type TradeCounts } from "@monadeum/trading";
+import { MemoryPositionStore, MemoryTradeStore, type PositionStore, type TradeCounts } from "@monadeum/trading";
 import { MemoryAgentWalletStore, MemorySponsorshipLedger, type AgentWalletStore, type SponsorshipLedger, type WalletsService } from "@monadeum/wallets";
 import { MemoryPaymentLog, type PaymentTotals } from "@monadeum/x402";
 import type { ApiSettings } from "./config.js";
@@ -58,6 +58,8 @@ export interface ApiStores {
   /** The worker's trade store and x402 payment log, read only: the API never writes either. */
   trades: TradeCounts;
   payments: PaymentTotals;
+  /** The worker's positions (migration 0011), read only. */
+  positions: Pick<PositionStore, "get">;
   /** Relayed funding authorizations (migration 0014). */
   funding: FundingStore;
 }
@@ -81,6 +83,7 @@ export function memoryStores(): ApiStores {
     evaluations: new MemoryEvaluationStore(),
     trades: new MemoryTradeStore(),
     payments: new MemoryPaymentLog(),
+    positions: new MemoryPositionStore(),
     funding: new MemoryFundingStore(),
   };
 }
@@ -109,6 +112,7 @@ export function postgresStores(db: Database): ApiStores {
     evaluations: new PgEvaluationStore(reader),
     trades: new PgTradeStore(reader),
     payments: new PgPaymentLog(reader),
+    positions: new PgPositionStore(reader),
     funding: new PgFundingStore(api),
   };
 }
@@ -146,6 +150,7 @@ export function buildDependencies(input: BuildInput): ApiDependencies {
     evaluations: stores.evaluations,
     trades: stores.trades,
     payments: stores.payments,
+    positions: stores.positions,
     funding: input.funding ? { ...input.funding, store: stores.funding } : null,
     relay: new SignatureRelay(input.settings.signatureTimeoutMs, input.settings.operationWaitMs),
     settings: input.settings,

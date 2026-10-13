@@ -52,6 +52,11 @@ export class PgTradeStore implements TradeStore, TradeCounts {
     return counts;
   }
 
+  async filledRecords(limit: number): Promise<TradeRecord[]> {
+    const { rows } = await this.db.query<{ body: string }>("SELECT body::text AS body FROM trade_records WHERE status = 'filled' ORDER BY seq DESC LIMIT $1", [limit]);
+    return rows.map((r) => decode<TradeRecord>(r.body));
+  }
+
   async filledTotal(): Promise<number> {
     const { rows } = await this.db.query<{ n: string }>("SELECT count(*)::text AS n FROM trade_records WHERE status = 'filled'");
     return Number(rows[0]!.n);
@@ -137,6 +142,14 @@ export class PgPaymentLog implements PaymentLog, PaymentTotals {
     );
     for (const r of rows) groups.get(r.agent_id)?.push(r);
     return new Map([...groups].map(([id, g]) => [id, spendOf(g)]));
+  }
+
+  async settled(limit: number): Promise<{ count: number; entries: PaymentLogEntry[] }> {
+    const [count, latest] = await Promise.all([
+      this.db.query<{ n: string }>("SELECT count(*)::text AS n FROM x402_payments WHERE settlement_ref IS NOT NULL"),
+      this.db.query<{ body: string }>("SELECT body::text AS body FROM x402_payments WHERE settlement_ref IS NOT NULL ORDER BY seq DESC LIMIT $1", [limit]),
+    ]);
+    return { count: Number(count.rows[0]!.n), entries: latest.rows.map((r) => decode<PaymentLogEntry>(r.body)) };
   }
 
   async spendTotal(): Promise<PaymentSpend> {
