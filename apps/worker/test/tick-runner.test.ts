@@ -18,6 +18,7 @@ const ENABLED = {
   WALLETS_CHAIN_ID: "10143",
   TRADING_KURU_MARKET: "0x46b66f84317941eC371E7791753f35653341aeBC",
   WORKER_SETTLEMENT_ASSET_ADDRESS: "0x534b2f3A21130d7a60830c2Df862319e593943A3",
+  WORKER_BREAKER_CAPITAL_AT_RISK: "1000000000",
 };
 
 test("the tick runner is off by default and when disabled; enabled, it requires every dependency up front", () => {
@@ -26,9 +27,13 @@ test("the tick runner is off by default and when disabled; enabled, it requires 
   assert.throws(() => loadTickRunnerConfig({ WORKER_TICK_RUNNER: "true" }), WorkerConfigError);
   assert.deepEqual(loadTickRunnerConfig(ENABLED), {
     enabled: true, rpcUrl: "https://testnet-rpc.monad.xyz", policySigner: getAddress(SIGNER), maxSlippageBps: 100,
-    marketData: { maxAgeSeconds: 60, maxSpreadBps: 200 },
+    marketData: { maxAgeSeconds: 60, maxSpreadBps: 200 }, breaker: { capitalAtRisk: 1_000_000_000n, reallocationVolume: null },
   });
-  for (const name of ["WORKER_RPC_URL", "WORKER_POLICY_SIGNER", "WALLETS_CHAIN_ID", "TRADING_KURU_MARKET", "WORKER_SETTLEMENT_ASSET_ADDRESS"] as const) {
+  assert.deepEqual(loadTickRunnerConfig({ ...ENABLED, WORKER_BREAKER_REALLOCATION_VOLUME: "5" }), {
+    enabled: true, rpcUrl: "https://testnet-rpc.monad.xyz", policySigner: getAddress(SIGNER), maxSlippageBps: 100,
+    marketData: { maxAgeSeconds: 60, maxSpreadBps: 200 }, breaker: { capitalAtRisk: 1_000_000_000n, reallocationVolume: 5n },
+  });
+  for (const name of ["WORKER_RPC_URL", "WORKER_POLICY_SIGNER", "WALLETS_CHAIN_ID", "TRADING_KURU_MARKET", "WORKER_SETTLEMENT_ASSET_ADDRESS", "WORKER_BREAKER_CAPITAL_AT_RISK"] as const) {
     assert.throws(() => loadTickRunnerConfig({ ...ENABLED, [name]: "" }), new RegExp(name), name);
   }
   for (const env of [
@@ -38,6 +43,9 @@ test("the tick runner is off by default and when disabled; enabled, it requires 
     { ...ENABLED, WORKER_MAX_SLIPPAGE_BPS: "10000" },
     { ...ENABLED, WORKER_MARKET_MAX_AGE_SECONDS: "0" },
     { ...ENABLED, WORKER_MARKET_MAX_SPREAD_BPS: "10001" },
+    { ...ENABLED, WORKER_BREAKER_CAPITAL_AT_RISK: "0" },
+    { ...ENABLED, WORKER_BREAKER_CAPITAL_AT_RISK: "1.5" },
+    { ...ENABLED, WORKER_BREAKER_REALLOCATION_VOLUME: "-1" },
   ]) {
     assert.throws(() => loadTickRunnerConfig(env), WorkerConfigError, JSON.stringify(env));
   }

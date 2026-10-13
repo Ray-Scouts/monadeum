@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { NotServedScreen } from "@/components/api/views";
+import { ApiEvents } from "@/components/api/screens";
 import { SampleBadge, ScreenHead } from "@/components/ui";
 import { USES_API } from "@/data/config";
 import { getSource, IS_SAMPLE_DATA } from "@/data/source";
@@ -9,14 +9,7 @@ import { EventFeed } from "./_components/EventFeed";
 export const metadata: Metadata = { title: "Selection events" };
 
 export default async function Page() {
-  if (USES_API) {
-    return (
-      <NotServedScreen title="Selection events">
-        The API does not serve an event feed yet. Reallocations are not indexed, and retirements and policy-engine decisions are not served, so this screen shows
-        nothing rather than sample events.
-      </NotServedScreen>
-    );
-  }
+  if (USES_API) return <ApiEvents />;
   const source = getSource();
   const [events, agents] = await Promise.all([source.listEvents(), source.listAgents()]);
   const labels = Object.fromEntries(agents.map((a) => [a.id, agentLabel(a)]));

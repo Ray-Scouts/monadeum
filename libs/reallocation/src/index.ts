@@ -24,6 +24,8 @@ export type {
   ReallocationPlan,
   ReallocationPolicy,
 } from "./plan.js";
+export { evaluationOutcomes, offerOf, roomOf } from "./outcomes.js";
+export type { AgentEvaluationOutcome, AgentOutcome, HeldReason, OffReason, PoolRank } from "./outcomes.js";
 export { MemoryPolicyStore, NoPolicies, UnconfiguredSettlement } from "./ports.js";
 export type { PolicySource, ReallocationSettlement, SourceDebit } from "./ports.js";
 export { belowCapitalFloor, evaluateRetirement } from "./retirement.js";

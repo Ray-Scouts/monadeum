@@ -168,6 +168,10 @@ export interface ApiAgent {
   /** Capital at each recorded evaluation, base units, oldest first. */
   capitalHistory?: { evaluation: number; capital: string }[] | null;
   x402?: X402Totals | null;
+  /** What reallocation did at the agent's latest evaluation, as the worker recorded it. Null while reallocation is off. */
+  reallocationOutcome?: ReallocationOutcome | null;
+  /** Net earnings after costs since creation, and its parts, signed base units. */
+  earnings?: Earnings | null;
 
   owner: string;
   index: string;
@@ -192,10 +196,58 @@ export interface AgentDetailResponse {
   spends: AgentSpend[];
 }
 
+/** The worker's record of what reallocation did to an agent at one evaluation (`evaluationOutcomes`). */
+export interface ReallocationOutcome {
+  evaluation: number;
+  kind: "off" | "unranked" | "sent" | "received" | "held" | "retired";
+  /** For `off`, `unranked`, and `held`. */
+  reason: string | null;
+  /** Base units submitted, for `sent` and `received`. */
+  amount: string | null;
+  /** Position in the owner's ranking pool (1 is the lowest), the pool size, and the quota of sources and sinks. */
+  rank: { position: number; of: number; quota: number } | null;
+}
+
+/** NEP terms summed since creation (EVOLUTION.md section 2.1), signed base units as decimal strings. */
+export interface Earnings {
+  realizedPnl: string;
+  x402: string;
+  gas: string;
+  gasWei: string;
+  fees: string;
+  slippage: string;
+  net: string;
+}
+
+/** `GET /events`: the caller's selection events, newest first. */
+export type SelectionEventView =
+  | { kind: "retirement"; evaluation: number; at: number; agentId: string; rule: string }
+  | { kind: "reallocation"; evaluation: number; at: number; sources: { agentId: string; amount: string }[]; sinks: { agentId: string; amount: string }[] };
+
+export interface EventsResponse {
+  ownerId: string;
+  events: SelectionEventView[];
+}
+
+/** One indexed reallocation into or out of one of the caller's agents, served once per move. */
+export interface CapitalFlowReallocation {
+  /** The reallocation contract's evaluation number. */
+  evaluation: number;
+  source: string;
+  sink: string;
+  /** The caller's agent at each side, or null if the API has no agent record for that account. */
+  sourceAgentId: string | null;
+  sinkAgentId: string | null;
+  /** Base units. */
+  amount: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
 /** `GET /capital-flow`. While `reallocationsIndexed` is false, `reallocations` is empty because nothing indexes them. */
 export interface CapitalFlowResponse {
   ownerId: string;
-  reallocations: unknown[];
+  reallocations: CapitalFlowReallocation[];
   reallocationsIndexed: boolean;
   spends: { agentId: string; amount: string; transactionHash: string; blockNumber: string }[];
 }

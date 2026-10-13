@@ -20,9 +20,9 @@ import type { Harness } from "./conformance.js";
 export const STORE_TABLES = [
   "wallet_accounts", "wallet_tick_operations", "wallet_sponsorship", "auth_user_wallets", "auth_users",
   "auth_challenges", "auth_sessions", "trade_records", "x402_payments", "x402_nonce_slots", "tick_records",
-  "indexer_cursor", "indexer_blocks", "indexer_tracked_accounts", "chain_events", "indexer_settings",
+  "indexer_cursor", "indexer_blocks", "indexer_tracked_accounts", "chain_events", "indexer_settings", "indexer_contracts",
   "worker_agent_states", "worker_agents", "reallocation_debits", "trade_positions", "evaluation_records",
-  "market_mid_samples",
+  "market_mid_samples", "population_breaker_events",
 ];
 
 /** Postgres stores over one migrated database, emptied before each test. */

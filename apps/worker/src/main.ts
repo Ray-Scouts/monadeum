@@ -33,9 +33,11 @@ export type { DebitRecord, DebitStore, ReallocationExecutor } from "./reallocati
 export type { ChainReader, MarketReading, MarketSource } from "./ports.js";
 export { WORKER_STORES, memoryWorkerStores, postgresWorkerStores } from "./stores.js";
 export type { WorkerStores } from "./stores.js";
-export { WorkerConfigError, loadConsumerConfig, loadTickRunnerConfig, loadWorkerTrading } from "./config.js";
+export { WorkerConfigError, loadBreakerThresholds, loadConsumerConfig, loadTickRunnerConfig, loadWorkerTrading } from "./config.js";
 export type { MarketDataLimits, TickRunnerConfig } from "./config.js";
 export { PolicyGatedRunner, assembleTickRunner, buildTickRunner } from "./runner.js";
+export { PopulationBreaker, clearBreaker } from "./breaker.js";
+export type { BreakerThresholds, BreakerTrip } from "./breaker.js";
 export { KuruMidSignal, rpcBookReader } from "./market.js";
 export type { BookReader, BookReading } from "./market.js";
 export { RpcChainReader, SPEND_POLICY_READ_ABI, rpcReads } from "./chain.js";
