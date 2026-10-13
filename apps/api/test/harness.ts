@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import type { EvidenceCrossCheck } from "../src/evidence-crosscheck.js";
 import { PGlite } from "@electric-sql/pglite";
 import { PrivyTokenError, type AuthSettings, type PrivyIdentity, type PrivySession, type PrivyVerifier } from "@monadeum/auth";
 import type { ReallocationPolicyWriter } from "@monadeum/commitment";
@@ -119,7 +120,7 @@ export interface Booted {
 
 export type Backend = "memory" | "pglite";
 
-export async function boot(backend: Backend, options: { settings?: Partial<ApiSettings>; wallets?: boolean; policyWriter?: ReallocationPolicyWriter; funding?: (chain: SigningFakeChain, clock: { now: number }) => { chain: FundingChain; settings: FundingSettings } } = {}): Promise<Booted> {
+export async function boot(backend: Backend, options: { settings?: Partial<ApiSettings>; wallets?: boolean; policyWriter?: ReallocationPolicyWriter; crossCheck?: EvidenceCrossCheck | null; funding?: (chain: SigningFakeChain, clock: { now: number }) => { chain: FundingChain; settings: FundingSettings } } = {}): Promise<Booted> {
   let pg: PGlite | null = null;
   let db: Database | null = null;
   let stores: ApiStores;
@@ -145,6 +146,7 @@ export async function boot(backend: Backend, options: { settings?: Partial<ApiSe
     settings: settings(options.settings),
     wallets: options.wallets === false ? null : (s) => new WalletsService(chain, s.walletStore, vault, s.ledger, { scope, budget: { operations: 100, gasWei: 10n ** 18n }, paymaster: true, commitments: COMMITMENTS }, () => clock.now),
     policyWriter: options.policyWriter ?? null,
+    crossCheck: options.crossCheck ?? null,
     funding: options.funding ? options.funding(chain, clock) : null,
     now: () => clock.now,
   });

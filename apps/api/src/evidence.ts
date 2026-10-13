@@ -1,6 +1,7 @@
 import type { ChainEvent } from "@monadeum/indexer";
 import type { TradeRecord } from "@monadeum/trading";
 import type { PaymentLogEntry } from "@monadeum/x402";
+import type { CrossCheckBlock } from "./evidence-crosscheck.js";
 import type { ApiDependencies } from "./dependencies.js";
 import { jsonSafe } from "./json.js";
 
@@ -78,6 +79,11 @@ export interface Evidence {
   };
   trades: EvidenceCategory<EvidenceTrade>;
   payments: EvidenceCategory<EvidencePayment>;
+  /**
+   * An independent check of the indexed event rows against Envio HyperSync, served from a cache and never computed on
+   * the request. Absent unless `ENVIO_API_TOKEN` is set on the API. It is `unverified` until a comparison has completed.
+   */
+  crossCheck?: CrossCheckBlock;
 }
 
 const newestFirst = (rows: ChainEvent[]) => [...rows].reverse();
@@ -147,5 +153,6 @@ export async function buildEvidence(deps: ApiDependencies): Promise<Evidence> {
     reallocations: { moved, retired, evaluationsAdvanced },
     trades: { count: filledTotal, items: trades },
     payments: { count: settled.count, items: settled.entries.map(paymentOf) },
+    ...(deps.crossCheck ? { crossCheck: deps.crossCheck.snapshot() } : {}),
   }) as Evidence;
 }

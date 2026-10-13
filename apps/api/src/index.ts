@@ -8,6 +8,8 @@ export { API_DEPENDENCIES } from "./dependencies.js";
 export { PAIR, STRATEGY_VERSION_HASH, buildGenome, workerGenome } from "./genome.js";
 export type { BuiltGenome } from "./genome.js";
 export type { ApiDependencies } from "./dependencies.js";
+export { EvidenceCrossCheck, blockOf, loadEvidenceCrossCheck, reasonCode } from "./evidence-crosscheck.js";
+export type { CrossCheckBlock, CrossCheckReason, CrossCheckSettings } from "./evidence-crosscheck.js";
 export { SignatureRelay } from "./relay.js";
 export type { OperationView, SigningRequest } from "./relay.js";
 export { policyTypedData } from "./policy.controller.js";

@@ -168,6 +168,18 @@ Funding, all unset by default, which leaves the funding endpoints answering `503
 | `API_FUNDING_DAILY_TRANSFERS_PER_USER` | no | Relayed transfers per user per rolling 24 hours, whatever their outcome. Proposed default 3. |
 | `API_FUNDING_VALIDITY_SECONDS` | no | Window of a prepared authorization, 60 to 3600. Proposed default 600. |
 
+### Envio HyperSync cross-check of the evidence endpoint
+
+Off unless `ENVIO_API_TOKEN` is set. When it is, `GET /public/evidence` carries a `crossCheck` field (ARCHITECTURE.md section 10, "How Envio is used on the public evidence page"): the indexed `account.deployed`, `spend.*`, and `reallocation.*` rows compared with the logs Envio HyperSync returns for the most recent block window. It is computed in the background and cached, never on the request. With no token the API makes no call to Envio and the field is absent. The token is read only from the environment, passed only to the HyperSync client, and never returned or logged.
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `ENVIO_API_TOKEN` | enables it | A free token from https://app.envio.dev/api-tokens. Never commit a value. |
+| `INDEXER_CHAIN_ID`, `INDEXER_SPEND_POLICY_ADDRESS`, `INDEXER_SETTLEMENT_ASSET_ADDRESS`, `INDEXER_START_BLOCK` | with the token | The indexer's own values (`apps/indexer/README.md`), so the API builds the same handlers. `INDEXER_REALLOCATION_ADDRESS` and the other optional `INDEXER_*` values are read as the indexer reads them. A configuration that cannot be read leaves the feature off and logs why, without the token. |
+| `ENVIO_HYPERSYNC_URL` | no | An https URL. Default `https://10143.hypersync.xyz`. |
+| `API_CROSSCHECK_WINDOW_BLOCKS` | no | Blocks compared, ending at the read-model cursor, 1 to 100000. Proposed default 50000. |
+| `API_CROSSCHECK_MAX_RUNS_PER_MINUTE` | no | Most comparisons the process starts per minute, whoever asks, 1 to 10. Proposed default 2. |
+
 The allowed origin is the origin of `AUTH_SIWE_URI`.
 
 ## Tests

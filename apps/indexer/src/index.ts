@@ -8,5 +8,5 @@ export { ViemIndexerChain } from "./chain.js";
 export { accountDeployedHandler, defaultRegistry, kernelSessionHandler, reallocationHandlers, settlementTransferHandlers, spendPolicyHandler } from "./handlers/index.js";
 export { entryPointEvents, kernelEvents, reallocationEvents, spendPolicyEvents, transferEvents } from "./handlers/abi.js";
 export { decodeRow, logQueries } from "./decode.js";
-export { crosscheck, type CrosscheckReport, type LogSource } from "./crosscheck/compare.js";
-export { HyperSyncLogSource, MONAD_TESTNET_HYPERSYNC_URL } from "./crosscheck/hypersync.js";
+export { crosscheck, type CrosscheckOptions, type CrosscheckReport, type CrosscheckStatus, type LogSource } from "./crosscheck/compare.js";
+export { HyperSyncLogSource, MONAD_TESTNET_HYPERSYNC_URL, createHyperSyncClient, type HyperSyncClientLike } from "./crosscheck/hypersync.js";
