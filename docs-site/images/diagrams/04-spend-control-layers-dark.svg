@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 972" width="1200" height="972" role="img" aria-labelledby="t d" font-family="Inter, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+<title id="t">Every spend is checked twice before capital moves</title>
+<desc id="d">Spend control as a vertical path: a proposal passes the RiskModule off chain, then the spend policy validation and the daily cap record on chain, and only then does capital move. Each check has a refusal branch, and a circuit breaker can halt all proposals.</desc>
+<defs>
+<marker id="e-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#8483A0"/></marker>
+<marker id="s-flow" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#8483A0"/></marker>
+<marker id="e-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#836EF9"/></marker>
+<marker id="s-accent" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#836EF9"/></marker>
+<marker id="e-good" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#3FD69A"/></marker>
+<marker id="s-good" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#3FD69A"/></marker>
+<marker id="e-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#FF6680"/></marker>
+<marker id="s-bad" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#FF6680"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1199" height="971" rx="14" fill="#0A0A10" stroke="#2B2A3A"/>
+<text x="40" y="58" font-size="24" font-weight="700" fill="#F6F5F2">Every spend is checked twice before capital moves</text>
+<text x="40" y="88" font-size="16" fill="#A4A3B6">A proposal has no authority. The chain does not trust the off-chain engine.</text>
+<rect x="32.0" y="124.0" width="1136.0" height="288.0" rx="12" fill="#13131B" stroke="#2B2A3A"/>
+<text x="52.0" y="156.0" font-size="15" font-weight="600" fill="#A4A3B6">Check 1, off chain</text>
+<rect x="32.0" y="448.0" width="1136.0" height="424.0" rx="12" fill="#13131B" stroke="#2B2A3A"/>
+<text x="52.0" y="480.0" font-size="15" font-weight="600" fill="#A4A3B6">Check 2, on chain</text>
+<path d="M949.0 214.0 L550.0 214.0" fill="none" stroke="#FF6680" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-bad)"/>
+<path d="M301.0 252.0 L301.0 312.0" fill="none" stroke="#836EF9" stroke-width="2" stroke-linejoin="round" marker-end="url(#e-accent)"/>
+<path d="M301.0 388.0 L301.0 500.0" fill="none" stroke="#3FD69A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-good)"/>
+<path d="M301.0 576.0 L301.0 636.0" fill="none" stroke="#3FD69A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-good)"/>
+<path d="M301.0 712.0 L301.0 772.0" fill="none" stroke="#3FD69A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-good)"/>
+<path d="M550.0 350.0 L949.0 350.0" fill="none" stroke="#FF6680" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-bad)"/>
+<path d="M550.0 538.0 L949.0 538.0" fill="none" stroke="#FF6680" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-bad)"/>
+<path d="M550.0 674.0 L949.0 674.0" fill="none" stroke="#FF6680" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-bad)"/>
+<rect x="705.1" y="201.0" width="88.7" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="749.5" y="219.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#FF8CA0">halts ticks</text>
+<rect x="258.8" y="269.0" width="84.4" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="301.0" y="287.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#B3A6FF">proposes</text>
+<rect x="224.8" y="419.8" width="152.3" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="301.0" y="437.8" font-size="14.5" font-weight="500" text-anchor="middle" fill="#3FD69A">approved plan only</text>
+<rect x="240.1" y="593.0" width="121.8" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="301.0" y="611.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#3FD69A">valid operation</text>
+<rect x="252.3" y="729.0" width="97.5" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="301.0" y="747.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#3FD69A">within caps</text>
+<rect x="696.0" y="337.0" width="107.0" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="749.5" y="355.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#FF8CA0">any violation</text>
+<rect x="696.0" y="525.0" width="107.0" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="749.5" y="543.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#FF8CA0">any violation</text>
+<rect x="691.2" y="661.0" width="116.6" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="749.5" y="679.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#FF8CA0">over daily cap</text>
+<rect x="52.0" y="176.0" width="498.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="68.0" y="208.0" font-size="18" font-weight="650" fill="#F6F5F2">Proposal</text>
+<text x="68.0" y="232.0" font-size="14.5" fill="#A4A3B6">Strategy output, no authority</text>
+<circle cx="532.0" cy="196.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="949.0" y="176.0" width="199.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="965.0" y="208.0" font-size="18" font-weight="650" fill="#F6F5F2">Circuit breaker</text>
+<text x="965.0" y="232.0" font-size="14.5" fill="#A4A3B6">Halts every tick</text>
+<circle cx="1130.0" cy="196.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="52.0" y="312.0" width="498.0" height="76" rx="12" fill="#262050" stroke="#836EF9" stroke-width="1.8"/>
+<text x="68.0" y="344.0" font-size="18" font-weight="650" fill="#F6F5F2">RiskModule</text>
+<text x="68.0" y="368.0" font-size="14.5" fill="#A4A3B6">Signed policy, plan hash</text>
+<circle cx="532.0" cy="332.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="949.0" y="312.0" width="199.0" height="76" rx="12" fill="#3A1A24" stroke="#FF6680" stroke-width="1.5"/>
+<text x="965.0" y="344.0" font-size="18" font-weight="650" fill="#F6F5F2">Refused</text>
+<text x="965.0" y="368.0" font-size="14.5" fill="#A4A3B6">Nothing sent, logged</text>
+<circle cx="1130.0" cy="332.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="52.0" y="500.0" width="498.0" height="76" rx="12" fill="#262050" stroke="#836EF9" stroke-width="1.8"/>
+<text x="68.0" y="532.0" font-size="18" font-weight="650" fill="#F6F5F2">Spend policy</text>
+<text x="68.0" y="556.0" font-size="14.5" fill="#A4A3B6">Allowlist, recipient, per-tx cap</text>
+<circle cx="532.0" cy="520.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="949.0" y="500.0" width="199.0" height="76" rx="12" fill="#3A1A24" stroke="#FF6680" stroke-width="1.5"/>
+<text x="965.0" y="532.0" font-size="18" font-weight="650" fill="#F6F5F2">Invalid</text>
+<text x="965.0" y="556.0" font-size="14.5" fill="#A4A3B6">No gas paid</text>
+<circle cx="1130.0" cy="520.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="52.0" y="636.0" width="498.0" height="76" rx="12" fill="#262050" stroke="#836EF9" stroke-width="1.8"/>
+<text x="68.0" y="668.0" font-size="18" font-weight="650" fill="#F6F5F2">Daily cap</text>
+<text x="68.0" y="692.0" font-size="14.5" fill="#A4A3B6">Rolling 24 hours, recorded</text>
+<circle cx="532.0" cy="656.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="949.0" y="636.0" width="199.0" height="76" rx="12" fill="#3A1A24" stroke="#FF6680" stroke-width="1.5"/>
+<text x="965.0" y="668.0" font-size="18" font-weight="650" fill="#F6F5F2">Reverts</text>
+<text x="965.0" y="692.0" font-size="14.5" fill="#A4A3B6">Gas is still paid</text>
+<circle cx="1130.0" cy="656.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="52.0" y="772.0" width="498.0" height="76" rx="12" fill="#12342A" stroke="#3FD69A" stroke-width="1.5"/>
+<text x="68.0" y="804.0" font-size="18" font-weight="650" fill="#F6F5F2">Capital moves</text>
+<text x="68.0" y="828.0" font-size="14.5" fill="#A4A3B6">Only inside both limits</text>
+<circle cx="532.0" cy="792.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<circle cx="46.0" cy="916.0" r="5.5" fill="#F6F5F2"/>
+<text x="64.0" y="921.0" font-size="14.5" fill="#A4A3B6">Observed on testnet</text>
+<circle cx="243.0" cy="916.0" r="4.8" fill="#0A0A10" stroke="#F6F5F2" stroke-width="1.8"/>
+<text x="261.0" y="921.0" font-size="14.5" fill="#A4A3B6">Built, off or unrun</text>
+<rect x="412.3" y="909.0" width="16" height="14" rx="4" fill="#1B1B26" stroke="#4A485F" stroke-width="1.4" stroke-dasharray="3 2.5"/>
+<text x="436.3" y="921.0" font-size="14.5" fill="#A4A3B6">Design only</text>
+<path d="M550.1 916.0 L566.1 916.0" stroke="#FF6680" stroke-width="2"/>
+<text x="574.1" y="921.0" font-size="14.5" fill="#A4A3B6">Refused or reverts</text>
+<path d="M734.9 916.0 L750.9 916.0" stroke="#3FD69A" stroke-width="2"/>
+<text x="758.9" y="921.0" font-size="14.5" fill="#A4A3B6">Allowed or approved</text>
+</svg>

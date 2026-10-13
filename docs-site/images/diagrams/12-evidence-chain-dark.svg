@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 844" width="1200" height="844" role="img" aria-labelledby="t d" font-family="Inter, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+<title id="t">A negative study switched reallocation off, in code</title>
+<desc id="d">The evidence chain as a vertical path: a pre-registered test, a backtest on real data, a negative result, a recorded no-go decision, and the reallocation switch set off with a production gate. The study scope is limited to one strategy plugin.</desc>
+<defs>
+<marker id="e-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#8483A0"/></marker>
+<marker id="s-flow" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#8483A0"/></marker>
+<marker id="e-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#836EF9"/></marker>
+<marker id="s-accent" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#836EF9"/></marker>
+<marker id="e-good" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#3FD69A"/></marker>
+<marker id="s-good" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#3FD69A"/></marker>
+<marker id="e-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#FF6680"/></marker>
+<marker id="s-bad" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#FF6680"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1199" height="843" rx="14" fill="#0A0A10" stroke="#2B2A3A"/>
+<text x="40" y="58" font-size="24" font-weight="700" fill="#F6F5F2">A negative study switched reallocation off, in code</text>
+<text x="40" y="88" font-size="16" fill="#A4A3B6">The decision is written down with its evidence, and the feature is gated.</text>
+<path d="M301.0 200.0 L301.0 260.0" fill="none" stroke="#8483A0" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M301.0 336.0 L301.0 396.0" fill="none" stroke="#8483A0" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M301.0 472.0 L301.0 532.0" fill="none" stroke="#8483A0" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M301.0 608.0 L301.0 668.0" fill="none" stroke="#836EF9" stroke-width="2" stroke-linejoin="round" marker-end="url(#e-accent)"/>
+<path d="M550.0 434.0 L949.0 434.0" fill="none" stroke="#8483A0" stroke-width="1.6" stroke-dasharray="6 5" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M949.0 706.0 L550.0 706.0" fill="none" stroke="#8483A0" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<rect x="262.3" y="217.0" width="77.5" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="301.0" y="235.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#A4A3B6">then run</text>
+<rect x="261.8" y="353.0" width="78.3" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="301.0" y="371.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#A4A3B6">reported</text>
+<rect x="260.1" y="489.0" width="81.8" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="301.0" y="507.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#A4A3B6">recorded</text>
+<rect x="249.7" y="625.0" width="102.7" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="301.0" y="643.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#B3A6FF">switched off</text>
+<rect x="721.7" y="421.0" width="55.7" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="749.5" y="439.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#A4A3B6">limits</text>
+<rect x="713.0" y="693.0" width="73.1" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="749.5" y="711.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#A4A3B6">unlocks</text>
+<rect x="52.0" y="124.0" width="498.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="68.0" y="156.0" font-size="18" font-weight="650" fill="#F6F5F2">Pre-registered test</text>
+<text x="68.0" y="180.0" font-size="14.5" fill="#A4A3B6">Rules fixed before any data</text>
+<circle cx="532.0" cy="144.0" r="5.5" fill="#F6F5F2"/>
+<rect x="52.0" y="260.0" width="498.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="68.0" y="292.0" font-size="18" font-weight="650" fill="#F6F5F2">Backtest</text>
+<text x="68.0" y="316.0" font-size="14.5" fill="#A4A3B6">1,000 genomes, held-out data</text>
+<circle cx="532.0" cy="280.0" r="5.5" fill="#F6F5F2"/>
+<rect x="52.0" y="396.0" width="498.0" height="76" rx="12" fill="#3A1A24" stroke="#FF6680" stroke-width="1.5"/>
+<text x="68.0" y="428.0" font-size="18" font-weight="650" fill="#F6F5F2">Edge not found</text>
+<text x="68.0" y="452.0" font-size="14.5" fill="#A4A3B6">0.028 observed, 0.278 modeled</text>
+<circle cx="532.0" cy="416.0" r="5.5" fill="#F6F5F2"/>
+<rect x="52.0" y="532.0" width="498.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="68.0" y="564.0" font-size="18" font-weight="650" fill="#F6F5F2">No-go recorded</text>
+<text x="68.0" y="588.0" font-size="14.5" fill="#A4A3B6">In EVOLUTION.md section 7</text>
+<circle cx="532.0" cy="552.0" r="5.5" fill="#F6F5F2"/>
+<rect x="52.0" y="668.0" width="498.0" height="76" rx="12" fill="#262050" stroke="#836EF9" stroke-width="1.8"/>
+<text x="68.0" y="700.0" font-size="18" font-weight="650" fill="#F6F5F2">Reallocation off</text>
+<text x="68.0" y="724.0" font-size="14.5" fill="#A4A3B6">Unset means false</text>
+<circle cx="532.0" cy="688.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="949.0" y="396.0" width="199.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2" stroke-dasharray="6 5"/>
+<text x="965.0" y="428.0" font-size="18" font-weight="650" fill="#F6F5F2">Study scope</text>
+<text x="965.0" y="452.0" font-size="14.5" fill="#A4A3B6">One strategy plugin</text>
+<rect x="949.0" y="668.0" width="199.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="965.0" y="700.0" font-size="18" font-weight="650" fill="#F6F5F2">Production gate</text>
+<text x="965.0" y="724.0" font-size="14.5" fill="#A4A3B6">Needs a new study</text>
+<circle cx="1130.0" cy="688.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<circle cx="46.0" cy="788.0" r="5.5" fill="#F6F5F2"/>
+<text x="64.0" y="793.0" font-size="14.5" fill="#A4A3B6">Run and reported</text>
+<circle cx="223.9" cy="788.0" r="4.8" fill="#0A0A10" stroke="#F6F5F2" stroke-width="1.8"/>
+<text x="241.9" y="793.0" font-size="14.5" fill="#A4A3B6">Built, off by default</text>
+<rect x="402.7" y="781.0" width="16" height="14" rx="4" fill="#1B1B26" stroke="#4A485F" stroke-width="1.4" stroke-dasharray="3 2.5"/>
+<text x="426.7" y="793.0" font-size="14.5" fill="#A4A3B6">Not shown by the study</text>
+</svg>

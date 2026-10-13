@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1108" width="1200" height="1108" role="img" aria-labelledby="t d" font-family="Inter, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+<title id="t">Reallocation is off by default, and retirement moves nothing</title>
+<desc id="d">One evaluation as a vertical path. Evaluation always runs retirement, which leaves capital in place. A switch, off by default, gates planning, the RiskModule, the on-chain contract checks, and the move.</desc>
+<defs>
+<marker id="e-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#8483A0"/></marker>
+<marker id="s-flow" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#8483A0"/></marker>
+<marker id="e-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#836EF9"/></marker>
+<marker id="s-accent" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#836EF9"/></marker>
+<marker id="e-good" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#3FD69A"/></marker>
+<marker id="s-good" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#3FD69A"/></marker>
+<marker id="e-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#FF6680"/></marker>
+<marker id="s-bad" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#FF6680"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1199" height="1107" rx="14" fill="#0A0A10" stroke="#2B2A3A"/>
+<text x="40" y="58" font-size="24" font-weight="700" fill="#F6F5F2">Reallocation is off by default, and retirement moves nothing</text>
+<text x="40" y="88" font-size="16" fill="#A4A3B6">Fitness and retirement always run. Moves run only when the switch is on.</text>
+<rect x="32.0" y="124.0" width="1136.0" height="560.0" rx="12" fill="#13131B" stroke="#2B2A3A"/>
+<text x="52.0" y="156.0" font-size="15" font-weight="600" fill="#A4A3B6">Off chain</text>
+<rect x="32.0" y="720.0" width="1136.0" height="288.0" rx="12" fill="#13131B" stroke="#2B2A3A"/>
+<text x="52.0" y="752.0" font-size="15" font-weight="600" fill="#A4A3B6">On chain</text>
+<path d="M550.0 214.0 L949.0 214.0" fill="none" stroke="#8483A0" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M301.0 252.0 L301.0 312.0" fill="none" stroke="#8483A0" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M550.0 350.0 L949.0 350.0" fill="none" stroke="#836EF9" stroke-width="2" stroke-linejoin="round" marker-end="url(#e-accent)"/>
+<path d="M301.0 388.0 L301.0 448.0" fill="none" stroke="#8483A0" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M301.0 524.0 L301.0 584.0" fill="none" stroke="#8483A0" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M301.0 660.0 L301.0 772.0" fill="none" stroke="#3FD69A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-good)"/>
+<path d="M301.0 848.0 L301.0 908.0" fill="none" stroke="#3FD69A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-good)"/>
+<path d="M550.0 810.0 L949.0 810.0" fill="none" stroke="#FF6680" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-bad)"/>
+<rect x="698.2" y="201.0" width="102.7" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="749.5" y="219.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#A4A3B6">always runs</text>
+<rect x="268.4" y="269.0" width="65.3" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="301.0" y="287.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#A4A3B6">fitness</text>
+<rect x="706.9" y="337.0" width="85.3" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="749.5" y="355.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#B3A6FF">switch off</text>
+<rect x="258.4" y="405.0" width="85.3" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="301.0" y="423.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#A4A3B6">switch on</text>
+<rect x="261.0" y="541.0" width="80.1" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="301.0" y="559.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#A4A3B6">proposal</text>
+<rect x="258.4" y="691.8" width="85.3" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="301.0" y="709.8" font-size="14.5" font-weight="500" text-anchor="middle" fill="#3FD69A">approved</text>
+<rect x="266.2" y="865.0" width="69.6" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="301.0" y="883.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#3FD69A">all hold</text>
+<rect x="710.8" y="797.0" width="77.4" height="26.0" rx="13.0" fill="#13131B"/>
+<text x="749.5" y="815.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#FF8CA0">any fails</text>
+<rect x="52.0" y="176.0" width="498.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="68.0" y="208.0" font-size="18" font-weight="650" fill="#F6F5F2">Evaluation</text>
+<text x="68.0" y="232.0" font-size="14.5" fill="#A4A3B6">Fitness for every active agent</text>
+<circle cx="532.0" cy="196.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="949.0" y="176.0" width="199.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="965.0" y="208.0" font-size="18" font-weight="650" fill="#F6F5F2">Retirement</text>
+<text x="965.0" y="232.0" font-size="14.5" fill="#A4A3B6">Capital stays in account</text>
+<circle cx="1130.0" cy="196.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="52.0" y="312.0" width="498.0" height="76" rx="12" fill="#262050" stroke="#836EF9" stroke-width="1.8"/>
+<text x="68.0" y="344.0" font-size="18" font-weight="650" fill="#F6F5F2">Switch</text>
+<text x="68.0" y="368.0" font-size="14.5" fill="#A4A3B6">Off unless explicitly enabled</text>
+<circle cx="532.0" cy="332.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="949.0" y="312.0" width="199.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="965.0" y="344.0" font-size="18" font-weight="650" fill="#F6F5F2">Moves skipped</text>
+<text x="965.0" y="368.0" font-size="14.5" fill="#A4A3B6">Records still written</text>
+<circle cx="1130.0" cy="332.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="52.0" y="448.0" width="498.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="68.0" y="480.0" font-size="18" font-weight="650" fill="#F6F5F2">Plan</text>
+<text x="68.0" y="504.0" font-size="14.5" fill="#A4A3B6">Per owner, policy in force</text>
+<circle cx="532.0" cy="468.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="52.0" y="584.0" width="498.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="68.0" y="616.0" font-size="18" font-weight="650" fill="#F6F5F2">RiskModule</text>
+<text x="68.0" y="640.0" font-size="14.5" fill="#A4A3B6">One debit per source</text>
+<circle cx="532.0" cy="604.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="52.0" y="772.0" width="498.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="68.0" y="804.0" font-size="18" font-weight="650" fill="#F6F5F2">Contract checks</text>
+<text x="68.0" y="828.0" font-size="14.5" fill="#A4A3B6">Same owner, caps, policy hash</text>
+<circle cx="532.0" cy="792.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="949.0" y="772.0" width="199.0" height="76" rx="12" fill="#3A1A24" stroke="#FF6680" stroke-width="1.5"/>
+<text x="965.0" y="804.0" font-size="18" font-weight="650" fill="#F6F5F2">Call reverts</text>
+<text x="965.0" y="828.0" font-size="14.5" fill="#A4A3B6">Nothing moves</text>
+<circle cx="1130.0" cy="792.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="52.0" y="908.0" width="498.0" height="76" rx="12" fill="#12342A" stroke="#3FD69A" stroke-width="1.5"/>
+<text x="68.0" y="940.0" font-size="18" font-weight="650" fill="#F6F5F2">Funds move</text>
+<text x="68.0" y="964.0" font-size="14.5" fill="#A4A3B6">One transfer per credit</text>
+<circle cx="532.0" cy="928.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<circle cx="46.0" cy="1052.0" r="5.5" fill="#F6F5F2"/>
+<text x="64.0" y="1057.0" font-size="14.5" fill="#A4A3B6">Observed on testnet</text>
+<circle cx="243.0" cy="1052.0" r="4.8" fill="#0A0A10" stroke="#F6F5F2" stroke-width="1.8"/>
+<text x="261.0" y="1057.0" font-size="14.5" fill="#A4A3B6">Built, off or unrun</text>
+<rect x="412.3" y="1045.0" width="16" height="14" rx="4" fill="#1B1B26" stroke="#4A485F" stroke-width="1.4" stroke-dasharray="3 2.5"/>
+<text x="436.3" y="1057.0" font-size="14.5" fill="#A4A3B6">Design only</text>
+<path d="M550.1 1052.0 L566.1 1052.0" stroke="#FF6680" stroke-width="2"/>
+<text x="574.1" y="1057.0" font-size="14.5" fill="#A4A3B6">Refused or reverts</text>
+<path d="M734.9 1052.0 L750.9 1052.0" stroke="#3FD69A" stroke-width="2"/>
+<text x="758.9" y="1057.0" font-size="14.5" fill="#A4A3B6">Allowed or approved</text>
+</svg>
