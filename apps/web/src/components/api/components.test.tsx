@@ -8,6 +8,7 @@ import type { FundingPrepared, Operation, SessionView } from "@/data/api/types";
 import { activateViewFromError, activateViewFromOperation } from "@/data/api/activate";
 import { ActivatePanel, type ActivatePanelProps } from "./ActivateAgent";
 import { explainFunding, fundingOperation } from "@/data/api/funding";
+import { CardFundingNotice, CARD_FUNDING_COPY } from "./CardFundingNotice";
 import { CreateFormView } from "./CreateAgent";
 import { SignatureRequestView } from "./OperationSigner";
 import { SignInPanel } from "./SignIn";
@@ -66,6 +67,35 @@ describe("fund this agent", () => {
     expect(summary).toBeLessThan(raw);
     expect(html).toContain("pays the network fee");
     expect(html).not.toContain("Do not sign");
+  });
+});
+
+describe("card funding notice", () => {
+  const html = renderToStaticMarkup(<CardFundingNotice />);
+
+  test("says card payment is coming soon and that today the owner wallet funds the agent", () => {
+    const words = text(html);
+    expect(words).toContain("Coming soon");
+    expect(words).toContain("not available yet");
+    expect(words).toContain("sending USDC from your own owner wallet");
+  });
+
+  test("the card option is a disabled, non-focusable button, not a link or a form", () => {
+    const button = html.match(/<button[^>]*>/)?.[0] ?? "";
+    expect(button).toContain('type="button"');
+    expect(button).toContain("disabled");
+    expect(button).toContain('aria-disabled="true"');
+    expect(button).not.toContain("tabindex");
+    expect(html).not.toMatch(/<(a|form|input|select|textarea|iframe)[\s>]/);
+    expect(html).not.toContain("href=");
+  });
+
+  test("names no vendor, date, or price, and asks for no personal data", () => {
+    const words = text(html).toLowerCase();
+    for (const vendor of ["ramp", "coinbase", "moonpay", "transak", "stripe", "privy", "visa", "mastercard"]) expect(words).not.toContain(vendor);
+    expect(words).not.toMatch(/\b(20\d\d|q[1-4]|january|february|march|april|june|july|august|september|october|november|december|fee)\b/);
+    expect(words).toContain("no card or personal details are collected");
+    expect([...JSON.stringify(CARD_FUNDING_COPY)].some((c) => c.charCodeAt(0) === 0x2013 || c.charCodeAt(0) === 0x2014)).toBe(false);
   });
 });
 
