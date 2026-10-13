@@ -18,6 +18,9 @@ import type { AgentRecord, AgentStore } from "./agents.js";
 import type { BreakerTrip, PopulationBreaker } from "./breaker.js";
 import type { ChainReader, MarketSource } from "./ports.js";
 
+/** STARTING value (hypothesis, ARCHITECTURE.md section 8.1): the most the optional Smart Money signal moves the market signal. */
+export const SMART_MONEY_WEIGHT = 0.001;
+
 export interface WorkerSettings {
   /** Slippage bound written into every TradeIntent. */
   maxSlippageBps: number;
@@ -28,6 +31,11 @@ export interface WorkerSettings {
    * then computes fitness and applies retirement, and plans and settles nothing.
    */
   reallocation?: ReallocationSwitch;
+  /**
+   * The optional Nansen Smart Money signal (ARCHITECTURE.md section 8.1). Omitted means off. A null reading, or one that
+   * throws, is no signal: the tick proceeds as if the integration were off.
+   */
+  smartMoney?: { read(): Promise<number | null> };
   clock(): Date;
 }
 
@@ -271,6 +279,7 @@ export class AgentWorker {
       return null;
     }
     if (!reading || !Number.isFinite(reading.signal)) return null;
+    const smartMoney = await settings.smartMoney?.read().catch(() => null);
     const state = await agents.state(agent.agentId);
     const today = settings.clock().toISOString().slice(0, 10);
     const provider = agent.genome.informationSources.find((p) => (PROVIDERS as readonly string[]).includes(p));
@@ -286,7 +295,9 @@ export class AgentWorker {
         informationBudget: units(agent.genome.informationBudget, decimals),
         pair: agent.genome.pair,
         ticksSinceTrade: state.ticksSinceTrade,
-        signal: reading.signal,
+        // The Smart Money bias is applied here, to the market signal, and not inside the strategy plugin: the plugin's
+        // digest is committed on chain (STRATEGY_VERSION), and the market signal sits outside it by design.
+        signal: typeof smartMoney === "number" && Number.isFinite(smartMoney) ? reading.signal + Math.max(-1, Math.min(1, smartMoney)) * SMART_MONEY_WEIGHT : reading.signal,
       },
       ledger: {
         capital,
