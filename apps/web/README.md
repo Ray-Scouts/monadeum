@@ -86,3 +86,7 @@ SMOKE_API_URL=http://127.0.0.1:3901 SMOKE_ORIGIN=http://localhost:3000 bun scrip
 - The login gate was checked in a browser against an `api` build with no reachable API and a rejected Privy app ID (redirect to `/login?next=`, the API and Privy errors shown, the wallet button enabled). The signed-in redirect (from `/login` to `next`) and sign-out returning to `/login` are covered by the decision tests only, not by a browser run with a live session.
 - No owner-signed operation has been signed by a real wallet through this page: the running API has no WalletsModule, so deployment and stop answer 503. The signing path is covered by tests with a local key standing in for the wallet.
 - MetaMask-style wallets require `types.EIP712Domain` and an active chain matching the typed data's `chainId`; the page adds the former and asks the wallet to switch to Monad testnet, but no specific wallet has been tried.
+
+## Discovery metadata
+
+Crawler rules (`/robots.txt`), `/sitemap.xml`, the home page `Link` header, `/.well-known/api-catalog`, markdown for `Accept: text/markdown` on `/` and `/evidence`, and two read-only WebMCP tools on `/evidence` are described in `ARCHITECTURE.md` section 15. They are built from `src/lib/site.ts` and `src/lib/markdown.ts`. The production build sets `NEXT_PUBLIC_MONADEUM_WEB_URL` and `NEXT_PUBLIC_MONADEUM_API_URL`; without the API URL the catalog answers 404 and the home page omits its link.
