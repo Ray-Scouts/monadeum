@@ -18,7 +18,9 @@ import {
 import { signWith } from "@/data/api/signing";
 import type { ApiAgent, FundingInfo } from "@/data/api/types";
 import { useAuth } from "./auth";
+import { CopyButton } from "@/app/(app)/agents/[id]/_components/CopyButton";
 import { SignatureRequestView } from "./OperationSigner";
+import { FaucetHelp } from "./FaucetHelp";
 
 const POLL_MS = 2000;
 
@@ -143,6 +145,8 @@ export function FundAgent({ agent, onChanged }: { agent: ApiAgent; onChanged(): 
         </p>
       )}
       {read && "unavailable" in read && <p className="mt-3 text-sm text-muted">{read.unavailable}</p>}
+
+      {info && <FaucetHelp owner={info.owner} agentAddress={agent.address} />}
 
       {info && (
         <div className="mt-3 flex flex-col gap-3 text-sm">

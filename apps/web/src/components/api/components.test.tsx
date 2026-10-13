@@ -9,6 +9,7 @@ import { activateViewFromError, activateViewFromOperation } from "@/data/api/act
 import { ActivatePanel, type ActivatePanelProps } from "./ActivateAgent";
 import { explainFunding, fundingOperation } from "@/data/api/funding";
 import { CardFundingNotice, CARD_FUNDING_COPY } from "./CardFundingNotice";
+import { CIRCLE_FAUCET_URL, FaucetHelp } from "./FaucetHelp";
 import { CreateFormView } from "./CreateAgent";
 import { FirstRunChecklist, NextStepCard } from "./FirstRun";
 import { firstRunSteps } from "@/data/api/firstrun";
@@ -558,5 +559,19 @@ describe("activate this agent", () => {
     expect(activateViewFromError(new ApiError(503, "wallets-unavailable")).state).toBe("unavailable");
     const html = text(renderToStaticMarkup(<ActivatePanel {...base} view={activateViewFromError(new ApiError(409, "not-deployed"))} />));
     expect(html).toContain("not deployed yet");
+  });
+});
+
+describe("faucet help on the fund step", () => {
+  test("shows the owner and agent addresses and links to Circle's faucet", () => {
+    const html = renderToStaticMarkup(<FaucetHelp owner="0x1111111111111111111111111111111111111111" agentAddress="0x2222222222222222222222222222222222222222" />);
+    expect(html).toContain("0x1111111111111111111111111111111111111111");
+    expect(html).toContain("0x2222222222222222222222222222222222222222");
+    expect(html).toContain(`href="${CIRCLE_FAUCET_URL}"`);
+    expect(html).not.toContain("\u2014");
+  });
+  test("omits the agent row while the account is not deployed", () => {
+    const html = renderToStaticMarkup(<FaucetHelp owner="0x1111111111111111111111111111111111111111" agentAddress={null} />);
+    expect(text(html)).not.toContain("This agent's account");
   });
 });
