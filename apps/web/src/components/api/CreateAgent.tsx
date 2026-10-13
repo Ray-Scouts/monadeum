@@ -81,7 +81,7 @@ export function CreateFormView({ presets, form, settlement, busy, error, onChang
             <input className="rounded-lg border border-line bg-surface-2 px-3 py-2" inputMode="decimal" value={form.dailyCap} onChange={(e) => onChange({ ...form, dailyCap: e.target.value })} />
           </label>
         </div>
-        <p className="mt-2 text-[13px] text-muted">Both caps are enforced on chain by the agent&apos;s account. The API refuses caps above the highest this server allows.</p>
+        <p className="mt-2 text-[13px] text-muted">Suggested: 1 per transaction, 5 per day. Both caps are enforced on chain by the agent&apos;s account. The API refuses caps above the highest this server allows.</p>
       </Card>
 
       <p role="note" className="rounded-xl border border-warn bg-warn-wash px-4 py-3 text-sm text-warn">
@@ -105,7 +105,8 @@ export function ApiCreateAgent() {
   const session = useSession();
   const settlement = WEB_CONFIG.settlement;
   const { data: presets, error: loadError } = useApiData((s) => s.presets(), "presets");
-  const [form, setForm] = useState<CreateForm>({ name: "", perTxCap: "", dailyCap: "", preset: "" });
+  // Suggested starting caps so the form is not blank; the API still refuses anything above its configured maximum.
+  const [form, setForm] = useState<CreateForm>({ name: "", perTxCap: "1", dailyCap: "5", preset: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ agent: ApiAgent; operation: Operation } | null>(null);

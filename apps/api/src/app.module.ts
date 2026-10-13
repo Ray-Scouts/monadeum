@@ -6,6 +6,7 @@ import { ThrottlerModule } from "@nestjs/throttler";
 import type { NestFastifyApplication } from "@nestjs/platform-fastify";
 import { AgentsController } from "./agents.controller.js";
 import { AuthController } from "./auth.controller.js";
+import { EvidenceController } from "./evidence.controller.js";
 import { FundingController } from "./funding.controller.js";
 import { HealthController } from "./health.controller.js";
 import { API_DEPENDENCIES, type ApiDependencies } from "./dependencies.js";
@@ -18,6 +19,10 @@ import { SessionGuard } from "./session.js";
  * composed behind HTTP controllers. It has no agent loop. Rate limiting uses `@nestjs/throttler` with one named
  * throttler, `auth`, applied only to the sign-in, challenge, and link endpoints, with in-process storage.
  */
+/** The public evidence endpoint's per-IP limit (proposed, not measured). */
+export const PUBLIC_RATE_LIMIT = 60;
+export const PUBLIC_RATE_WINDOW_MS = 60_000;
+
 @Module({})
 export class ApiModule {
   static forRoot(deps: ApiDependencies): DynamicModule {
@@ -27,9 +32,12 @@ export class ApiModule {
         AuthModule.forRoot(deps.auth),
         ...(deps.wallets ? [WalletsModule.forRoot(deps.wallets)] : []),
         RecoveryModule,
-        ThrottlerModule.forRoot([{ name: "auth", ttl: deps.settings.authRateWindowMs, limit: deps.settings.authRateLimit }]),
+        ThrottlerModule.forRoot([
+          { name: "auth", ttl: deps.settings.authRateWindowMs, limit: deps.settings.authRateLimit },
+          { name: "public", ttl: PUBLIC_RATE_WINDOW_MS, limit: PUBLIC_RATE_LIMIT },
+        ]),
       ],
-      controllers: [HealthController, AuthController, AgentsController, FundingController, OperationsController, PolicyController],
+      controllers: [HealthController, AuthController, AgentsController, FundingController, OperationsController, PolicyController, EvidenceController],
       providers: [{ provide: API_DEPENDENCIES, useValue: deps }, SessionGuard],
     };
   }
