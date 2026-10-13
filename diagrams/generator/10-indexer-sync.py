@@ -68,7 +68,7 @@ card(g, "pj", "Worker principal job", ["SELECT only, up to the finalized bound",
      kind="service", status=OFF)
 card(g, "nodep", "The worker never imports the indexer",
      ["A tick reads the agent record, not the read-model,", "so an indexer outage only delays a principal change"],
-     kind="threat", status=IMPL)
+     kind="threat", status=OFF)
 
 card(g, "conf", "Alternative to step 1: confirmation depth",
      ["Explicit setting only, default 10 blocks below head", "Never an automatic fallback; cursor not marked finalized"],

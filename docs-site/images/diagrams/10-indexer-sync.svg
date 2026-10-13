@@ -197,7 +197,7 @@
 <!-- nodep -->
 <g id="node12" class="node">
 <title>nodep</title>
-<path fill="#fbe6f1" stroke="#b8126a" stroke-width="2.8" d="M654.29,-152.05C654.29,-152.05 408.5,-152.05 408.5,-152.05 402.5,-152.05 396.5,-146.05 396.5,-140.05 396.5,-140.05 396.5,-113.65 396.5,-113.65 396.5,-107.65 402.5,-101.65 408.5,-101.65 408.5,-101.65 654.29,-101.65 654.29,-101.65 660.29,-101.65 666.29,-107.65 666.29,-113.65 666.29,-113.65 666.29,-140.05 666.29,-140.05 666.29,-146.05 660.29,-152.05 654.29,-152.05"/>
+<path fill="#fbe6f1" stroke="#b8126a" d="M654.29,-152.05C654.29,-152.05 408.5,-152.05 408.5,-152.05 402.5,-152.05 396.5,-146.05 396.5,-140.05 396.5,-140.05 396.5,-113.65 396.5,-113.65 396.5,-107.65 402.5,-101.65 408.5,-101.65 408.5,-101.65 654.29,-101.65 654.29,-101.65 660.29,-101.65 666.29,-107.65 666.29,-113.65 666.29,-113.65 666.29,-140.05 666.29,-140.05 666.29,-146.05 660.29,-152.05 654.29,-152.05"/>
 <text xml:space="preserve" text-anchor="start" x="410.27" y="-132.55" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00" fill="#15131f">The worker never imports the indexer</text>
 <text xml:space="preserve" text-anchor="start" x="412.89" y="-121.4" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#5b5968">A tick reads the agent record, not the read&#45;model,</text>
 <text xml:space="preserve" text-anchor="start" x="408.02" y="-110.4" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#5b5968">so an indexer outage only delays a principal change</text>

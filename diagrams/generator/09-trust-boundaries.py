@@ -35,7 +35,7 @@ with g.subgraph(name="cluster_untrusted") as c:
     card(c, "prov", "x402 provider responses", ["text and data are live input", "to anything that stores or logs them"],
          kind="threat", status=DESIGN)
     card(c, "gift", "Unsolicited transfer", ["a token or NFT sent to an", "agent's public address"],
-         kind="threat", status=IMPL)
+         kind="threat", status=OFF)
 
 with g.subgraph(name="cluster_platform") as c:
     c.attr(**panel("Platform, trusted for the MVP", tint="#F2EFFE", line="#C9BFF6"))
@@ -52,7 +52,7 @@ with g.subgraph(name="cluster_platform") as c:
 
 with g.subgraph(name="cluster_chain") as c:
     c.attr(**panel("Monad: enforces its rules whatever the platform does", tint="#EAF4FA", line="#B9D9EA"))
-    card(c, "acct", "Agent account + spend policy", ["allowlist, recipient rule, caps;", "no default-allow path"],
+    card(c, "acct", "Agent account + spend policy", ["allowlist, recipient rule, caps;", "install exercised, spend validation", "not yet observed on testnet"],
          kind="chain", status=IMPL)
     card(c, "realloc", "Reallocation contract", ["same owner, owner's policy in force,", "cap, floor, ceiling"],
          kind="chain", status=OFF)

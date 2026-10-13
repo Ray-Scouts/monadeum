@@ -50,7 +50,7 @@ card(g, "zerodev", "ZeroDev", ["bundler + paymaster"], kind="external", status=I
 
 # -------------------------------------------------------------------- chain
 card(g, "acct", "Agent account", ["Kernel v3.1, one per agent,", "owned by the user's wallet"], kind="chain", status=IMPL)
-card(g, "spend", "AgentSpendPolicy", ["caps, allowlist,", "recipient rule"], kind="chain", status=IMPL)
+card(g, "spend", "AgentSpendPolicy", ["install exercised; spend validation", "not yet observed on testnet"], kind="chain", status=IMPL)
 card(g, "x402v", "X402PaymentValidator", ["deployed, installed", "on no account"], kind="chain", status=OFF)
 card(g, "realloc", "AgentReallocation", ["deployed, off"], kind="chain", status=OFF)
 card(g, "reg", "Identity registry", ["ERC-8004 compatible"], kind="chain", status=DESIGN)

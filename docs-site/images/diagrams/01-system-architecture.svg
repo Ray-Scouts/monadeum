@@ -268,20 +268,20 @@
 <!-- spend -->
 <g id="node15" class="node">
 <title>spend</title>
-<path fill="#e2f1f9" stroke="#0b8bc0" stroke-width="2.8" d="M515.66,-50.4C515.66,-50.4 397.38,-50.4 397.38,-50.4 391.38,-50.4 385.38,-44.4 385.38,-38.4 385.38,-38.4 385.38,-12 385.38,-12 385.38,-6 391.38,0 397.38,0 397.38,0 515.66,0 515.66,0 521.66,0 527.66,-6 527.66,-12 527.66,-12 527.66,-38.4 527.66,-38.4 527.66,-44.4 521.66,-50.4 515.66,-50.4"/>
-<text xml:space="preserve" text-anchor="start" x="396.89" y="-30.9" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00" fill="#15131f">AgentSpendPolicy</text>
-<text xml:space="preserve" text-anchor="start" x="422.02" y="-19.75" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#5b5968">caps, allowlist,</text>
-<text xml:space="preserve" text-anchor="start" x="425.77" y="-8.75" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#5b5968">recipient rule</text>
+<path fill="#e2f1f9" stroke="#0b8bc0" stroke-width="2.8" d="M515.54,-50.4C515.54,-50.4 357.5,-50.4 357.5,-50.4 351.5,-50.4 345.5,-44.4 345.5,-38.4 345.5,-38.4 345.5,-12 345.5,-12 345.5,-6 351.5,0 357.5,0 357.5,0 515.54,0 515.54,0 521.54,0 527.54,-6 527.54,-12 527.54,-12 527.54,-38.4 527.54,-38.4 527.54,-44.4 521.54,-50.4 515.54,-50.4"/>
+<text xml:space="preserve" text-anchor="start" x="376.89" y="-30.9" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00" fill="#15131f">AgentSpendPolicy</text>
+<text xml:space="preserve" text-anchor="start" x="357.02" y="-19.75" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#5b5968">install exercised; spend validation</text>
+<text xml:space="preserve" text-anchor="start" x="371.64" y="-8.75" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#5b5968">not yet observed on testnet</text>
 </g>
 <!-- acct&#45;&gt;spend -->
 <g id="edge16" class="edge">
 <title>acct&#45;&gt;spend</title>
-<path fill="none" stroke="#12a67c" stroke-width="1.4" d="M588.12,-129.63C561.84,-108.98 524.67,-79.76 496.53,-57.65"/>
-<polygon fill="#12a67c" stroke="#12a67c" stroke-width="1.4" points="498.54,-55.67 490.52,-52.92 495.08,-60.07 498.54,-55.67"/>
-<polygon fill="#ffffff" stroke="none" points="553.21,-75.4 553.21,-105.9 603.96,-105.9 603.96,-75.4 553.21,-75.4"/>
-<polygon fill="none" stroke="#d9d6cc" points="553.21,-75.4 553.21,-105.9 603.96,-105.9 603.96,-75.4 553.21,-75.4"/>
-<text xml:space="preserve" text-anchor="start" x="557.21" y="-93.65" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#15131f">validate +</text>
-<text xml:space="preserve" text-anchor="start" x="568.08" y="-82.4" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#15131f">hook</text>
+<path fill="none" stroke="#12a67c" stroke-width="1.4" d="M584.17,-129.63C554.56,-108.89 512.62,-79.51 481.01,-57.37"/>
+<polygon fill="#12a67c" stroke="#12a67c" stroke-width="1.4" points="482.69,-55.13 474.53,-52.83 479.48,-59.71 482.69,-55.13"/>
+<polygon fill="#ffffff" stroke="none" points="545,-75.4 545,-105.9 595.75,-105.9 595.75,-75.4 545,-75.4"/>
+<polygon fill="none" stroke="#d9d6cc" points="545,-75.4 545,-105.9 595.75,-105.9 595.75,-75.4 545,-75.4"/>
+<text xml:space="preserve" text-anchor="start" x="549" y="-93.65" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#15131f">validate +</text>
+<text xml:space="preserve" text-anchor="start" x="559.88" y="-82.4" font-family="Helvetica,sans-Serif" font-size="10.00" fill="#15131f">hook</text>
 </g>
 <!-- realloc -->
 <g id="node17" class="node">

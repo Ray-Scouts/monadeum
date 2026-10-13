@@ -52,12 +52,12 @@ card(g, "l1v", "Layer 1a: spend policy check, validation phase",
       "Recipient decoded only on transfer and approve of the",
       "settlement asset or a traded asset; must be an allowed contract",
       "Zero native value; per-tx cap on the sum of a batch"],
-     kind="chain", status=IMPL)
+     kind="chain", status=OFF)
 
 card(g, "l1e", "Layer 1b: spend policy record, execution phase",
      ["Rolling daily cap: 25 hourly buckets, never under-counts",
       "Needs the clock, which ERC-7562 forbids in validation"],
-     kind="chain", status=IMPL)
+     kind="chain", status=OFF)
 
 card(g, "done", "Transfer executes",
      ["Settlement asset moves only to an allowlisted contract", "within the per-transaction and daily caps"],
@@ -77,7 +77,7 @@ with g.subgraph(name="cluster_side") as c:
          kind="chain", status=OFF)
     card(c, "erc1271", "Trading key cannot sign",
          ["ERC-1271 check always fails; the", "skip-signature flag is never set"],
-         kind="control", status=IMPL)
+         kind="control", status=OFF)
     card(c, "l3", "Population circuit breaker",
          ["Capital at risk and reallocation volume", "across all agents; not built"],
          kind="control", status=DESIGN)
