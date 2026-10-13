@@ -1,86 +1,54 @@
 """
-Monadeum - 09 Trust boundaries: where one party's claim stops being believed.
+Monadeum - 09 Trust boundaries: where a claim stops being believed.
+
+Claim: every layer re-checks what the layer before it claims.
 
 Derived from:
-  THREAT-MODEL.md section 3 (trust boundaries 1 to 10; the labels B1 to B10 below
-                             are that numbering)
-  THREAT-MODEL.md section 7 (invariants 2, 7, 11, 13, 17) and section 9 (the operator
-                             is trusted for the MVP, a stated non-goal)
+  THREAT-MODEL.md section 3 (trust boundaries B1 to B10), section 7 (invariants
+                  2, 7, 11, 13, 17), section 9 (the operator is trusted for the MVP)
   SECURITY.md sections 1, 4, 5 and ARCHITECTURE.md sections 7, 9, 16.3, 16.5
 
-B8 (no agent-to-agent path) and the owner boundary of B5 are enforced by the
-reallocation contract, which is deployed on testnet with reallocation off.
+Status on 2026-10-13: the account and spend policy are deployed on testnet, with
+spend validation not yet observed. The reallocation contract is deployed with the
+switch off. Untrusted actors carry no status marker. The B-numbers are in the page
+caption; the figure keeps only the plain words.
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(__file__))
-from _style import *
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from toolkit import Diagram, OBSERVED, BUILT, DESIGN, build
 
-g = new_graph(
-    "trust-boundaries",
-    rankdir="TB",
-    title="Trust boundaries: what each side may claim and who re-checks it",
-    subtitle="B1 to B10 are the numbered trust boundaries of THREAT-MODEL.md section 3. The platform operator is trusted for the MVP.",
-    source="THREAT-MODEL.md sections 3, 7, 9; SECURITY.md sections 1, 4, 5",
-    ranksep="0.55",
-    nodesep="0.5",
-    newrank="true",
+d = Diagram(
+    "09-trust-boundaries",
+    title="Every layer re-checks what the layer before it claims",
+    subtitle="The platform is trusted for the MVP. The chain enforces its rules regardless.",
+    desc=("Three bands: untrusted input, the platform, and Monad. The browser and provider responses are "
+          "re-validated by the platform, the strategy's proposal is checked by the RiskModule, and the "
+          "chain re-checks the approved plan and rejects any other address."),
+    cols=4, gutter=100, rows=4, gaps={0: 52, 1: 112, 2: 112, 3: 110},
 )
+d.zone("Untrusted input", rows=(0, 0))
+d.zone("Platform", rows=(1, 1))
+d.zone("Monad, enforces its rules", rows=(2, 3))
+d.node("browser", "Browser", "Captures intent only", 0, 0, status=OBSERVED)
+d.node("provider", "Provider data", "Live, untrusted input", 1, 0, status=DESIGN)
+d.node("gift", "Incoming transfer", "Token or NFT sent in", 3, 0)
+d.node("api", "API", "Re-derives ownership", 0, 1, status=OBSERVED)
+d.node("strategy", "Strategy", "A proposal only", 1, 1, status=BUILT)
+d.node("risk", "RiskModule", "Checks signed policy", 2, 1, status=BUILT, kind="accent")
+d.node("owner", "Owner wallet", "Revokes any key", 0, 2, status=OBSERVED)
+d.node("acct", "Agent account", "Spend policy, allowlist", 2, 2, status=OBSERVED, kind="accent")
+d.node("realloc", "Reallocation", "Same owner only", 2, 3, status=BUILT)
+d.node("other", "Other address", "Not on the allowlist", 3, 3, kind="bad")
+d.edge("browser", "api", "re-validated", so=60, to=60)
+d.edge("provider", "strategy", "schema-checked", dashed=True)
+d.edge("strategy", "risk", "intent")
+d.edge("risk", "acct", "approved plan", kind="accent")
+d.edge("gift", "acct", "no new power", kind="bad", mid=d.gap_y(1), to=60)
+d.edge("owner", "acct", "can revoke")
+d.edge("acct", "realloc", "moves", lpos=0.5)
+d.edge("acct", "other", "rejected", kind="bad", so=60, lseg=2)
 
-with g.subgraph(name="cluster_untrusted") as c:
-    c.attr(**panel("Untrusted input", tint="#FBEFF4", line="#E3B5CC"))
-    card(c, "browser", "Frontend in the browser", ["renders state and captures intent;", "never an authorization decision"],
-         kind="threat", status=IMPL)
-    card(c, "prov", "x402 provider responses", ["text and data are live input", "to anything that stores or logs them"],
-         kind="threat", status=DESIGN)
-    card(c, "gift", "Unsolicited transfer", ["a token or NFT sent to an", "agent's public address"],
-         kind="threat", status=OFF)
-
-with g.subgraph(name="cluster_platform") as c:
-    c.attr(**panel("Platform, trusted for the MVP", tint="#F2EFFE", line="#C9BFF6"))
-    card(c, "api", "API", ["authenticates every request itself,", "re-derives ownership from its own records"],
-         kind="service", status=IMPL)
-    card(c, "strategy", "Strategy and LLM output", ["a proposal, never an authorization"],
-         kind="service", status=OFF)
-    card(c, "risk", "RiskModule", ["deterministic structural checks", "against a signed policy"],
-         kind="control", status=OFF)
-    card(c, "pg", "PostgreSQL read-model", ["B7  not a source of truth: security-", "critical facts are checked against an", "on-chain hash or event"],
-         kind="neutral", status=IMPL)
-    card(c, "paymaster", "Paymaster budget", ["B9  capped per agent; owner-signed", "revocation sponsored outside the cap"],
-         kind="external", status=IMPL)
-
-with g.subgraph(name="cluster_chain") as c:
-    c.attr(**panel("Monad: enforces its rules whatever the platform does", tint="#EAF4FA", line="#B9D9EA"))
-    card(c, "acct", "Agent account + spend policy", ["allowlist, recipient rule, caps;", "install exercised, spend validation", "not yet observed on testnet"],
-         kind="chain", status=IMPL)
-    card(c, "realloc", "Reallocation contract", ["same owner, owner's policy in force,", "cap, floor, ceiling"],
-         kind="chain", status=OFF)
-    card(c, "peer", "Another account, same owner", ["no direct path between agents", "outside the contract"],
-         kind="chain", status=OFF)
-    card(c, "owner", "Owner root wallet", ["owns every agent account;", "can revoke any session key"],
-         kind="external", status=IMPL)
-
-card(g, "arb", "Arbitrary address or contract", ["not on the allowlist"], kind="bad", status=OFF)
-card(g, "other", "Another owner's accounts", ["closed to the mechanism entirely"], kind="bad", status=OFF)
-
-link(g, "browser", "api", "B10  untrusted client;\nevery value re-validated", kind="danger")
-link(g, "prov", "strategy", "B3  schema-validated,\nnever trusted", kind="danger", dashed=True)
-link(g, "strategy", "risk", "B1  proposal only", kind="control")
-link(g, "risk", "acct", "B2  approved plan;\nchain re-checks independently", kind="gate")
-link(g, "gift", "acct", "changes no permission,\nlimit, or key scope", kind="danger")
-link(g, "owner", "acct", "B6  revocable at any time,\nindependent of the agent", kind="control")
-link(g, "acct", "arb", "B4  rejected", kind="danger")
-link(g, "acct", "realloc", "B5  approve + reallocate", kind="gate", dashed=True)
-link(g, "realloc", "peer", "B8  only path between agents", kind="gate", dashed=True)
-link(g, "realloc", "other", "B5  reverts", kind="danger")
-
-with g.subgraph() as sg:
-    sg.attr(rank="same")
-    sg.node("browser")
-    sg.node("prov")
-    sg.node("gift")
-link(g, "api", "pg", style="invis")
-link(g, "pg", "paymaster", style="invis")
-
-render(g, "09-trust-boundaries")
+if __name__ == "__main__":
+    build(d, "09-trust-boundaries")

@@ -1,12 +1,13 @@
 """
-Render every Monadeum diagram to docs-site/images/diagrams/ (SVG + PNG).
+Render every Monadeum diagram to docs-site/images/diagrams/ as light and dark
+SVG plus PNG.
 
 Usage, from the repository root:
-    python diagrams/generator/render-all.py
+    python3 diagrams/generator/render-all.py
 
-Needs the Graphviz `dot` binary on PATH and the Python `graphviz` package
-(see diagrams/README.md). Exits non-zero if any script fails or if an expected
-output file is missing.
+Needs Python 3 and, for the PNGs only, rsvg-convert (librsvg) on PATH. No other
+dependencies. Exits non-zero if any script fails its build assertions or if an
+expected output file is missing.
 """
 import subprocess
 import sys
@@ -43,7 +44,8 @@ for name in NAMES:
     elif result.stdout:
         print(result.stdout.strip())
 
-missing = [f"{n}.{ext}" for n in NAMES for ext in ("svg", "png") if not (OUTPUT / f"{n}.{ext}").exists()]
+expected = [f"{n}-{v}.{ext}" for n in NAMES for v in ("light", "dark") for ext in ("svg", "png")]
+missing = [f for f in expected if not (OUTPUT / f).exists()]
 if missing:
     print(f"\nMissing outputs: {missing}")
     errors.extend(missing)
@@ -51,4 +53,4 @@ if missing:
 if errors:
     print(f"\n{len(errors)} problem(s): {errors}")
     sys.exit(1)
-print(f"\nAll {len(NAMES)} diagrams rendered to {OUTPUT}")
+print(f"\nAll {len(NAMES)} diagrams rendered ({len(expected)} files) to {OUTPUT}")
