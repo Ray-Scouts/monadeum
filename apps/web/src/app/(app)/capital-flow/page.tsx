@@ -116,7 +116,7 @@ export default async function CapitalFlowPage({ searchParams }: { searchParams: 
               {rows.map(({ agent: a, net, total: sum }) => (
                 <tr key={a.id}>
                   <th scope="row" className={`${TD} text-left font-semibold`}>
-                    <Link href={`/agents/${a.id}`} className="tap-y inline-flex items-center gap-2 hover:underline">
+                    <Link href={`/agents/${a.id}`} className="tap inline-flex items-center gap-2 hover:underline">
                       <Identicon agent={a} className="size-6 rounded-[7px]" />
                       {agentLabel(a)}
                     </Link>
@@ -167,9 +167,9 @@ export default async function CapitalFlowPage({ searchParams }: { searchParams: 
               <li key={`${m.evaluation}-${m.sourceId}-${m.sinkId}`} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line-soft py-2.5 text-sm last:border-b-0">
                 <span className="w-[110px] font-mono text-xs text-faint">Evaluation {m.evaluation}</span>
                 <span className="min-w-0 flex-1">
-                  <Link href={`/agents/${m.sourceId}`} className="tap-y inline-flex items-center font-semibold hover:underline">{name(m.sourceId)}</Link>
+                  <Link href={`/agents/${m.sourceId}`} className="tap inline-flex items-center font-semibold hover:underline">{name(m.sourceId)}</Link>
                   <span className="text-muted"> sent to </span>
-                  <Link href={`/agents/${m.sinkId}`} className="tap-y inline-flex items-center font-semibold hover:underline">{name(m.sinkId)}</Link>
+                  <Link href={`/agents/${m.sinkId}`} className="tap inline-flex items-center font-semibold hover:underline">{name(m.sinkId)}</Link>
                 </span>
                 <span className="font-mono tabular">{usd(m.amount)}</span>
               </li>

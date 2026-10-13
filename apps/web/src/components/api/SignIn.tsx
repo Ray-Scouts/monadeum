@@ -107,7 +107,7 @@ export function AccountChip() {
           {shortAddress(user.ownerWallet)}
         </span>
       )}
-      <button type="button" className="btn btn-ghost tap-y px-2.5 py-1 text-[13px]" disabled={auth.busy} onClick={() => void auth.signOut()}>
+      <button type="button" className="btn btn-ghost tap-y whitespace-nowrap px-2.5 py-1 text-[13px]" disabled={auth.busy} onClick={() => void auth.signOut()}>
         Sign out
       </button>
     </span>

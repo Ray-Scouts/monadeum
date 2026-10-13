@@ -77,7 +77,7 @@ export function Sparkline({ values, width = 110, height = 30, color = "var(--acc
   const y = (v: number) => height - 3 - ((v - min) / (max - min || 1)) * (height - 6);
   const d = values.map((v, i) => `${i ? "L" : "M"}${(i * sx).toFixed(1)},${y(v).toFixed(1)}`).join("");
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="h-auto max-w-full" role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
       <path d={`${d}L${width},${height}L0,${height}Z`} fill={color} opacity={0.12} />
       <path d={d} fill="none" stroke={color} strokeWidth={1.6} />
       <circle cx={width} cy={y(values[values.length - 1] ?? 0)} r={2.5} fill={color} />

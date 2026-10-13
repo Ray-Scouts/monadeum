@@ -548,7 +548,7 @@ export function CapitalFlowView({ flow, agents, owner, settlement }: { flow: Cap
                       ].map(([id, account]) => (
                         <td key={account} className={TD}>
                           {id ? (
-                            <Link href={`/agents/${encodeURIComponent(id)}`} className="tap-y inline-flex items-center text-accent-hi hover:underline">
+                            <Link href={`/agents/${encodeURIComponent(id)}`} className="tap inline-flex items-center text-accent-hi hover:underline">
                               {name.get(id) ?? id}
                             </Link>
                           ) : (
@@ -594,7 +594,7 @@ export function CapitalFlowView({ flow, agents, owner, settlement }: { flow: Cap
                 {flow.spends.map((s) => (
                   <tr key={`${s.transactionHash}-${s.agentId}-${s.amount}`}>
                     <td className={TD}>
-                      <Link href={`/agents/${encodeURIComponent(s.agentId)}`} className="tap-y inline-flex items-center text-accent-hi hover:underline">
+                      <Link href={`/agents/${encodeURIComponent(s.agentId)}`} className="tap inline-flex items-center text-accent-hi hover:underline">
                         {name.get(s.agentId) ?? s.agentId}
                       </Link>
                     </td>

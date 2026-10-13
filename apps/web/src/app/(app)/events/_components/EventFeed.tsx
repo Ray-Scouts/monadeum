@@ -77,7 +77,7 @@ export function EventFeed({ events, labels, heading }: { events: EvolutionEvent[
                     {linked.length > 0 && (
                       <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[13px]">
                         {linked.map((id) => (
-                          <Link key={id} href={`/agents/${id}`} className="tap-y inline-flex items-center gap-1 font-semibold text-accent-hi hover:underline">
+                          <Link key={id} href={`/agents/${id}`} className="tap inline-flex items-center gap-1 font-semibold text-accent-hi hover:underline">
                             {labels[id]}
                             <Icon name="arrow" className="size-3.5" />
                           </Link>
