@@ -235,6 +235,7 @@ services:
       INDEXER_START_BLOCK: ${INDEXER_START_BLOCK:?set INDEXER_START_BLOCK}
       INDEXER_SPEND_POLICY_ADDRESS: ${SPEND_POLICY_ADDRESS}
       INDEXER_SETTLEMENT_ASSET_ADDRESS: ${SETTLEMENT_ASSET}
+      INDEXER_REALLOCATION_ADDRESS: ${INDEXER_REALLOCATION_ADDRESS:-}
     networks: [backend, egress]
     depends_on:
       migrate: { condition: service_completed_successfully }

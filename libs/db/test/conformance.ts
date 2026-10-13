@@ -6,8 +6,8 @@ import { describe, it } from "node:test";
 import type { AgentRecord, AgentRegistry, AgentState, DebitRecord, DebitStore, EvaluationRecord, EvaluationStore } from "@monadeum/agent-registry";
 import type { ChallengeStore, SessionStore, UserRecord, UserStore, WalletChallenge } from "@monadeum/auth";
 import type { TickRecord, TickStore } from "@monadeum/tick";
-import { SettlementAssetMismatchError, type BlockHash, type ChainEvent, type ReadModelStore, type SyncBatch } from "@monadeum/read-model";
-import type { Position, PositionStore, TradeCounts, TradeRecord, TradeStore } from "@monadeum/trading";
+import { IndexedContractError, SettlementAssetMismatchError, type BlockHash, type ChainEvent, type ReadModelStore, type SyncBatch } from "@monadeum/read-model";
+import type { Position, PositionStore, RealizedPnl, TradeCounts, TradeRecord, TradeStore } from "@monadeum/trading";
 import type { AgentWalletRecord, AgentWalletStore, SponsorshipLedger, TickOperationRecord } from "@monadeum/wallets";
 import type { PaymentLog, PaymentLogEntry, PaymentTotals, SlotClaim, X402SlotStore } from "@monadeum/x402";
 import type { Address, Hex } from "viem";
@@ -25,7 +25,7 @@ export interface Stores {
   readModel: ReadModelStore;
   agents: AgentRegistry;
   debits: DebitStore;
-  positions: PositionStore;
+  positions: PositionStore & RealizedPnl;
   evaluations: EvaluationStore;
 }
 
@@ -216,6 +216,20 @@ export function conformance(name: string, harness: Harness): void {
       assert.equal(await readModel.settlementAsset(), addr(700));
       await assert.rejects(readModel.recordSettlementAsset(addr(701)), SettlementAssetMismatchError);
       assert.equal(await readModel.settlementAsset(), addr(700));
+    });
+
+    it("records an indexed contract once, lowercase, only before the first batch, and refuses a different one", async () => {
+      const { readModel } = await harness.fresh();
+      assert.deepEqual(await readModel.indexedContracts(), {});
+      await readModel.recordIndexedContract("reallocation", mixed(addr(710)));
+      await readModel.recordIndexedContract("reallocation", addr(710));
+      assert.deepEqual(await readModel.indexedContracts(), { reallocation: addr(710) });
+      await assert.rejects(readModel.recordIndexedContract("reallocation", addr(711)), IndexedContractError);
+      await readModel.apply(batch(10, []));
+      // The same address after the first batch is fine; a new name would claim blocks that were read without it.
+      await readModel.recordIndexedContract("reallocation", addr(710));
+      await assert.rejects(readModel.recordIndexedContract("registry", addr(712)), IndexedContractError);
+      assert.deepEqual(await readModel.indexedContracts(), { reallocation: addr(710) });
     });
 
     it("prunes block hashes below the window but keeps the cursor block", async () => {
@@ -541,6 +555,26 @@ export function conformance(name: string, harness: Harness): void {
       assert.equal(await trades.filledTotal(), 4);
     });
 
+    it("sums each agent's trade costs over every trade that carries them, a reverted one included", async () => {
+      const { trades } = await harness.fresh();
+      const of = (agentId: string, key: string, tx: Hex | null): TradeRecord => {
+        const t = trade(key, tx);
+        return { ...t, order: { ...t.order, agentId } };
+      };
+      await trades.write(of("a", "a:1", hash(21)));
+      await trades.write({ ...of("a", "a:2", null), status: "failed", costs: { gasWei: 10n ** 15n, gas: 1_000n, fees: 0n, slippage: 0n }, failure: { kind: "execution", reason: "reverted" } });
+      await trades.write(of("a", "a:3", null));
+      await trades.write(of("b", "b:1", hash(22)));
+      assert.deepEqual(
+        await trades.costsByAgent(["a", "z"]),
+        new Map([
+          ["a", { gasWei: 44n * 10n ** 15n, gas: 44_000n, fees: 1n, slippage: -5n }],
+          ["z", { gasWei: 0n, gas: 0n, fees: 0n, slippage: 0n }],
+        ]),
+      );
+      assert.deepEqual(await trades.costsByAgent([]), new Map());
+    });
+
     it("lets exactly one of several concurrent claims for a tick win", async () => {
       const { trades } = await harness.fresh();
       const results = await Promise.all(Array.from({ length: 8 }, () => trades.claim(trade("t1"))));
@@ -733,6 +767,13 @@ export function conformance(name: string, harness: Harness): void {
       assert.equal(await positions.get("b"), undefined);
     });
 
+    it("reads each agent's realized P&L, 0 without a position", async () => {
+      const { positions } = await harness.fresh();
+      await positions.write(position("a", { realized: -12_000n }));
+      assert.deepEqual(await positions.realizedByAgent(["a", "b"]), new Map([["a", -12_000n], ["b", 0n]]));
+      assert.deepEqual(await positions.realizedByAgent([]), new Map());
+    });
+
     it("replaces a position whole on write, the close mark and the settled keys included", async () => {
       const { positions } = await harness.fresh();
       await positions.write(position("a", { closing: "a:3" }));
@@ -756,11 +797,20 @@ export function conformance(name: string, harness: Harness): void {
       assert.deepEqual(await evaluations.latest(), []);
       assert.deepEqual(await evaluations.history("a", 50), []);
       const unranked = evaluationRecord("b", 1, { adjustedFitness: null, fitnessPercentile: null, rawSortino: null, zeroDownsideFlag: true, tradeCount: 0 });
-      const retired = evaluationRecord("a", 1, { capital: 0n, lowWindows: 3, retired: true, retirementRule: "starvation" });
+      const retired = evaluationRecord("a", 1, { capital: 0n, lowWindows: 3, retired: true, retirementRule: "starvation", reallocation: { kind: "retired", reason: null, amount: null, rank: null } });
       await evaluations.record([retired, unranked]);
       assert.deepEqual(await evaluations.history("a", 50), [retired]);
       assert.deepEqual(await evaluations.latest(), [retired, unranked]);
       await evaluations.record([]);
+    });
+
+    it("records the reallocation outcome with its reason, amount, and rank", async () => {
+      const { evaluations } = await harness.fresh();
+      const sent = evaluationRecord("a", 2, { reallocation: { kind: "sent", reason: null, amount: 2_000_000n, rank: { position: 1, of: 3, quota: 1 } } });
+      const held = evaluationRecord("b", 2, { reallocation: { kind: "held", reason: "ceiling", amount: null, rank: { position: 3, of: 3, quota: 1 } } });
+      const off = evaluationRecord("c", 2, { reallocation: { kind: "off", reason: "not-covered", amount: null, rank: null } });
+      await evaluations.record([sent, held, off]);
+      assert.deepEqual(await evaluations.latest(), [sent, held, off]);
     });
 
     it("keeps the first record of an (agent, sequence) when an evaluation is recorded again", async () => {

@@ -17,6 +17,7 @@ import type {
   SessionView,
   StopResponse,
   WalletChallenge,
+  EventsResponse,
 } from "./types";
 
 /**
@@ -58,6 +59,7 @@ export interface SessionClient {
   agents(): Promise<{ agents: ApiAgent[] }>;
   agent(id: string): Promise<AgentDetailResponse>;
   capitalFlow(): Promise<CapitalFlowResponse>;
+  events(): Promise<EventsResponse>;
   presets(): Promise<PresetsResponse>;
   /** Creates an agent from a preset and starts its owner-signed deployment. Sends only the four fields the API accepts. */
   createAgent(input: CreateAgentInput): Promise<{ agent: ApiAgent; operation: Operation }>;
@@ -157,6 +159,7 @@ export function createApiClient(baseUrl: string, fetchImpl: Fetch = (input, init
         agents: () => get("/agents"),
         agent: (id) => get(`/agents/${seg(id)}`),
         capitalFlow: () => get("/capital-flow"),
+        events: () => get("/events"),
         presets: () => get("/genome/presets"),
         createAgent: ({ name, perTxCap, dailyCap, preset }) => post("/agents", preset === undefined ? { name, perTxCap, dailyCap } : { name, perTxCap, dailyCap, preset }),
         stop: (id) => post(`/agents/${seg(id)}/stop`),

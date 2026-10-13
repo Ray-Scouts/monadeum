@@ -201,6 +201,14 @@ export function databaseRules(name: string, db: Database): void {
         await assert.rejects(as(db, role, "DELETE FROM indexer_settings"), DENIED, role);
       }
       await assert.rejects(as(db, "monadeum_worker", `INSERT INTO indexer_settings (id, settlement_asset) VALUES (1, '${asset}')`), DENIED);
+      // 0016: the same rule for the optional contracts the indexer reads.
+      await as(db, "monadeum_indexer", `INSERT INTO indexer_contracts (name, address) VALUES ('reallocation', '${asset}')`);
+      await as(db, "monadeum_reader", "SELECT * FROM indexer_contracts");
+      for (const role of ["monadeum_indexer", "monadeum_worker", "monadeum_reader"]) {
+        await assert.rejects(as(db, role, `UPDATE indexer_contracts SET address = '0x${"cd".repeat(20)}'`), DENIED, role);
+        await assert.rejects(as(db, role, "DELETE FROM indexer_contracts"), DENIED, role);
+      }
+      await assert.rejects(as(db, "monadeum_reader", `INSERT INTO indexer_contracts (name, address) VALUES ('registry', '${asset}')`), DENIED);
       await assert.rejects(as(db, "monadeum_indexer", "SELECT * FROM worker_agents"), DENIED);
     });
 
