@@ -25,6 +25,7 @@ export function rpcReads(client: PublicClient): RpcReads {
 export const SPEND_POLICY_READ_ABI = parseAbi([
   "function windowTotal(address account) view returns (uint256)",
   "function settlementAsset() view returns (address)",
+  "function limits(address account) view returns ((uint128 perTxCap, uint128 dailyCap))",
 ]);
 
 /** An agent account's holdings, base units of each asset; MON in wei. `traded` is null on a native-MON base market. */
@@ -59,6 +60,11 @@ export class RpcChainReader implements ChainReader {
 
   balanceOf(account: Hex): Promise<bigint> {
     return this.erc20Balance(this.addresses.settlementAsset, account);
+  }
+
+  async perTxCap(account: Hex): Promise<bigint> {
+    const limits = await this.rpc.readContract({ address: this.addresses.spendPolicy, abi: SPEND_POLICY_READ_ABI, functionName: "limits", args: [account] }) as { perTxCap: bigint };
+    return BigInt(limits.perTxCap);
   }
 
   async windowTotal(account: Hex): Promise<bigint> {

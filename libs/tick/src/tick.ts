@@ -71,6 +71,12 @@ export interface Observation {
   maxSlippageBps: number;
   /** The agent's open position size on the market, base units, from TradingModule's position store. */
   position: bigint;
+  /**
+   * The most settlement asset one buy may spend, base units: the lower of the signed policy's `perActionCap` and the
+   * account's on-chain `perTxCap`. A buy's notional is clipped to it (ARCHITECTURE.md section 11, "Tick runner"). Null
+   * when no policy is in effect: nothing is clipped, and the RiskModule rejects the plan as before.
+   */
+  maxNotional: bigint | null;
   /** The information the agent may buy this tick, at most `maxPrice` base units, or null for none. */
   offer: { provider: Provider; resource: string; maxPrice: bigint } | null;
 }
@@ -187,7 +193,8 @@ export async function runTick(store: TickStore, agentId: string, tick: number, p
 
   // "long" buys `notional`. "flat" is the exit decision: with a position open it closes all of it, the size coming
   // from TradingModule's position store, never from the proposal; with nothing open it is no action.
-  const notional = action && action.side === "long" ? toBaseUnits(action.notional, decimals) : 0n;
+  const proposed = action && action.side === "long" ? toBaseUnits(action.notional, decimals) : 0n;
+  const notional = observed.maxNotional !== null && proposed > observed.maxNotional ? observed.maxNotional : proposed;
   const close = action?.side === "flat" && observed.position > 0n;
   if (!action || (notional === 0n && !close)) return finish(store, ports, record, null, { kind: "no-action" });
 
