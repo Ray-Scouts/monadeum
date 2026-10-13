@@ -1,0 +1,41 @@
+---
+title: "Capital and principal"
+description: "How capital moves through Monadeum, and exactly how an agent's principal is computed from finalized on-chain transfers, including the three accepted policy decisions."
+---
+
+Two quantities matter and they are not the same. **Capital** is what an agent's smart account currently holds in the settlement asset (USDC). **Principal** is what its owner has put into that agent: deposits minus withdrawals. Principal bounds how far reallocation may fill an agent, and a nonzero principal is what lets an agent trade at all. Source of truth: `EVOLUTION.md` sections 1.1 and 3.3, `ARCHITECTURE.md` sections 3 and 6.1.
+
+<Frame caption="Capital flow from owner wallet to agent account, and what the account may and may not spend on. Source: ARCHITECTURE.md section 3.">
+  <img src="/images/diagrams/03-capital-flow.svg" alt="Diagram of capital flow: owner wallet funds an agent smart account, which spends on x402, trades, and gas, and never on arbitrary addresses." />
+</Frame>
+
+## What an agent's account may spend on
+
+x402 payments to information providers (under a per-tick and a daily budget), trades through Kuru's router (per-trade and daily caps), and gas. It may never send funds to an arbitrary address: the allowlist excludes everything except Kuru's router, the reallocation contract, and the settlement asset, and a settlement-asset `transfer` or `approve` must name one of the first two (`ARCHITECTURE.md` section 16.3).
+
+## How principal is computed
+
+Principal is recomputed, never incremented, from finalized `Transfer` events of the configured USDC contract, by the worker's `principal` job. The definition, as implemented in `libs/read-model`:
+
+- **The owner** is the owner wallet on the agent's record. A transfer from any other address, including another wallet the same user has linked, is not principal.
+- **The settlement asset** is the configured USDC contract. A `Transfer` from any other contract never counts, whatever the token calls itself.
+- **Counted from deployment.** Only transfers after the account's `AccountDeployed` event count. A transfer to the counterfactual address before deployment is capital, recoverable by the owner, but not principal. For this reason funding is offered only for a deployed account.
+- **Deposits add, withdrawals subtract**, with the running total floored at 0.
+- **Everything else** (trades, x402 payments, reallocations, transfers between agent accounts, third parties) changes capital and never principal.
+- **Finalized only.** The worker reads only up to the block through which every stored row came from finalized blocks, and never overwrites a value computed through a later block.
+
+Until an agent's principal is above 0, the worker does not tick it, evaluate it, or retire it for being below the floor.
+
+## Three accepted decisions
+
+Each was first implemented as a proposal and then accepted by the owner as product policy.
+
+| Decision | Reason | Consequence accepted |
+| --- | --- | --- |
+| Floor principal at 0 | A negative principal has no meaning as a denominator or in the slot ceiling | An owner who withdraws at least what they deposited leaves the agent unfunded until they deposit again |
+| Count only the owner wallet on record | It is the one address the platform has verified; counting others would let a third party raise an agent's ceiling | USDC sent from a second wallet or an exchange is capital but not principal |
+| Use Finalized, not Verified, blocks | Principal moves no capital; it decides whether an agent trades the balance already in its account | If principal ever gates a transfer of value, this must be revisited |
+
+## Conservation
+
+A reallocation is a transfer between two existing accounts of the same owner. It creates and destroys no capital, and total system capital changes only through deposits, withdrawals, and realized trading and cost flows. Retirement moves no capital. These are `THREAT-MODEL.md` invariants 3, 13, and 15, expressed as contract tests and as simulation tests (`simulation/test/reallocation-scope.test.ts`).

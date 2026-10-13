@@ -1,0 +1,117 @@
+---
+title: "Verify it yourself"
+description: "Commands with Foundry cast and viem that re-check the Monadeum testnet deployment from the public Monad testnet RPC, without trusting this documentation."
+---
+
+You do not need to trust this site or the Monadeum app. Everything on [Monad testnet deployments](/deployments/monad-testnet) can be re-read from the public RPC. The commands below use the addresses and hashes from `contracts/deployments/monad-testnet.json`.
+
+## Set up
+
+```bash
+export RPC=https://testnet-rpc.monad.xyz
+export POLICY=0xe54512401B8fCD0DCc3f4Aa4929b99F05AbA3f05
+export REALLOC=0x4e7500415e81017670a9cFb8763f873EE6694A7f
+export X402=0xCA918F53FFc7507Bd41602c0bD1ef72558705991
+export USDC=0x534b2f3A21130d7a60830c2Df862319e593943A3
+export SAFE=0x9671dB7Ab4Afa09fe76402Ce127896b166029897
+```
+
+## Chain id
+
+```bash
+cast chain-id --rpc-url $RPC
+```
+
+Expected: `10143`.
+
+## Deployment receipts
+
+```bash
+cast receipt 0xe57f5b866b9eb5a438d137fdd126030c4bbec09d5a2d30b9ad14489a72af344e --rpc-url $RPC
+cast receipt 0x654a555c3214551412c29a6a17ec391ea9dd2b032221880116fd0e58a213ee3e --rpc-url $RPC
+cast receipt 0x914bb2d21130dd014ccc0688dbf5afca6df3bdd94f37880e560f1908e117bf0f --rpc-url $RPC
+```
+
+Expected: `status 1`, block numbers 70167444, 70167453, and 70167461, and `from` equal to `0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3`.
+
+## Code at each address
+
+```bash
+for a in $POLICY $REALLOC $X402; do
+  echo $a $(( ($(cast code $a --rpc-url $RPC | wc -c) - 3) / 2 ))
+done
+```
+
+The deployment record gives 6716, 9276, and 6566 bytes. A different size would mean different code at that address.
+
+## Constructor-set values
+
+```bash
+cast call $POLICY  "settlementAsset()(address)" --rpc-url $RPC
+cast call $REALLOC "settlementAsset()(address)" --rpc-url $RPC
+cast call $X402    "settlementAsset()(address)" --rpc-url $RPC
+
+cast call $REALLOC "operator()(address)"            --rpc-url $RPC
+cast call $REALLOC "admin()(address)"               --rpc-url $RPC
+cast call $REALLOC "pendingAdmin()(address)"        --rpc-url $RPC
+cast call $REALLOC "minEvaluationInterval()(uint256)" --rpc-url $RPC
+cast call $REALLOC "capitalFloor()(uint256)"        --rpc-url $RPC
+cast call $REALLOC "currentEvaluation()(uint256)"   --rpc-url $RPC
+```
+
+Expected on 2026-10-11: the three settlement assets equal `$USDC`, `operator()` and `admin()` equal `$SAFE`, `pendingAdmin()` is the zero address, `minEvaluationInterval()` is `36000`, `capitalFloor()` is `60000`, and `currentEvaluation()` is `0`. The last value changes if an operator ever advances an evaluation, which is itself an on-chain event.
+
+## The Safe
+
+```bash
+cast call $SAFE "getThreshold()(uint256)"  --rpc-url $RPC
+cast call $SAFE "getOwners()(address[])"   --rpc-url $RPC
+cast call $SAFE "VERSION()(string)"        --rpc-url $RPC
+```
+
+Expected: `2`, the three owners listed on the deployment page, and `1.4.1+L2`.
+
+## With viem
+
+```ts
+import { createPublicClient, http, parseAbi } from "viem";
+
+const client = createPublicClient({
+  chain: {
+    id: 10143,
+    name: "Monad testnet",
+    nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
+    rpcUrls: { default: { http: ["https://testnet-rpc.monad.xyz"] } },
+  },
+  transport: http(),
+});
+
+const realloc = "0x4e7500415e81017670a9cFb8763f873EE6694A7f";
+const abi = parseAbi([
+  "function operator() view returns (address)",
+  "function admin() view returns (address)",
+  "function minEvaluationInterval() view returns (uint256)",
+  "function capitalFloor() view returns (uint256)",
+]);
+
+const [operator, admin, interval, floor] = await Promise.all([
+  client.readContract({ address: realloc, abi, functionName: "operator" }),
+  client.readContract({ address: realloc, abi, functionName: "admin" }),
+  client.readContract({ address: realloc, abi, functionName: "minEvaluationInterval" }),
+  client.readContract({ address: realloc, abi, functionName: "capitalFloor" }),
+]);
+```
+
+## Compare the bytecode with the source
+
+From `contracts/`, after `forge build` with forge 1.8.5:
+
+```bash
+python3 audit/check-deployed-bytecode.py deployments/monad-testnet.json https://testnet-rpc.monad.xyz
+```
+
+The script sends only `eth_getCode` requests and masks constructor-set immutables. On 2026-10-12 all three matched a build of commit `513e943`.
+
+## What this proves, and what it does not
+
+Matching receipts, code, and constructor values show that these addresses run contracts deployed from the deployer account and configured as recorded. The bytecode comparison above shows the deployment equals the source at the commit you build. It does not show the source is correct, because no audit exists. Whether the contracts are verified on a block explorer is not recorded in the deployment file.

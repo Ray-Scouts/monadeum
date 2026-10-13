@@ -1,0 +1,38 @@
+---
+title: "Recovery"
+description: "How an owner stops or recovers a compromised agent, and the bulk recovery hold that limits the blast radius of a stolen root credential."
+---
+
+Source of truth: `SECURITY.md` sections 1, 9, and 11; `THREAT-MODEL.md` scenario G and invariant 8; `libs/recovery`.
+
+## Single-agent stop
+
+The owner can revoke or rotate an agent's session key, or sweep a compromised account, at any time, without the agent's cooperation or the operator's. Revocation destroys the server-held key, uninstalls the key's validator and the x402 validator, and invalidates the Kernel nonce, and the result is read back from chain. It is sponsored outside the per-agent gas budget. "Stop this agent" in the app is labeled as an emergency stop distinct from retirement, and it shows only what the API reports.
+
+## The blast-radius problem
+
+The root wallet owns every agent of one user. That is what makes recovery possible, and it also makes the credential a population-wide key: someone who phishes it could revoke or sweep every agent in one session. No single agent's spend limit catches that, because the actions are owner actions.
+
+## The bulk recovery hold
+
+<Frame caption="Bulk recovery hold: single-agent actions run at once, multi-agent actions or a fourth distinct agent within 60 minutes are held, then released after a second confirmation and a delay. Source: SECURITY.md section 9.">
+  <img src="/images/diagrams/11-root-recovery.svg" alt="Flow diagram of the bulk recovery hold: count the distinct agents a root wallet touched in 60 minutes, execute immediately if one agent and the count is three or lower, otherwise hold, notify, require a second confirmation that restates the count, wait 15 minutes, then execute." />
+</Frame>
+
+- Count the distinct agent accounts a root wallet has revoked or swept in the last 60 minutes.
+- An action naming exactly one agent executes immediately while the count, including that agent, is 3 or lower.
+- An action naming two or more agents is held. So is an action naming one agent that would push the distinct count above 3 inside the window.
+- A held action notifies the user and lists the agents it would affect. Release takes a second explicit confirmation that restates the number of agents, then a 15 minute delay, then execution.
+- A legitimate owner can still retire every agent. They confirm the count and wait 15 minutes. There is no path that skips the hold.
+
+The thresholds (60 minutes, 3 agents, 15 minutes) are proposed defaults, not measured values. The application hold is implemented in `libs/recovery`. In the API, the hold is applied before anything executes, with revocations recorded per root wallet. Chain-level enforcement of the same rule is later work.
+
+## Limits
+
+The hold can be waited out by an attacker who controls the confirmation step for longer than the delay, because the second confirmation is itself an action of the root wallet. It raises the cost of a population-wide sweep. It does not remove the risk when an attacker holds the root credential for longer than the delay.
+
+If the paymaster is down and the account has no MON, a revocation cannot land. The platform's copy of the key is already destroyed, but a copy held elsewhere stays usable within the on-chain limits until the owner retries. That state is reported as `paymaster-unavailable`, not hidden.
+
+## Retirement is not recovery
+
+Retirement is a selection outcome. It stops ticking and never moves capital, so a retired agent's balance stays in its own account, recoverable by the owner. See [Reallocation and retirement](/concepts/reallocation-and-retirement).

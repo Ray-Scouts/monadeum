@@ -1,0 +1,125 @@
+---
+title: "Policy rule schema"
+description: "The signed PolicyDocument that parameterizes the risk engine, the proposal and plan types that cross from strategy to execution, the violations it reports, and how the schema versions."
+---
+
+Source of truth: `ARCHITECTURE.md` sections 16.1 and 16.2, implemented in `libs/risk`. The types are TypeScript because a type is harder to misread than a paragraph. They are the contract, not an implementation.
+
+## Decision
+
+The checks are a fixed set of typed, pure functions inside the risk engine. The thresholds they read are a versioned, signed JSON document. The policy is not an interpreted rules language and not an external rules engine. The reasoning is on [Spend policy](/security/spend-policy).
+
+## `PolicyDocument`
+
+```ts
+export interface PolicyDocument {
+  schemaVersion: 1;
+  version: number;                 // starts at 1, increments by 1 per change
+  previousHash: Hex | null;        // hash of version - 1; null only for version 1
+  effectiveFrom: string;           // ISO 8601, UTC
+  settlementAsset: Hex;            // token address of the settlement asset (USDC)
+  allowedCalls: { target: Hex; selector: Hex; label: "kuru-router" | "reallocation" | "settlement-asset" | "traded-asset" }[];
+  allowedPairs: string[];
+  perActionCap: BaseUnits;
+  sessionDailyCap: BaseUnits;      // must not exceed the on-chain dailyCap
+  perTickInformationCap: BaseUnits;
+  dailyInformationCap: BaseUnits;
+  maxPositionFraction: number;     // protocol ceiling on riskTolerance
+}
+```
+
+The label `traded-asset` marks the ERC-20 base a close sells. Such a token is allowlisted with `approve` (and, if ever needed, `transfer`) only, is held to the recipient rule, counts 0 against both caps, and is never itself a recipient.
+
+## `Ledger`, `Violation`, `Decision`
+
+```ts
+/** Authoritative inputs. Read by the worker from the chain and the ledger, never taken from the proposal. */
+export interface Ledger {
+  capital: BaseUnits;
+  spentInWindow: BaseUnits;        // windowTotal(account), read on-chain, so both layers use the same window
+  informationBudget: BaseUnits;    // from the agent's stored genome
+  informationToday: BaseUnits;
+  informationThisTick: BaseUnits;
+  assetUniverse: string[];         // from the agent's stored genome
+}
+
+export type Violation =
+  | "call-not-allowed" | "recipient-not-allowed" | "pair-not-allowed" | "provider-not-allowed"
+  | "per-action-cap" | "session-daily-cap" | "information-cap" | "position-fraction"
+  | "plan-hash-mismatch" | "policy-unverified"
+  | "reallocation-party" | "reallocation-policy" | "reallocation-bound";
+
+export type Decision =
+  | { approved: true; policyVersion: number; policyHash: Hex; planHash: Hex | null }
+  | { approved: false; policyVersion: number; policyHash: Hex; violations: Violation[] };
+
+export function evaluateInformation(policy: VerifiedPolicy | null, request: InformationRequest, ledger: Ledger): Decision;
+export function evaluateTrade(policy: VerifiedPolicy | null, proposal: ActionProposal, plan: ExecutionPlan, ledger: Ledger): Decision;
+```
+
+A rejection returns every violation found, not only the first, so monitoring sees the full shape of a bad proposal. The risk engine evaluates the plan, not the intent. Every `Decision` is logged with `policyVersion` and `policyHash`, so a past approval can be replayed against the exact document that produced it.
+
+## Proposal and plan types
+
+```ts
+export interface InformationRequest {
+  tickKey: string;                 // `${agentId}:${tick}`
+  agentId: string;
+  provider: "nansen" | "defillama";
+  maxPrice: BaseUnits;
+}
+
+export interface ActionProposal {
+  schemaVersion: 1;
+  tickKey: string;
+  agentId: string;
+  account: Hex;
+  genomeHash: Hex;                 // binds the proposal to the genome that produced it
+  strategyType: "trading";
+  state: { capital: BaseUnits; principal: BaseUnits; ticksSinceTrade: number; observedAt: string };
+  information: PurchasedInformation[];
+  action: TradeIntent | null;      // null: the plugin proposes nothing this tick
+}
+
+export interface TradeIntent {
+  kind: "trade";
+  pair: string;
+  side: "long" | "flat";           // flat closes the whole open position
+  notional: BaseUnits;             // 0 for flat
+  maxSlippageBps: number;
+}
+
+export interface ExecutionPlan {
+  tickKey: string;
+  calls: { target: Hex; data: Hex }[];  // native value is always 0
+  planHash: Hex;                   // hash of { tickKey, calls }; recomputed by the engine, never trusted
+}
+```
+
+The trading module submits only a plan whose hash equals the approved `planHash`.
+
+## `ReallocationProposal`
+
+```ts
+export interface ReallocationProposal {
+  schemaVersion: 1;
+  moveKey: string;                 // `${owner}:${evaluation}:${sourceAgentId}`, the idempotency key
+  owner: Hex;
+  evaluation: number;
+  policyHash: Hex;                 // EIP-712 struct hash of the owner's policy
+  sourceAgentId: string;
+  source: Hex;
+  credits: { sinkAgentId: string; sink: Hex; amount: BaseUnits }[];
+  total: BaseUnits;
+}
+```
+
+The plan is exactly two calls: `approve(reallocationContract, total)` on the settlement asset, then `reallocate(evaluation, policyHash, credits)` on the contract labeled `reallocation`. The engine rejects a plan that does not encode the proposal exactly (`plan-hash-mismatch`), and re-checks from the ledger what the contract checks on-chain, under the three separate violations `reallocation-party`, `reallocation-policy`, and `reallocation-bound`.
+
+## How policy versions are authorized
+
+Policy documents live in an append-only table with the document, its hash, the signer address, and the signature. Each version is signed (EIP-191) by an operator key distinct from every session key and pinned in the worker's configuration. On load the engine verifies the signature, the `previousHash` chain back to version 1, and that `effectiveFrom` never moves backward. A failure yields `policy-unverified` for every request.
+
+## How the schema versions
+
+`version` changes when a threshold changes. That is data, signed, and deployed without code. `schemaVersion` changes when a field or a check is added or removed. That is a code change reviewed in a pull request that updates `ARCHITECTURE.md` section 16. The engine accepts only the `schemaVersion` values it was built for and treats any other as `policy-unverified`.

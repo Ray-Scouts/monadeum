@@ -1,0 +1,63 @@
+---
+title: "x402 validator"
+description: "Why x402 payments need their own on-chain validator, what X402PaymentValidator enforces, how its 24-hour outflow bound is derived, and the options that were rejected."
+---
+
+Source of truth: `ARCHITECTURE.md` section 16.3 ("x402 signature path"), `contracts/src/X402PaymentValidator.sol`, `THREAT-MODEL.md` scenario I and invariant 17.
+
+## The problem
+
+An x402 payment on EVM is, by default, an EIP-3009 `transferWithAuthorization` that the account signs and a facilitator submits. For a smart account that signature is checked through ERC-1271, a view call, so the payment never runs through the account's execution and never reaches the spend policy's `record`. Two facts follow, both checked against Kernel v3.1's source and reproduced on a Monad mainnet fork on 2026-10-10:
+
+- A policy on Kernel v3.1 sees only a raw 32-byte hash on the signature path, never the typed data, so it cannot decode what is being signed.
+- If the spend policy were allowed to sign through ERC-1271, a session key's signature would make USDC grant a `permit` of the account's whole balance to any spender.
+
+## Decision
+
+A dedicated x402 key and a separate Kernel validator module, `X402PaymentValidator`, which the owner installs beside the trading permission. It approves an ERC-1271 signature only for an EIP-3009 `transferWithAuthorization` from the account to a payee the owner listed. Kernel's skip-signature flag is never set on the spend policy, for any agent. The trading key therefore cannot sign for the account at all, and the x402 key can sign nothing but bounded payments. Each key holds exactly one power.
+
+<Frame caption="x402 payment flow, including the validator's on-chain bounds on the signed authorization. Source: ARCHITECTURE.md section 16.3.">
+  <img src="/images/diagrams/07-x402-payment-flow.svg" alt="Sequence diagram of an x402 payment with the on-chain validator bounding payee, amount, validity window, and per-hour slot." />
+</Frame>
+
+## What it enforces
+
+The signature carries the authorization's fields. The validator succeeds only if all of these hold:
+
+- the configuration for the calling account is live;
+- `to` is a listed payee;
+- `0 < value <= maxValue`;
+- `0 < validBefore - validAfter <= maxValidity`, with `maxValidity` at most one hour;
+- `slot < paymentsPerEpoch`;
+- the wrapped digest of `TransferWithAuthorization(account, to, value, validAfter, validBefore, nonce)`, with the nonce derived from the account, the hour of `validAfter`, and the slot, equals the hash Kernel passed;
+- the signature is the configured x402 key's low-s signature of that hash.
+
+Because the validator recomputes the digest, a `permit`, a `receiveWithAuthorization`, another token's digest, or any other typed data cannot match, whatever fields accompany it. `validateUserOp` always fails, so the key can never validate an operation.
+
+## How the 24-hour bound is derived
+
+The token accepts each nonce once per authorizer, and the nonce is a function of the account, the hour of `validAfter`, and a slot below `paymentsPerEpoch`, so each hour admits at most `paymentsPerEpoch` payments of at most `maxValue`. A payment executes strictly between its `validAfter` and `validBefore`, at most one hour apart, so payments executed in any 24-hour period have `validAfter` inside a 25-hour interval, which touches at most 26 hours. Therefore at most
+
+```
+26 * paymentsPerEpoch * maxValue
+```
+
+leaves the account through this path in any 24 hours. It is a second, separate on-chain budget, never counted inside `dailyCap`, so nothing is counted twice. The owner-decided defaults are `maxValue` 0.05 USDC and 4 payments per hour (a 24-hour worst case of 5.20 USDC per agent), with `maxValidity` 300 seconds. The application-layer information caps remain the tighter limits.
+
+## Why not the alternatives
+
+| Option | Verdict |
+| --- | --- |
+| A. Have the spend policy bound its own signature check | Not possible on Kernel v3.1: per-policy data cannot arrive. A view also cannot hold a daily cap, and it would hand the trading key signing power |
+| **B. Separate x402 validator (chosen)** | A validator receives its full signature and can recompute the digest |
+| C. A separate small hot balance with its own key | Works with any facilitator, but moves the recipient rule's guarantee to a platform-held key. Kept as the fallback if the facilitator does not accept ERC-1271 |
+| D. The owner pre-authorizes each payment | Fails autonomy. Choice B is the autonomous form of it: the owner signs once, a bounded budget |
+| E. ERC-7710 delegation through the account | Needs a delegation manager on Monad, facilitator support, and more. Unverified, so deferred |
+
+## Revocation and replay
+
+Revoking the x402 key means uninstalling the validator, because Kernel v3.1's ERC-1271 path does not read the nonce. Uninstalling also invalidates every authorization signed earlier and not yet settled, since USDC checks the signature at settlement. Replay of one authorization is stopped by the token's nonce registry, across accounts by `from` and Kernel's account-domain wrapping, and across chains by both domains' chain id. Once signed, an authorization can be submitted by anyone, but only for its signed payee and amount, which is a property of the standard.
+
+## Status
+
+Implemented with unit, fuzz, and invariant tests, including invariants against a fully compromised x402 key, and a Monad mainnet fork test against the real USDC and Kernel v3.1. Deployed on Monad testnet only, not audited, not on mainnet. The testnet runbook installs it on no account. Open question 1 remains: whether the facilitator used on Monad accepts ERC-1271 signatures for EIP-3009. If not, option C is the fallback, and nothing fails open meanwhile.

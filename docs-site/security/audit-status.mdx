@@ -1,0 +1,54 @@
+---
+title: "Audit status"
+description: "No Monadeum contract has been externally audited. What exists instead, what is tested, what static analysis found, and the gates that apply before any real capital."
+---
+
+Source of truth: `SECURITY.md` sections 3 and 13, and `contracts/audit/README.md`.
+
+<Warning>
+  No external audit has been completed or engaged. No Monadeum contract is on mainnet. Every guarantee in these docs that depends on the on-chain contracts is provisional until the audit gate below is passed.
+</Warning>
+
+## What exists
+
+| Contract | Role | Deployed | Audited |
+| --- | --- | --- | --- |
+| `AgentSpendPolicy` | Per-account limits and call allowlist | Monad testnet only | No |
+| `X402PaymentValidator` | Bounds x402 payment signatures | Monad testnet only | No |
+| `AgentReallocation` | Owner-scoped reallocation and retirement registry | Monad testnet only, reallocation off | No |
+
+An audit package for all three is in `contracts/audit/README.md` (827 normalized source lines at a pinned commit). It holds the scope, integration assumptions, the invariants mapped to tests, coverage, static-analysis triage, known limitations, and a draft request for proposal. The package must be re-pinned to a new commit after the traded-asset change before an engagement.
+
+## Testing
+
+Contracts are built with Foundry and covered by unit, fuzz, and invariant tests. The invariants of `THREAT-MODEL.md` that the chain can see are expressed as executable invariant tests over fuzzed operation sequences: no accepted operation counts more than the per-transaction cap, no 24-hour period holds more than the daily cap, no call outside the allowlist is accepted at any amount, reallocation conserves total and per-owner capital, no source loses more than the cap or ends below the floor, no source is debited twice in an evaluation, and no move crosses owners or touches a retired or unregistered agent. For the reallocation contract an independent model of every rule must agree with the contract on every outcome, and each rule was removed in turn to confirm that at least one test fails without it. Fork tests run the spend policy and the x402 validator against the real Kernel v3.1 contracts on a Monad testnet fork and, for the x402 validator, the real USDC on a Monad mainnet fork.
+
+## Deployed bytecode
+
+On 2026-10-12 the runtime bytecode at each of the three testnet addresses was compared with a build of commit `513e943`, with constructor-set immutables masked, and all three matched byte for byte. The check is repeatable with `contracts/audit/check-deployed-bytecode.py` (`contracts/audit/README.md` section 14). It shows the deployment equals that source, not that the source is correct.
+
+## End-to-end threat tests
+
+Offline tests drive the worker loop over the real modules and attempt each scenario of the threat model (A to F), plus population explosion, accounting, and crash recovery, and check the mitigation. `docs/e2e-traceability.md` maps each scenario to its tests. Scenario G is covered in the API, and scenario I at the contract layer only, by design. `docs/testnet-validation-checklist.md` records, per item, whether it is evidenced, only tested offline, or still needs a run on testnet. These tests are not a substitute for an audit, and none of them ran against the live deployment.
+
+## Genome commitment contract
+
+`AgentCommitments` holds no capital and has no privileged role, and has Foundry unit and fuzz tests. It is not deployed and not audited. What an error in it would break is the binding of a track record to its genome.
+
+## Static analysis
+
+Slither 0.11.4 and Aderyn 0.6.8 were run, and every result was triaged in the audit package as a false positive, an accepted risk with a stated reason, or a fix. For example, a `weak-prng` finding on the hour-bucket modulo is a false positive because the modulo only indexes a ring buffer, and `locked-ether` on payable hooks is accepted because Kernel's interfaces declare them payable.
+
+## What has not been observed
+
+A spending operation validated by `AgentSpendPolicy` through a bundler has not been observed on Monad testnet. The ERC-7562 storage-access rules for the validation-phase reads are unconfirmed against the bundlers actually used on Monad. Kuru's router, which sits on the capital-moving allowlist, has audit reports that its documentation links, but this repository has not read them or matched their scope to the contracts the system would call, so Kuru's audit status is unconfirmed for our purposes.
+
+## Gates
+
+- An external audit is a gate before mainnet. No mainnet deployment carrying real user capital happens before it is complete and its findings are resolved or explicitly accepted as residual risk.
+- The spend policy, the x402 validator, and the reallocation contract are under a stricter gate: no deployment carrying real user-controlled capital, on testnet or mainnet, before audit. The 2026-10-11 testnet deployment holds testnet assets with no real value, so it does not cross it.
+- Mainnet is opt-in per user and per agent through two stored flags that default to false, and is never the default mode.
+
+## Operator keys
+
+Operator and admin roles of the reallocation contract are a 2-of-3 Safe. The contract's constructor and role setters revert for an address with no code, which refuses a plain key, but cannot tell a 2-of-3 from a one-signer contract, so the threshold is checked at deployment and recorded. That the three owner keys are held by different people on different devices is a requirement no contract can show.

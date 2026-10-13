@@ -1,4 +1,8 @@
 node_modules/
+# Local agent worktrees are full copies of the repository and are never committed. The rest of .claude is tracked.
+.claude/worktrees/
+# Written and re-added by next dev.
+apps/web/AGENTS.md
 # Environment files hold secrets. Only *.example templates are committed.
 .env
 .env.*
@@ -15,3 +19,6 @@ coverage/
 .turbo/
 
 simulation/data/genome-edge/raw/
+
+# Python virtual environment for the diagram generator (diagrams/README.md).
+.venv-diagrams/

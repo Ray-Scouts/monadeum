@@ -1,0 +1,49 @@
+---
+title: "Costs"
+description: "The cost inputs behind Monadeum's economics, which are researched, which are measured, which are assumed, and how costs enter fitness. All figures are snapshots with dates."
+---
+
+Source of truth: `ECONOMICS.md` sections 1 and 2. Every figure here is time-sensitive and a snapshot, not a series.
+
+## Cost lines of an agent
+
+An agent pays four costs: gas (in MON), trading fees, slippage, and x402 purchases. Each trade, buy or close, reports its own gas, fee, and slippage against the reference price captured when its plan was built. A round trip therefore costs two trades' gas, fees, and slippage. Realized P&L is booked at reference prices so none of these is counted twice (see [Fitness](/concepts/fitness)).
+
+## Inputs used by the simulations
+
+These are what every simulation result was run with. Replacing them changes those results and calls for a re-run.
+
+| Cost | Value used | Status |
+| --- | --- | --- |
+| Gas per trade | $0.001, near the low end of a researched $0.0005 to $0.007 range | Researched by back-of-envelope from Monad's gas pricing model, not from a receipt |
+| Nansen x402 call | $0.05, the low end of a $0.01 to $7.50 range | Researched, from Nansen's own x402 manifest via Monad's API Hub |
+| DeFiLlama x402 call | $0.01 flat | Researched, from Monad's API Hub catalog |
+| Kuru fee plus slippage | 10 bps plus 5 bps | **Assumption, not researched.** The single most important number to replace |
+| Paymaster sponsorship budget | Not modeled numerically | A product decision, not a researched fact |
+
+## Measured inputs (issue 20, used by `libs/trading`)
+
+| Input | Measured | Status |
+| --- | --- | --- |
+| Kuru taker fee, MON/USDC | 0 bps | Read on chain from `getMarketParams`, on testnet and read-only on mainnet. Fees charged outside the market contract were not checked |
+| Router swap gas | 389,331 gas for one fill against one resting order, plus a 10 percent buffer | A simulated estimate, not a receipt. It excludes the exact-amount approve and ERC-4337 overhead, so it is a lower bound |
+| Gas price | 102 gwei, testnet | One read. Monad charges the gas limit rather than gas used, and the live run that would verify this has not been made |
+| Spread | About 15.5 bps, about 7.8 bps half-spread (one mainnet snapshot). Twelve later reads on 2026-10-10 gave 12.8 to 20.4 bps, median 14.8 bps | Snapshots, not a spread history |
+
+At the testnet gas price a router swap costs about 0.0437 MON. No dollar figure is stated because it needs a MON price at the time of use. The working hypothesis from these reads is that the 15 bps line is mostly half-spread rather than fee, and that gas per trade is set more by Monad's gas price and the charged limit than by the $0.001 assumption. Neither is confirmed until a live run or a mainnet receipt.
+
+## Mainnet market: WETH/USDC
+
+Because a native-MON base cannot be sold under the zero-native-value rule and Kuru lists no wrapped-MON/USDC market on mainnet, the owner decided agents trade ETH exposure on Kuru's WETH/USDC market. On 2026-10-10 (FACT, on chain and from Kuru's market API): taker and maker fee 0 bps, a best bid of 2491.67 and best ask of 2492.55 USDC per WETH in one read (about 3.5 bps wide), and about $367,000 of 24-hour volume reported by Kuru. This is one snapshot, and swap gas on this market has not been measured. The MON/USDC figure is assumed to be of the same order.
+
+Gas is paid in MON, so it converts to the settlement asset at a separate MON price, the mid of Kuru's MON/USDC book, recorded on every order. A trade is not made when that price cannot be read, is one-sided, is wider than 200 bps, or is from a block more than 60 seconds old.
+
+Every simulation here, and the genome-edge study, modeled MON/USDC, so none of them describes WETH/USDC directly.
+
+## Testnet costs are not economics
+
+On testnet agents trade WMON/USDC on a market the project seeds. The mid is a configured reference, the spread is whatever is seeded (50 bps by default), the fee is 0 because it was set so, and the gas price conversion reads the same seeded book. Nothing measured on testnet is an input to the economics documented here. What testnet can supply is gas: one simulated round trip on a fork, from an externally owned account, used 557,911 gas for a 1 USDC buy and 447,269 for its close. That is Foundry's EVM, not a Monad receipt, and is indicative only.
+
+## Capital
+
+Starting capital per agent is a user decision. 10 USD is used as an illustrative default. On-ramp fees are paid before capital enters the system, so they are outside this cost model, and are a user-facing cost that usability testing must surface (see [Funding flow](/architecture/funding-flow)).

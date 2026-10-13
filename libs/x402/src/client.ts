@@ -105,6 +105,8 @@ export interface PaymentTotals {
   spendByAgent(agentIds: readonly string[]): Promise<Map<string, PaymentSpend>>;
   /** Spend across every agent. */
   spendTotal(): Promise<PaymentSpend>;
+  /** Entries that carry a settlement transaction reference: how many, and the latest `limit`, newest first. For the public evidence page. */
+  settled(limit: number): Promise<{ count: number; entries: PaymentLogEntry[] }>;
 }
 
 /**
@@ -368,5 +370,9 @@ export class MemoryPaymentLog implements PaymentLog, PaymentTotals {
   }
   async spendTotal(): Promise<PaymentSpend> {
     return tallyPayments(this.rows.values());
+  }
+  async settled(limit: number): Promise<{ count: number; entries: PaymentLogEntry[] }> {
+    const all = [...this.rows.values()].filter((e) => e.settlementRef !== null);
+    return { count: all.length, entries: all.reverse().slice(0, limit) };
   }
 }

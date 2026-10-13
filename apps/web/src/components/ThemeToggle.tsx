@@ -3,7 +3,7 @@
 import { Icon } from "./Icon";
 
 /** Flips between light and dark, starting from whatever is showing now, and remembers the choice. */
-export function ThemeToggle() {
+export function ThemeToggle({ size = "size-9" }: { size?: string }) {
   const toggle = () => {
     const root = document.documentElement;
     const dark = root.dataset.theme ? root.dataset.theme === "dark" : !matchMedia("(prefers-color-scheme: light)").matches;
@@ -12,7 +12,7 @@ export function ThemeToggle() {
     try { localStorage.setItem("theme", next); } catch {}
   };
   return (
-    <button onClick={toggle} aria-label="Toggle light or dark theme" className="grid size-9 place-items-center rounded-full border border-line bg-surface">
+    <button onClick={toggle} aria-label="Toggle light or dark theme" className={`grid ${size} place-items-center rounded-full border border-line bg-surface`}>
       <span className="theme-moon"><Icon name="moon" /></span>
       <span className="theme-sun"><Icon name="sun" /></span>
     </button>
