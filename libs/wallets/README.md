@@ -64,7 +64,7 @@ It protects keys at rest only: whoever holds the files and a passphrase holds th
 
 ## Not verified yet
 
-- No run on Monad testnet: the spend policy contract is implemented, and its deployment script exists (`contracts/script/DeployTestnet.s.sol`), but it has not been broadcast. The opt-in test is the check.
+- No spending operation on Monad testnet: the spend policy is deployed there (`contracts/deployments/monad-testnet.json`, 2026-10-11), and one account deployment through the app installed it, but no operation signed by a session key has run through a bundler. The opt-in test is the check (`docs/testnet-validation-checklist.md`, items 1.4 to 1.7).
 - Installing `AgentSpendPolicy` as policy and hook is verified against the Kernel v3.1 source, Foundry tests, and a fork test against the Kernel v3.1 contracts deployed on Monad testnet (`ARCHITECTURE.md` section 16.3), not yet through a bundler.
-- Sponsorship through ZeroDev's paymaster has not been exercised on Monad; both spikes paid gas from the account.
+- Sponsorship through ZeroDev's paymaster has been exercised on Monad testnet for one account deployment only (2026-10-11, `deploy/README.md`, "Live testnet deployment"); both earlier spikes paid gas from the account.
 - The Kernel v3.1 nonce rules the revocation check relies on were read from the Kernel v3.1 source (`ValidationManager.sol`, `Kernel.sol`) on 2026-10-09, not observed on chain.

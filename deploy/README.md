@@ -44,6 +44,8 @@ The deployment this runbook produced, as of 2026-10-11. Every item is FACT, chec
 - **ZeroDev.** One project for chain 10143. The bundler and the paymaster use the same v3 endpoint, so `WALLETS_BUNDLER_URL` and `WALLETS_PAYMASTER_URL` hold the same value. Gas sponsorship is set to sponsor all transactions, which is acceptable on testnet only. Recommended: set a sponsorship limit for the chain in the ZeroDev dashboard, so a loop or a leaked endpoint cannot drain the testnet gas balance (`ARCHITECTURE.md` section 7).
 - **First agent.** Created through the web app; its Kernel account was deployed with sponsored gas, and the indexer recorded `account.deployed`, `spend.limits-set`, and `spend.call-allowed` for it.
 
+What this deployment has and has not yet shown, item by item against `SECURITY.md` section 10, is tracked in `docs/testnet-validation-checklist.md`. Record each transaction hash and account address there as a step below is run.
+
 ## 1. Prepare the VPS
 
 Ubuntu 24.04 LTS, at least 2 vCPU, 4 GB RAM, and 40 GB disk (the server image holds the whole compiled workspace and is large). Create two DNS A records pointing at the VPS: `WEB_DOMAIN` (for example `app.example.com`) and `API_DOMAIN` (for example `api.example.com`). They must be same-site, because the session cookie is `SameSite=Strict`.

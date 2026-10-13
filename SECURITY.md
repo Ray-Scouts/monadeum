@@ -115,6 +115,8 @@ Testnet uses real testnet assets. It exists to validate the paths mainnet will u
 - Trading: `ARCHITECTURE.md` section 10 (`TradingModule`).
 - Policies: sections 1 and 4 of this document.
 
+`docs/testnet-validation-checklist.md` maps each of these to the checks a valid testnet deployment must pass (issue #48), and records which are evidenced in this repository and which still need a run on testnet. A testnet deployment is not validated until every item there is evidenced or explicitly accepted in the validation report.
+
 ### Mainnet
 
 Mainnet is opt-in per user and per agent. It is never the default, and unrestricted autonomous mainnet trading is not a mode of this system.

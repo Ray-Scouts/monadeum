@@ -1,8 +1,20 @@
 # Audit package
 
-This directory is the material an external auditor needs to review the on-chain contracts of this repository, prepared under issue #46. It is organized per contract so that each contract in scope has its own section. Today it covers `AgentSpendPolicy`, the on-chain spend policy for agent smart accounts (issue #25), in sections 1 to 11, `X402PaymentValidator`, which bounds the account's x402 payment signatures, in section 12, and `AgentReallocation`, the owner-scoped reallocation and retirement contract (issue #31, merged in #105), in section 13.
+This directory is the material an external auditor needs to review the on-chain contracts of this repository, prepared under issue #46. It is organized per contract so that each contract in scope has its own section. Today it covers `AgentSpendPolicy`, the on-chain spend policy for agent smart accounts (issue #25), in sections 1 to 11, `X402PaymentValidator`, which bounds the account's x402 payment signatures, in section 12, and `AgentReallocation`, the owner-scoped reallocation and retirement contract (issue #31, merged in #105), in section 13. Section 14 ties the testnet deployment to this source, section 15 lists every command that reproduces the package, and section 16 states what remains before and during the external engagement.
 
 `SECURITY.md` section 3 sets the gate this package serves: `AgentSpendPolicy` carries no real user-controlled capital, on testnet or mainnet, before an external audit is complete and every finding is resolved or explicitly accepted as residual risk in `SECURITY.md`.
+
+**Every contract in `contracts/src` that holds, moves, or authorizes the movement of value is in scope.** Checked on 2026-10-12 against every file in `contracts/src`:
+
+| File | Holds or moves value | Package section | Testnet address (`contracts/deployments/monad-testnet.json`) |
+| --- | --- | --- | --- |
+| `AgentSpendPolicy.sol` | Authorizes: the only on-chain bound on what a session key can move from an agent account | 1 to 9 | `0xe54512401B8fCD0DCc3f4Aa4929b99F05AbA3f05` |
+| `X402PaymentValidator.sol` | Authorizes: the only on-chain bound on the account's x402 (EIP-3009) signatures | 12 | `0xCA918F53FFc7507Bd41602c0bD1ef72558705991` |
+| `AgentReallocation.sol` | Moves: pulls the settlement asset from a source account and credits sinks; holds no balance by design | 13 | `0x4e7500415e81017670a9cFb8763f873EE6694A7f` |
+| `IAgentSpendPolicy.sol`, `IAgentReallocation.sol` | No: interfaces and NatSpec specification, reviewed as the specification of the two implementations | 1, 13 | not deployed |
+| `kernel/IKernelModules.sol` | No: Kernel v3.1 interfaces declared locally | 1 | not deployed |
+
+No other contract is deployed by this repository. The files under `contracts/script` (`DeployTestnet.s.sol`, `CreateWmonMarket.s.sol`, `SeedWmonMarket.s.sol`, `KuruTestnet.sol`) are Foundry scripts and interface declarations run from the owner's workstation; they deploy no contract of their own and are out of scope (section 9), except that `DeployTestnet.s.sol` fixes the constructor arguments and role addresses of the three contracts, which the auditor may wish to read alongside them. There is no wallet-deployment factory of our own: accounts are created by ZeroDev's Kernel v3.1 factory, out of scope (section 9).
 
 Contents:
 
@@ -19,6 +31,9 @@ Contents:
 11. Request for proposal (draft)
 12. X402PaymentValidator
 13. AgentReallocation
+14. Deployed testnet bytecode
+15. Reproducing this package
+16. Engagement status and remaining steps
 
 ## 1. Scope
 
@@ -149,6 +164,8 @@ Coverage of `src/` (test and mock files excluded), from `forge coverage` with fo
 
 Regenerated on 2026-10-10 after the traded-asset change, and again after rebasing onto the `X402PaymentValidator` change (107 tests passed, the two fork suites skipped; `AgentSpendPolicy.sol` figures unchanged by the rebase, which touched only its comments; the validator's own figures are in the same `summary.txt`; before the change: 106/106 lines, 139/139 statements, 26/26 branches, 23/23 functions). Before this package, coverage was 99.06% of lines and 96.15% of branches. The one uncovered branch was the second, independent refusal of an uncounted settlement-asset selector in `_check`, unreachable through `setAllowed` by design. `test_check_rejectsUncountedSettlementSelectorEvenIfStored` writes such an entry into storage directly to show `check` refuses it on its own. Coverage is a floor, not evidence of correctness: the invariant and fuzz suites in section 4 are the substantive checks. The same run reports `X402PaymentValidator` (section 12.3) and `AgentReallocation` (section 13.4).
 
+Regenerated again on 2026-10-12 at commit `513e943`, with forge 1.8.5: 15 suites, 188 tests passed, 0 failed, 3 skipped (the three opt-in fork suites). The per-file figures for all three contracts are unchanged from those above and in 12.3 and 13.4; the totals are 99.72% of lines (360/361), 99.61% of statements (516/518), 97.94% of branches (95/97), and 100% of functions (69/69). The test count rose from 178 because `test/DeployTestnet.t.sol` and `test/WmonMarketScripts.t.sol` cover the deployment and market scripts, which are excluded from the coverage figures. Section 15 lists every suite.
+
 To regenerate, from the repository root, with Foundry 1.8.5 installed:
 
 ```sh
@@ -234,7 +251,7 @@ forge test --match-path test/fork/KernelV31Fork.t.sol --fork-url "$MONAD_TESTNET
 
 A fork runs no bundler, so it cannot show that the bundlers used on Monad accept this policy's validation-phase storage reads and opcodes under ERC-7562 (assumption E3), nor that Monad's own client executes the operations the same way as forge's EVM. The step that closes both:
 
-1. Deploy `AgentSpendPolicy` on Monad testnet with a test settlement asset.
+1. Deploy `AgentSpendPolicy` on Monad testnet with a test settlement asset. Done on 2026-10-11 (section 14); one account deployment through ZeroDev's bundler has installed it (`SECURITY.md` section 13), but no spending operation has been validated by it through a bundler.
 2. Run the opt-in testnet test in `libs/wallets` (`WALLETS_TESTNET=1`, see `libs/wallets/README.md`), which installs the policy as policy and hook through ZeroDev's SDK and sends user operations through the ZeroDev bundler.
 3. Repeat the cases of 7.1 there: within caps, over `perTxCap` (expect the bundler to refuse it in simulation), a daily-cap breach (expect inclusion and an execution revert), delegatecall, and the ERC-1271 default.
 4. Record the bundler, its version or endpoint, and the result in `ARCHITECTURE.md` 16.3, and remove assumption E3 from this list.
@@ -292,7 +309,7 @@ This is a draft for issue #46. It has not been sent to any auditor.
 8. `X402PaymentValidator`: whether any signature a fully compromised x402 key can produce moves the settlement asset other than to a listed payee, above `maxValue`, or beyond the 24-hour rate bound, and whether the self-protection rule in section 12.1 holds against direct calls from the account (section 12).
 9. `AgentReallocation`: whether any sequence of calls by a compromised session key, a compromised operator, or both moves capital across owners, debits an account other than the caller, exceeds the cap, floor, or ceiling, or opens evaluations faster than `minEvaluationInterval` (section 13).
 
-**Materials provided**: this README, the interface NatSpec, `ARCHITECTURE.md` section 16.3, `THREAT-MODEL.md` section 7, the test suites, the coverage report, and the static-analysis triage.
+**Materials provided**: this README, the interface NatSpec, `ARCHITECTURE.md` section 16.3, `THREAT-MODEL.md` section 7, the test suites, the coverage report, the static-analysis triage, and the testnet deployment record with its bytecode check (section 14).
 
 **Timeline assumptions** (to confirm with the auditor, not commitments):
 
@@ -354,7 +371,7 @@ What it enforces, in `isValidSignatureWithSender(sender, hash, data)` called by 
 | V8 | Uninstalling stops every signature, including ones made earlier, and drops the payee list | `test_uninstallKillsOutstandingAuthorizationsAndDropsPayees`; `test_fork_uninstallKillsOutstandingAuthorization` |
 | V9 | Configuration is validated and per account | `test_installValidatesConfiguration`; `test_configurationIsPerAccount`; `test_installFromANonKernelCallerReverts` |
 
-The invariant handler acts as a fully compromised x402 key and, separately, as a session key that reaches the validator from the account: in-bounds and out-of-bounds payments, random nonces, lying fields, permits, and direct `onInstall`/`onUninstall` calls with a widened configuration, with time jumps across hours. Suites: `test/X402PaymentValidator.t.sol` (unit and fuzz), `test/X402PaymentValidator.invariant.t.sol`, and `test/fork/X402MainnetFork.t.sol` (opt-in, `--fork-url` at Monad mainnet; 7 tests passed on 2026-10-10, including the exact install and uninstall calls `libs/wallets` builds, including `test_fork_skipSignatureFlagWouldLetASessionKeyPermitTheWholeBalance`, which shows the risk behind section 8, item 5). Coverage of `src/X402PaymentValidator.sol` from `forge coverage` with forge 1.8.5: 100% of statements and branches; `coverage.sh` does not include it yet.
+The invariant handler acts as a fully compromised x402 key and, separately, as a session key that reaches the validator from the account: in-bounds and out-of-bounds payments, random nonces, lying fields, permits, and direct `onInstall`/`onUninstall` calls with a widened configuration, with time jumps across hours. Suites: `test/X402PaymentValidator.t.sol` (unit and fuzz), `test/X402PaymentValidator.invariant.t.sol`, and `test/fork/X402MainnetFork.t.sol` (opt-in, `--fork-url` at Monad mainnet; 7 tests passed on 2026-10-10, including the exact install and uninstall calls `libs/wallets` builds, including `test_fork_skipSignatureFlagWouldLetASessionKeyPermitTheWholeBalance`, which shows the risk behind section 8, item 5). Coverage of `src/X402PaymentValidator.sol` from `forge coverage` with forge 1.8.5: 100% of lines (72/72), statements (109/109), branches (17/17), and functions (16/16). `coverage.sh` includes it: the script excludes only `test/` and `script/`.
 
 ### 12.4 Static analysis
 
@@ -477,5 +494,46 @@ Slither 0.11.4 and Aderyn 0.6.8 (commands as section 6) and `forge lint`, 2026-1
 3. **Multisig threshold is not checkable on-chain.** The contract refuses a role address with no code, not a contract with one signer; the 2-of-3 threshold is a deployment requirement checked at deployment and by monitoring.
 4. **Settlement-asset-only capital.** Positions in other assets (WETH in the default deployment) are not counted: conservative for the source's cap and floor, but a sink holding an open position can exceed `slot_ceiling` times principal in total value (16.5, known gaps).
 5. **Off-chain ranking and zero-downside flag.** Which agents are source and sink, and the zero-downside flag, are computed off-chain and not verifiable on-chain (`THREAT-MODEL.md` section 8).
-6. **EOA owners only.** Policy signatures are ECDSA from an externally owned account; ERC-1271 owners are not supported.
-7. **Not deployed, and not exercised against a deployed Kernel account.** Its interaction with an account is tested against the test double of section 5, not a fork or a bundler.
+6. **EOA owners only.** Policy signatures are ECDSA from an externally owned account; ERC-1271 owners are not supported.7. **Deployed on testnet, but not exercised against a deployed Kernel account.** It is deployed on Monad testnet (section 14) with reallocation off. `currentEvaluation()` and `lastEvaluationAt()` still read 0 on 2026-10-12 (block 70562473), so no evaluation has been opened, and the repository records no `registerAgent`, `commitPolicy`, `reallocate`, or `retire` call against it. Its interaction with an account is tested against the test double of section 5, not a fork or a bundler.
+
+## 14. Deployed testnet bytecode
+
+The three contracts were deployed on Monad testnet on 2026-10-11 by `contracts/script/deploy-testnet.sh`; addresses, transaction hashes, blocks, gas, constructor inputs, and the Safe that holds `AgentReallocation`'s roles are in `contracts/deployments/monad-testnet.json`.
+
+On 2026-10-12, `audit/check-deployed-bytecode.py` compared the runtime bytecode at each recorded address with a `forge build` of commit `513e943` (forge 1.8.5, the settings of section 1), masking the constructor-set immutables on both sides by the build's `immutableReferences`. All three matched byte for byte: `AgentSpendPolicy` 6,716 bytes, `AgentReallocation` 9,276 bytes, `X402PaymentValidator` 6,566 bytes. With `bytecode_hash = "none"` no metadata hash is appended, so the comparison covers the whole runtime code. The source of all three files has not changed since commit `7ee25ee` (2026-10-10). This shows the testnet deployment runs the code in this package; it is not a substitute for explorer source verification, which has not been done (`deploy/README.md`, open question 4).
+
+From `contracts/`, after `forge build`:
+
+```sh
+python3 audit/check-deployed-bytecode.py deployments/monad-testnet.json https://testnet-rpc.monad.xyz
+```
+
+The script sends only `eth_getCode` requests. Run it after `forge build`, not after `forge coverage`, which leaves an unoptimized build in `out/`.
+
+## 15. Reproducing this package
+
+Everything below runs from `contracts/` with Foundry 1.8.5 and the `forge-std` submodule checked out (`git submodule update --init`). None of it sends a transaction.
+
+| Command | What it shows | Last result recorded here |
+| --- | --- | --- |
+| `forge test` | Every suite; the fork suites skip | 2026-10-12, `513e943`: 15 suites, 188 passed, 0 failed, 3 skipped |
+| `bash audit/coverage.sh` | Coverage of `src/`, written to `audit/coverage-report/` | 2026-10-12, `513e943`: figures in section 5 |
+| `forge test --match-path test/fork/KernelV31Fork.t.sol --fork-url https://testnet-rpc.monad.xyz` | Section 7.1, against the Kernel v3.1 contracts on Monad testnet | 2026-10-12: 8 passed |
+| `forge test --match-path test/fork/WmonMarketFork.t.sol --fork-url https://testnet-rpc.monad.xyz` | Creating, seeding, buying on, and closing on the testnet WMON/USDC market, on a fork; outside audit scope, evidence for the trading path | 2026-10-12: 1 passed |
+| `forge test --match-path test/fork/X402MainnetFork.t.sol --fork-url "$MONAD_MAINNET_RPC_URL"` | Section 12.3, against Monad mainnet USDC and Kernel v3.1 | 2026-10-10: 7 passed; not rerun on 2026-10-12 |
+| Slither, Aderyn, `forge lint` | Sections 6, 12.4, 13.4 | 2026-10-10 |
+| `python3 audit/check-deployed-bytecode.py` | Section 14 | 2026-10-12: 3 of 3 match |
+
+Suites: `AgentSpendPolicy.t.sol`, `AgentSpendPolicy.invariant.t.sol`, and `KernelIntegration.t.sol` (sections 4 and 5); `X402PaymentValidator.t.sol` and `X402PaymentValidator.invariant.t.sol` (12.3); `AgentReallocation.t.sol`, `AgentReallocation.invariant.t.sol`, `AgentReallocationEdges.t.sol`, `ReallocationSpendPolicy.t.sol`, and `ReallocationCommitmentVector.t.sol` (13.2 and 13.3); `DeployTestnet.t.sol` and `WmonMarketScripts.t.sol` (the scripts, outside audit scope); and the three fork suites in `test/fork/`.
+
+## 16. Engagement status and remaining steps
+
+Status on 2026-10-12: the package covers every value-bearing contract (the table at the top of this file), the tests and coverage pass, and the deployed testnet bytecode matches the source. **No auditor has been engaged, and the request for proposal in section 11 has not been sent.** The remaining steps are human decisions, in this order, and none can be done from this repository:
+
+1. Choose the auditors to approach and send them section 11, with this file and the commit to pin. The three source files are unchanged since `7ee25ee`, so any later commit that does not touch `contracts/src` audits the same code; pin the commit that merges this section or a later one, so the package and the code agree.
+2. Agree scope, price, and dates in a statement of work. Record the auditor, the pinned commit, and the dates in this section, replacing this status.
+3. Run section 7.2 (the bundler run on testnet) before or during the engagement, so that assumption E3 is either closed or handed to the auditor as open.
+4. Resolve every finding with a code change and a re-test, or accept it in `SECURITY.md` with a stated rationale. No finding is dropped (issue #46).
+5. Publish the final report and the fix review in this directory, with the auditor's permission.
+
+Until step 4 is complete, the gate of `SECURITY.md` section 3 holds: none of the three contracts carries real user-controlled capital, on testnet or mainnet; the testnet deployment holds testnet assets only. The testnet validation checklist (`docs/testnet-validation-checklist.md`) carries the audit's status as a precondition of issue #48.
