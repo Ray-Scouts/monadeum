@@ -46,6 +46,6 @@ contract DeployAgentCommitments is Script {
     /// The deployed code answers the interface and holds no commitment yet.
     function verify(AgentCommitments commitments) public view {
         if (address(commitments).code.length == 0) revert PostCondition("no code");
-        if (commitments.commitmentOf(address(this)).genomeHash != bytes32(0)) revert PostCondition("not empty");
+        if (commitments.commitmentOf(address(0)).genomeHash != bytes32(0)) revert PostCondition("not empty");
     }
 }
