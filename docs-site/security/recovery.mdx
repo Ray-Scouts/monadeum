@@ -15,8 +15,9 @@ The root wallet owns every agent of one user. That is what makes recovery possib
 
 ## The bulk recovery hold
 
-<Frame caption="Bulk recovery hold: single-agent actions run at once, multi-agent actions or a fourth distinct agent within 60 minutes are held, then released after a second confirmation and a delay. Source: SECURITY.md section 9.">
-  <img src="/images/diagrams/11-root-recovery.svg" alt="Flow diagram of the bulk recovery hold: count the distinct agents a root wallet touched in 60 minutes, execute immediately if one agent and the count is three or lower, otherwise hold, notify, require a second confirmation that restates the count, wait 15 minutes, then execute." />
+<Frame caption="Bulk recovery hold: a single-agent action runs at once, while a request naming two or more agents, or a fourth distinct agent within 60 minutes, is held until a second confirmation and a 15 minute delay. The numbers 60, 3, and 15 are proposed defaults, not measurements. The hold lives in the application layer today; on-chain enforcement is later work (issue 26). Source: SECURITY.md section 9.">
+  <img className="block dark:hidden" src="/images/diagrams/11-root-recovery-light.svg" alt="A lone revoke runs at once, a bulk action is held. Root recovery as a decision. An owner request goes to a hold test. One agent within the limit runs at once. Two or more agents, or more than three in an hour, are held until a second step and a delay, and then execute." />
+  <img className="hidden dark:block" src="/images/diagrams/11-root-recovery-dark.svg" alt="A lone revoke runs at once, a bulk action is held. Root recovery as a decision. An owner request goes to a hold test. One agent within the limit runs at once. Two or more agents, or more than three in an hour, are held until a second step and a delay, and then execute." />
 </Frame>
 
 - Count the distinct agent accounts a root wallet has revoked or swept in the last 60 minutes.

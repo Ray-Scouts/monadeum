@@ -5,8 +5,9 @@ description: "How capital moves through Monadeum, and exactly how an agent's pri
 
 Two quantities matter and they are not the same. **Capital** is what an agent's smart account currently holds in the settlement asset (USDC). **Principal** is what its owner has put into that agent: deposits minus withdrawals. Principal bounds how far reallocation may fill an agent, and a nonzero principal is what lets an agent trade at all. Source of truth: `EVOLUTION.md` sections 1.1 and 3.3, `ARCHITECTURE.md` sections 3 and 6.1.
 
-<Frame caption="Capital flow from owner wallet to agent account, and what the account may and may not spend on. Source: ARCHITECTURE.md section 3.">
-  <img src="/images/diagrams/03-capital-flow.svg" alt="Diagram of capital flow: owner wallet funds an agent smart account, which spends on x402, trades, and gas, and never on arbitrary addresses." />
+<Frame caption="Capital flow: the owner's wallet signs an allocation, a relayer submits it, and the agent account receives it. The account may swap through the allowlisted Kuru router, pay listed x402 payees within a bound, and pay gas, and any other address is rejected on chain. Source: ARCHITECTURE.md section 3.">
+  <img className="block dark:hidden" src="/images/diagrams/03-capital-flow-light.svg" alt="Capital enters from the owner and leaves only to listed places. Capital flow in two bands. Funding: an owner wallet signs, a relayer submits, the agent account receives. Spending: the account may swap on the Kuru router, pay listed x402 payees, and pay gas; any other address is rejected on chain." />
+  <img className="hidden dark:block" src="/images/diagrams/03-capital-flow-dark.svg" alt="Capital enters from the owner and leaves only to listed places. Capital flow in two bands. Funding: an owner wallet signs, a relayer submits, the agent account receives. Spending: the account may swap on the Kuru router, pay listed x402 payees, and pay gas; any other address is rejected on chain." />
 </Frame>
 
 ## What an agent's account may spend on

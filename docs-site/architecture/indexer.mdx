@@ -5,8 +5,9 @@ description: "How the indexer syncs finalized chain events into the read-model, 
 
 Source of truth: `ARCHITECTURE.md` section 10 (indexer entry) and `apps/indexer/README.md`.
 
-<Frame caption="Indexer sync: finalized batches, cursor written with each batch, reorg rollback, and projections. Source: ARCHITECTURE.md section 10.">
-  <img src="/images/diagrams/10-indexer-sync.svg" alt="Diagram of the indexer sync loop: read finalized logs in bounded batches, compare the stored cursor hash with the chain, apply rows and the cursor in one transaction, and roll back to the newest canonical stored hash on mismatch." />
+<Frame caption="Indexer sync: the finalized head, a bounded log fetch, decoding by registered handlers, validation against canonical block hashes with rollback on a mismatch, one atomic apply, and readers on a read-only role. Reallocation handlers load only when configured and are covered by in-memory tests. Source: ARCHITECTURE.md section 10.">
+  <img className="block dark:hidden" src="/images/diagrams/10-indexer-sync-light.svg" alt="Only finalized blocks reach the read-model. One indexer batch as a vertical path: read the finalized head, fetch logs, decode them with registered handlers, validate the batch against canonical block hashes, apply it in one transaction, and serve readers from PostgreSQL. A mismatch rolls back." />
+  <img className="hidden dark:block" src="/images/diagrams/10-indexer-sync-dark.svg" alt="Only finalized blocks reach the read-model. One indexer batch as a vertical path: read the finalized head, fetch logs, decode them with registered handlers, validate the batch against canonical block hashes, apply it in one transaction, and serve readers from PostgreSQL. A mismatch rolls back." />
 </Frame>
 
 ## Sync

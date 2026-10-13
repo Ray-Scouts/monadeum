@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1204" width="1200" height="1204" role="img" aria-labelledby="t d" font-family="Inter, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+<title id="t">Services propose, the chain decides</title>
+<desc id="d">System map in three bands: owner and browser, off-chain services, on-chain contracts. Reading: the tick runner sends an approved plan through ZeroDev to the agent account, where the spend policy contract checks it on chain.</desc>
+<defs>
+<marker id="e-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#77758A"/></marker>
+<marker id="s-flow" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#77758A"/></marker>
+<marker id="e-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#6A50F2"/></marker>
+<marker id="s-accent" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#6A50F2"/></marker>
+<marker id="e-good" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#0E9A62"/></marker>
+<marker id="s-good" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#0E9A62"/></marker>
+<marker id="e-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#D22B4C"/></marker>
+<marker id="s-bad" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#D22B4C"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1199" height="1203" rx="14" fill="#FBFAF9" stroke="#E1DFD8"/>
+<text x="40" y="58" font-size="24" font-weight="700" fill="#15131F">Services propose, the chain decides</text>
+<text x="40" y="88" font-size="16" fill="#5B5968">Where each part runs, and which path an action takes before capital moves.</text>
+<rect x="32.0" y="124.0" width="1136.0" height="152.0" rx="12" fill="#F3F2EE" stroke="#E1DFD8"/>
+<text x="52.0" y="156.0" font-size="15" font-weight="600" fill="#5B5968">Owner and browser</text>
+<rect x="32.0" y="312.0" width="1136.0" height="448.0" rx="12" fill="#F3F2EE" stroke="#E1DFD8"/>
+<text x="52.0" y="344.0" font-size="15" font-weight="600" fill="#5B5968">Off-chain services</text>
+<rect x="32.0" y="796.0" width="1136.0" height="308.0" rx="12" fill="#F3F2EE" stroke="#E1DFD8"/>
+<text x="52.0" y="828.0" font-size="15" font-weight="600" fill="#5B5968">On-chain contracts on Monad</text>
+<path d="M350.7 214.0 L450.7 214.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)" marker-start="url(#s-flow)"/>
+<path d="M201.3 252.0 L201.3 364.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M998.7 252.0 L998.7 298.0 Q998.7 308.0 988.7 308.0 L271.3 308.0 Q261.3 308.0 261.3 318.0 L261.3 364.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M350.7 402.0 L450.7 402.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M849.3 402.0 L749.3 402.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M600.0 440.0 L600.0 512.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M600.0 588.0 L600.0 660.0" fill="none" stroke="#6A50F2" stroke-width="2" stroke-linejoin="round" marker-end="url(#e-accent)"/>
+<path d="M600.0 736.0 L600.0 848.0" fill="none" stroke="#6A50F2" stroke-width="2" stroke-linejoin="round" marker-end="url(#e-accent)"/>
+<path d="M450.7 886.0 L350.7 886.0" fill="none" stroke="#0E9A62" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-good)"/>
+<path d="M749.3 886.0 L988.7 886.0 Q998.7 886.0 998.7 876.0 L998.7 440.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M600.0 924.0 L600.0 1004.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-dasharray="6 5" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M540.0 924.0 L540.0 954.0 Q540.0 964.0 530.0 964.0 L211.3 964.0 Q201.3 964.0 201.3 974.0 L201.3 1004.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<rect x="372.4" y="201.0" width="56.6" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="400.7" y="219.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">signs</text>
+<rect x="175.7" y="283.8" width="51.3" height="26.0" rx="13.0" fill="#FBFAF9"/>
+<text x="201.3" y="301.8" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">calls</text>
+<rect x="416.1" y="295.0" width="59.2" height="26.0" rx="13.0" fill="#FBFAF9"/>
+<text x="445.7" y="313.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">reads</text>
+<rect x="369.3" y="389.0" width="62.6" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="400.7" y="407.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">stores</text>
+<rect x="768.9" y="389.0" width="60.9" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="799.3" y="407.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">writes</text>
+<rect x="563.9" y="463.0" width="72.2" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="600.0" y="481.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">policies</text>
+<rect x="523.8" y="611.0" width="152.3" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="600.0" y="629.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5238E0">approved plan only</text>
+<rect x="540.0" y="767.8" width="120.1" height="26.0" rx="13.0" fill="#FBFAF9"/>
+<text x="600.0" y="785.8" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5238E0">user operation</text>
+<rect x="366.3" y="873.0" width="68.7" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="400.7" y="891.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#0A6E46">checks</text>
+<rect x="943.4" y="650.0" width="110.5" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="998.7" y="668.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">finalized logs</text>
+<rect x="567.8" y="951.0" width="64.4" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="600.0" y="969.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">swaps</text>
+<rect x="322.8" y="951.0" width="95.7" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="370.7" y="969.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">reallocates</text>
+<rect x="450.7" y="176.0" width="298.7" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="466.7" y="208.0" font-size="18" font-weight="650" fill="#15131F">Owner wallet</text>
+<text x="466.7" y="232.0" font-size="14.5" fill="#5B5968">Privy, third party</text>
+<circle cx="731.3" cy="196.0" r="5.5" fill="#15131F"/>
+<rect x="52.0" y="176.0" width="298.7" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="68.0" y="208.0" font-size="18" font-weight="650" fill="#15131F">Web app</text>
+<text x="68.0" y="232.0" font-size="14.5" fill="#5B5968">Owner signs in</text>
+<circle cx="332.7" cy="196.0" r="5.5" fill="#15131F"/>
+<rect x="849.3" y="176.0" width="298.7" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="865.3" y="208.0" font-size="18" font-weight="650" fill="#15131F">Evidence page</text>
+<text x="865.3" y="232.0" font-size="14.5" fill="#5B5968">Public, no sign-in</text>
+<circle cx="1130.0" cy="196.0" r="4.8" fill="#FFFFFF" stroke="#15131F" stroke-width="1.8"/>
+<rect x="52.0" y="364.0" width="298.7" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="68.0" y="396.0" font-size="18" font-weight="650" fill="#15131F">API</text>
+<text x="68.0" y="420.0" font-size="14.5" fill="#5B5968">No agent loop</text>
+<circle cx="332.7" cy="384.0" r="5.5" fill="#15131F"/>
+<rect x="450.7" y="364.0" width="298.7" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="466.7" y="396.0" font-size="18" font-weight="650" fill="#15131F">PostgreSQL</text>
+<text x="466.7" y="420.0" font-size="14.5" fill="#5B5968">Read-model, policies</text>
+<circle cx="731.3" cy="384.0" r="5.5" fill="#15131F"/>
+<rect x="849.3" y="364.0" width="298.7" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="865.3" y="396.0" font-size="18" font-weight="650" fill="#15131F">Indexer</text>
+<text x="865.3" y="420.0" font-size="14.5" fill="#5B5968">Finalized blocks only</text>
+<circle cx="1130.0" cy="384.0" r="5.5" fill="#15131F"/>
+<rect x="450.7" y="512.0" width="298.7" height="76" rx="12" fill="#EFEBFE" stroke="#6A50F2" stroke-width="1.8"/>
+<text x="466.7" y="544.0" font-size="18" font-weight="650" fill="#15131F">Tick runner</text>
+<text x="466.7" y="568.0" font-size="14.5" fill="#5B5968">Off by default</text>
+<circle cx="731.3" cy="532.0" r="4.8" fill="#FFFFFF" stroke="#15131F" stroke-width="1.8"/>
+<rect x="450.7" y="660.0" width="298.7" height="76" rx="12" fill="#EFEBFE" stroke="#6A50F2" stroke-width="1.8"/>
+<text x="466.7" y="692.0" font-size="18" font-weight="650" fill="#15131F">ZeroDev</text>
+<text x="466.7" y="716.0" font-size="14.5" fill="#5B5968">Bundler, paymaster</text>
+<circle cx="731.3" cy="680.0" r="5.5" fill="#15131F"/>
+<rect x="52.0" y="848.0" width="298.7" height="76" rx="12" fill="#EFEBFE" stroke="#6A50F2" stroke-width="1.8"/>
+<text x="68.0" y="880.0" font-size="18" font-weight="650" fill="#15131F">Spend policy</text>
+<text x="68.0" y="904.0" font-size="14.5" fill="#5B5968">Caps, allowlist</text>
+<circle cx="332.7" cy="868.0" r="5.5" fill="#15131F"/>
+<rect x="450.7" y="848.0" width="298.7" height="76" rx="12" fill="#EFEBFE" stroke="#6A50F2" stroke-width="1.8"/>
+<text x="466.7" y="880.0" font-size="18" font-weight="650" fill="#15131F">Agent account</text>
+<text x="466.7" y="904.0" font-size="14.5" fill="#5B5968">Kernel v3.1</text>
+<circle cx="731.3" cy="868.0" r="5.5" fill="#15131F"/>
+<rect x="52.0" y="1004.0" width="298.7" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="68.0" y="1036.0" font-size="18" font-weight="650" fill="#15131F">Reallocation</text>
+<text x="68.0" y="1060.0" font-size="14.5" fill="#5B5968">Deployed, switch off</text>
+<circle cx="332.7" cy="1024.0" r="4.8" fill="#FFFFFF" stroke="#15131F" stroke-width="1.8"/>
+<rect x="450.7" y="1004.0" width="298.7" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2" stroke-dasharray="6 5"/>
+<text x="466.7" y="1036.0" font-size="18" font-weight="650" fill="#15131F">Kuru router</text>
+<text x="466.7" y="1060.0" font-size="14.5" fill="#5B5968">No testnet market</text>
+<circle cx="46.0" cy="1148.0" r="5.5" fill="#15131F"/>
+<text x="64.0" y="1153.0" font-size="14.5" fill="#5B5968">Observed on testnet</text>
+<circle cx="243.0" cy="1148.0" r="4.8" fill="#FBFAF9" stroke="#15131F" stroke-width="1.8"/>
+<text x="261.0" y="1153.0" font-size="14.5" fill="#5B5968">Built, off or unrun</text>
+<rect x="412.3" y="1141.0" width="16" height="14" rx="4" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.4" stroke-dasharray="3 2.5"/>
+<text x="436.3" y="1153.0" font-size="14.5" fill="#5B5968">Design only</text>
+<path d="M550.1 1148.0 L566.1 1148.0" stroke="#0E9A62" stroke-width="2"/>
+<text x="574.1" y="1153.0" font-size="14.5" fill="#5B5968">Allowed or approved</text>
+</svg>

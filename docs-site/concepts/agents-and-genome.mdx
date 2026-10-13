@@ -47,6 +47,7 @@ The reasons are in `EVOLUTION.md` section 1.1. The pre-registered study found th
 
 None of these values is a calibrated edge, because the study found none to calibrate to. They limit what an agent can lose to costs and exposure. They were derived from MON/USDC cost snapshots, and the owner then decided that agents trade WETH/USDC on mainnet, so the derivation must be redone with measured WETH/USDC costs before testnet capital is treated as meaningful (`EVOLUTION.md` section 1.1).
 
-<Frame caption="Agent lifecycle with creation, ticks, evaluation, and retirement. Source: ARCHITECTURE.md section 4.">
-  <img src="/images/diagrams/02-agent-lifecycle.svg" alt="Agent lifecycle diagram: created, active, evaluated on a fixed cadence, and retired with identity preserved." />
+<Frame caption="Agent lifecycle: created, active, retired, and the separate owner stop. Retirement never moves capital. Source: ARCHITECTURE.md section 4.">
+  <img className="block dark:hidden" src="/images/diagrams/02-agent-lifecycle-light.svg" alt="Retiring an agent never moves its capital. Lifecycle in three states: Created, Active, Retired, with a separate Stopped state. Reading: a funded agent becomes active, a failed evaluation retires it and leaves its balance in place, and an owner stop revokes the session key without retiring." />
+  <img className="hidden dark:block" src="/images/diagrams/02-agent-lifecycle-dark.svg" alt="Retiring an agent never moves its capital. Lifecycle in three states: Created, Active, Retired, with a separate Stopped state. Reading: a funded agent becomes active, a failed evaluation retires it and leaves its balance in place, and an owner stop revokes the session key without retiring." />
 </Frame>

@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 980" width="1200" height="980" role="img" aria-labelledby="t d" font-family="Inter, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+<title id="t">The owner signs every step that gives an agent power</title>
+<desc id="d">Activation as a vertical path: sign in, create the agent, deploy the account, activate a session key, fund, then ticks. The owner signs the deployment, the activation, and the funding. Side branches show the genome commitment at deployment and the stop that revokes the key.</desc>
+<defs>
+<marker id="e-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#8483A0"/></marker>
+<marker id="s-flow" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#8483A0"/></marker>
+<marker id="e-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#836EF9"/></marker>
+<marker id="s-accent" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#836EF9"/></marker>
+<marker id="e-good" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#3FD69A"/></marker>
+<marker id="s-good" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#3FD69A"/></marker>
+<marker id="e-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#FF6680"/></marker>
+<marker id="s-bad" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#FF6680"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1199" height="979" rx="14" fill="#0A0A10" stroke="#2B2A3A"/>
+<text x="40" y="58" font-size="24" font-weight="700" fill="#F6F5F2">The owner signs every step that gives an agent power</text>
+<text x="40" y="88" font-size="16" fill="#A4A3B6">Signing in deploys nothing. Activation does not by itself make an agent trade.</text>
+<path d="M301.0 200.0 L301.0 260.0" fill="none" stroke="#8483A0" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M301.0 336.0 L301.0 396.0" fill="none" stroke="#836EF9" stroke-width="2" stroke-linejoin="round" marker-end="url(#e-accent)"/>
+<path d="M301.0 472.0 L301.0 532.0" fill="none" stroke="#836EF9" stroke-width="2" stroke-linejoin="round" marker-end="url(#e-accent)"/>
+<path d="M301.0 608.0 L301.0 668.0" fill="none" stroke="#836EF9" stroke-width="2" stroke-linejoin="round" marker-end="url(#e-accent)"/>
+<path d="M301.0 744.0 L301.0 804.0" fill="none" stroke="#8483A0" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M550.0 434.0 L949.0 434.0" fill="none" stroke="#8483A0" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M550.0 570.0 L949.0 570.0" fill="none" stroke="#FF6680" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-bad)"/>
+<rect x="264.5" y="217.0" width="73.1" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="301.0" y="235.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#A4A3B6">session</text>
+<rect x="249.2" y="353.0" width="103.5" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="301.0" y="371.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#B3A6FF">owner signs</text>
+<rect x="249.2" y="489.0" width="103.5" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="301.0" y="507.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#B3A6FF">owner signs</text>
+<rect x="249.2" y="625.0" width="103.5" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="301.0" y="643.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#B3A6FF">owner signs</text>
+<rect x="263.6" y="761.0" width="74.8" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="301.0" y="779.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#A4A3B6">indexed</text>
+<rect x="682.9" y="421.0" width="133.1" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="749.5" y="439.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#A4A3B6">commits hashes</text>
+<rect x="712.1" y="557.0" width="74.8" height="26.0" rx="13.0" fill="#0A0A10"/>
+<text x="749.5" y="575.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#FF8CA0">revokes</text>
+<rect x="52.0" y="124.0" width="498.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="68.0" y="156.0" font-size="18" font-weight="650" fill="#F6F5F2">Sign in</text>
+<text x="68.0" y="180.0" font-size="14.5" fill="#A4A3B6">Privy login or wallet</text>
+<circle cx="532.0" cy="144.0" r="5.5" fill="#F6F5F2"/>
+<rect x="52.0" y="260.0" width="498.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="68.0" y="292.0" font-size="18" font-weight="650" fill="#F6F5F2">Create agent</text>
+<text x="68.0" y="316.0" font-size="14.5" fill="#A4A3B6">Preset, caps, genome hash</text>
+<circle cx="532.0" cy="280.0" r="5.5" fill="#F6F5F2"/>
+<rect x="52.0" y="396.0" width="498.0" height="76" rx="12" fill="#262050" stroke="#836EF9" stroke-width="1.8"/>
+<text x="68.0" y="428.0" font-size="18" font-weight="650" fill="#F6F5F2">Deploy account</text>
+<text x="68.0" y="452.0" font-size="14.5" fill="#A4A3B6">Sponsored gas, then indexed</text>
+<circle cx="532.0" cy="416.0" r="5.5" fill="#F6F5F2"/>
+<rect x="52.0" y="532.0" width="498.0" height="76" rx="12" fill="#262050" stroke="#836EF9" stroke-width="1.8"/>
+<text x="68.0" y="564.0" font-size="18" font-weight="650" fill="#F6F5F2">Activate key</text>
+<text x="68.0" y="588.0" font-size="14.5" fill="#A4A3B6">Session key, spend policy</text>
+<circle cx="532.0" cy="552.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="52.0" y="668.0" width="498.0" height="76" rx="12" fill="#262050" stroke="#836EF9" stroke-width="1.8"/>
+<text x="68.0" y="700.0" font-size="18" font-weight="650" fill="#F6F5F2">Fund</text>
+<text x="68.0" y="724.0" font-size="14.5" fill="#A4A3B6">Principal after indexing</text>
+<circle cx="532.0" cy="688.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="52.0" y="804.0" width="498.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="68.0" y="836.0" font-size="18" font-weight="650" fill="#F6F5F2">Ticks</text>
+<text x="68.0" y="860.0" font-size="14.5" fill="#A4A3B6">Needs a policy and runner</text>
+<circle cx="532.0" cy="824.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="949.0" y="396.0" width="199.0" height="76" rx="12" fill="#1B1B26" stroke="#4A485F" stroke-width="1.2"/>
+<text x="965.0" y="428.0" font-size="18" font-weight="650" fill="#F6F5F2">Commitment</text>
+<text x="965.0" y="452.0" font-size="14.5" fill="#A4A3B6">Written, not deployed</text>
+<circle cx="1130.0" cy="416.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<rect x="949.0" y="532.0" width="199.0" height="76" rx="12" fill="#3A1A24" stroke="#FF6680" stroke-width="1.5"/>
+<text x="965.0" y="564.0" font-size="18" font-weight="650" fill="#F6F5F2">Stop</text>
+<text x="965.0" y="588.0" font-size="14.5" fill="#A4A3B6">Key destroyed, revoked</text>
+<circle cx="1130.0" cy="552.0" r="4.8" fill="#1B1B26" stroke="#F6F5F2" stroke-width="1.8"/>
+<circle cx="46.0" cy="924.0" r="5.5" fill="#F6F5F2"/>
+<text x="64.0" y="929.0" font-size="14.5" fill="#A4A3B6">Observed on testnet</text>
+<circle cx="243.0" cy="924.0" r="4.8" fill="#0A0A10" stroke="#F6F5F2" stroke-width="1.8"/>
+<text x="261.0" y="929.0" font-size="14.5" fill="#A4A3B6">Built, off or unrun</text>
+<rect x="412.3" y="917.0" width="16" height="14" rx="4" fill="#1B1B26" stroke="#4A485F" stroke-width="1.4" stroke-dasharray="3 2.5"/>
+<text x="436.3" y="929.0" font-size="14.5" fill="#A4A3B6">Design only</text>
+<path d="M550.1 924.0 L566.1 924.0" stroke="#FF6680" stroke-width="2"/>
+<text x="574.1" y="929.0" font-size="14.5" fill="#A4A3B6">Refused or reverts</text>
+</svg>

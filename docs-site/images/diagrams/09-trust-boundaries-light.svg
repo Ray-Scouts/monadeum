@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 938" width="1200" height="938" role="img" aria-labelledby="t d" font-family="Inter, system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif">
+<title id="t">Every layer re-checks what the layer before it claims</title>
+<desc id="d">Three bands: untrusted input, the platform, and Monad. The browser and provider responses are re-validated by the platform, the strategy's proposal is checked by the RiskModule, and the chain re-checks the approved plan and rejects any other address.</desc>
+<defs>
+<marker id="e-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#77758A"/></marker>
+<marker id="s-flow" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#77758A"/></marker>
+<marker id="e-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#6A50F2"/></marker>
+<marker id="s-accent" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#6A50F2"/></marker>
+<marker id="e-good" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#0E9A62"/></marker>
+<marker id="s-good" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#0E9A62"/></marker>
+<marker id="e-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L10 5 L1 9 Z" fill="#D22B4C"/></marker>
+<marker id="s-bad" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto"><path d="M9 1 L0 5 L9 9 Z" fill="#D22B4C"/></marker>
+</defs>
+<rect x="0.5" y="0.5" width="1199" height="937" rx="14" fill="#FBFAF9" stroke="#E1DFD8"/>
+<text x="40" y="58" font-size="24" font-weight="700" fill="#15131F">Every layer re-checks what the layer before it claims</text>
+<text x="40" y="88" font-size="16" fill="#5B5968">The platform is trusted for the MVP. The chain enforces its rules regardless.</text>
+<rect x="32.0" y="124.0" width="1136.0" height="152.0" rx="12" fill="#F3F2EE" stroke="#E1DFD8"/>
+<text x="52.0" y="156.0" font-size="15" font-weight="600" fill="#5B5968">Untrusted input</text>
+<rect x="32.0" y="312.0" width="1136.0" height="152.0" rx="12" fill="#F3F2EE" stroke="#E1DFD8"/>
+<text x="52.0" y="344.0" font-size="15" font-weight="600" fill="#5B5968">Platform</text>
+<rect x="32.0" y="500.0" width="1136.0" height="338.0" rx="12" fill="#F3F2EE" stroke="#E1DFD8"/>
+<text x="52.0" y="532.0" font-size="15" font-weight="600" fill="#5B5968">Monad, enforces its rules</text>
+<path d="M211.5 252.0 L211.5 364.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M450.5 252.0 L450.5 364.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-dasharray="6 5" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M550.0 402.0 L650.0 402.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M749.5 440.0 L749.5 552.0" fill="none" stroke="#6A50F2" stroke-width="2" stroke-linejoin="round" marker-end="url(#e-accent)"/>
+<path d="M1048.5 252.0 L1048.5 486.0 Q1048.5 496.0 1038.5 496.0 L819.5 496.0 Q809.5 496.0 809.5 506.0 L809.5 552.0" fill="none" stroke="#D22B4C" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-bad)"/>
+<path d="M251.0 590.0 L650.0 590.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M749.5 628.0 L749.5 738.0" fill="none" stroke="#77758A" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-flow)"/>
+<path d="M809.5 628.0 L809.5 673.0 Q809.5 683.0 819.5 683.0 L1038.5 683.0 Q1048.5 683.0 1048.5 693.0 L1048.5 738.0" fill="none" stroke="#D22B4C" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#e-bad)"/>
+<rect x="160.6" y="283.8" width="101.8" height="26.0" rx="13.0" fill="#FBFAF9"/>
+<text x="211.5" y="301.8" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">re-validated</text>
+<rect x="381.3" y="283.8" width="138.4" height="26.0" rx="13.0" fill="#FBFAF9"/>
+<text x="450.5" y="301.8" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">schema-checked</text>
+<rect x="570.8" y="389.0" width="58.3" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="600.0" y="407.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">intent</text>
+<rect x="689.9" y="471.8" width="119.2" height="26.0" rx="13.0" fill="#FBFAF9"/>
+<text x="749.5" y="489.8" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5238E0">approved plan</text>
+<rect x="989.8" y="361.0" width="117.5" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="1048.5" y="379.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#B3203D">no new power</text>
+<rect x="402.2" y="577.0" width="96.6" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="450.5" y="595.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">can revoke</text>
+<rect x="716.4" y="670.0" width="66.1" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="749.5" y="688.0" font-size="14.5" font-weight="500" text-anchor="middle" fill="#5B5968">moves</text>
+<rect x="1010.6" y="697.5" width="75.7" height="26.0" rx="13.0" fill="#F3F2EE"/>
+<text x="1048.5" y="715.5" font-size="14.5" font-weight="500" text-anchor="middle" fill="#B3203D">rejected</text>
+<rect x="52.0" y="176.0" width="199.0" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="68.0" y="208.0" font-size="18" font-weight="650" fill="#15131F">Browser</text>
+<text x="68.0" y="232.0" font-size="14.5" fill="#5B5968">Captures intent only</text>
+<circle cx="233.0" cy="196.0" r="5.5" fill="#15131F"/>
+<rect x="351.0" y="176.0" width="199.0" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2" stroke-dasharray="6 5"/>
+<text x="367.0" y="208.0" font-size="18" font-weight="650" fill="#15131F">Provider data</text>
+<text x="367.0" y="232.0" font-size="14.5" fill="#5B5968">Live, untrusted input</text>
+<rect x="949.0" y="176.0" width="199.0" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="965.0" y="208.0" font-size="18" font-weight="650" fill="#15131F">Incoming transfer</text>
+<text x="965.0" y="232.0" font-size="14.5" fill="#5B5968">Token or NFT sent in</text>
+<rect x="52.0" y="364.0" width="199.0" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="68.0" y="396.0" font-size="18" font-weight="650" fill="#15131F">API</text>
+<text x="68.0" y="420.0" font-size="14.5" fill="#5B5968">Re-derives ownership</text>
+<circle cx="233.0" cy="384.0" r="5.5" fill="#15131F"/>
+<rect x="351.0" y="364.0" width="199.0" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="367.0" y="396.0" font-size="18" font-weight="650" fill="#15131F">Strategy</text>
+<text x="367.0" y="420.0" font-size="14.5" fill="#5B5968">A proposal only</text>
+<circle cx="532.0" cy="384.0" r="4.8" fill="#FFFFFF" stroke="#15131F" stroke-width="1.8"/>
+<rect x="650.0" y="364.0" width="199.0" height="76" rx="12" fill="#EFEBFE" stroke="#6A50F2" stroke-width="1.8"/>
+<text x="666.0" y="396.0" font-size="18" font-weight="650" fill="#15131F">RiskModule</text>
+<text x="666.0" y="420.0" font-size="14.5" fill="#5B5968">Checks signed policy</text>
+<circle cx="831.0" cy="384.0" r="4.8" fill="#FFFFFF" stroke="#15131F" stroke-width="1.8"/>
+<rect x="52.0" y="552.0" width="199.0" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="68.0" y="584.0" font-size="18" font-weight="650" fill="#15131F">Owner wallet</text>
+<text x="68.0" y="608.0" font-size="14.5" fill="#5B5968">Revokes any key</text>
+<circle cx="233.0" cy="572.0" r="5.5" fill="#15131F"/>
+<rect x="650.0" y="552.0" width="199.0" height="76" rx="12" fill="#EFEBFE" stroke="#6A50F2" stroke-width="1.8"/>
+<text x="666.0" y="584.0" font-size="18" font-weight="650" fill="#15131F">Agent account</text>
+<text x="666.0" y="608.0" font-size="14.5" fill="#5B5968">Spend policy, allowlist</text>
+<circle cx="831.0" cy="572.0" r="5.5" fill="#15131F"/>
+<rect x="650.0" y="738.0" width="199.0" height="76" rx="12" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.2"/>
+<text x="666.0" y="770.0" font-size="18" font-weight="650" fill="#15131F">Reallocation</text>
+<text x="666.0" y="794.0" font-size="14.5" fill="#5B5968">Same owner only</text>
+<circle cx="831.0" cy="758.0" r="4.8" fill="#FFFFFF" stroke="#15131F" stroke-width="1.8"/>
+<rect x="949.0" y="738.0" width="199.0" height="76" rx="12" fill="#FCE8EC" stroke="#D22B4C" stroke-width="1.5"/>
+<text x="965.0" y="770.0" font-size="18" font-weight="650" fill="#15131F">Other address</text>
+<text x="965.0" y="794.0" font-size="14.5" fill="#5B5968">Not on the allowlist</text>
+<circle cx="46.0" cy="882.0" r="5.5" fill="#15131F"/>
+<text x="64.0" y="887.0" font-size="14.5" fill="#5B5968">Observed on testnet</text>
+<circle cx="243.0" cy="882.0" r="4.8" fill="#FBFAF9" stroke="#15131F" stroke-width="1.8"/>
+<text x="261.0" y="887.0" font-size="14.5" fill="#5B5968">Built, off or unrun</text>
+<rect x="412.3" y="875.0" width="16" height="14" rx="4" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.4" stroke-dasharray="3 2.5"/>
+<text x="436.3" y="887.0" font-size="14.5" fill="#5B5968">Design only</text>
+<path d="M550.1 882.0 L566.1 882.0" stroke="#D22B4C" stroke-width="2"/>
+<text x="574.1" y="887.0" font-size="14.5" fill="#5B5968">Refused or reverts</text>
+<rect x="734.9" y="875.0" width="16" height="14" rx="4" fill="#FFFFFF" stroke="#BDBAAE" stroke-width="1.4"/>
+<text x="758.9" y="887.0" font-size="14.5" fill="#5B5968">Outside actor</text>
+</svg>

@@ -5,8 +5,9 @@ description: "The processes and libraries that make up Monadeum, why the policy 
 
 Source of truth: `ARCHITECTURE.md` sections 1, 2, and 10 to 12.
 
-<Frame caption="System architecture: web, API, worker, indexer, stores, and the chain. Source: ARCHITECTURE.md section 2.">
-  <img src="/images/diagrams/01-system-architecture.svg" alt="System architecture diagram showing the web app and API, the worker with the risk engine and execution layer, the indexer, Postgres and Redis, x402 providers, Kuru, and the Monad chain." />
+<Frame caption="System architecture in bands: owner and browser, off-chain services, and on-chain contracts. AgentCommitments is written and tested but not deployed, the X402PaymentValidator is deployed and installed on no account, and the identity registry is not built, so none of them is drawn here. Source: ARCHITECTURE.md sections 2, 10, and 16.">
+  <img className="block dark:hidden" src="/images/diagrams/01-system-architecture-light.svg" alt="Services propose, the chain decides. System map in three bands: owner and browser, off-chain services, on-chain contracts. Reading: the tick runner sends an approved plan through ZeroDev to the agent account, where the spend policy contract checks it on chain." />
+  <img className="hidden dark:block" src="/images/diagrams/01-system-architecture-dark.svg" alt="Services propose, the chain decides. System map in three bands: owner and browser, off-chain services, on-chain contracts. Reading: the tick runner sends an approved plan through ZeroDev to the agent account, where the spend policy contract checks it on chain." />
 </Frame>
 
 ## Deployable processes

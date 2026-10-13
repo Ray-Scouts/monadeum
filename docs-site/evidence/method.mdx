@@ -5,8 +5,9 @@ description: "How Monadeum tests its mechanisms before they touch capital: a det
 
 Source of truth: `simulation/README.md`, `ECONOMICS.md` sections 3 and 8, and `simulation/results/`.
 
-<Frame caption="Evidence chain: a hypothesis and rule fixed in advance, a deterministic run, a result file, and a documented decision. Source: ECONOMICS.md section 8 and EVOLUTION.md section 7.">
-  <img src="/images/diagrams/12-evidence-chain.svg" alt="Chain of evidence from a pre-registered hypothesis and decision rule, to a seeded deterministic simulation run, to a committed result file, to the decision recorded in the core documents." />
+<Frame caption="Evidence chain for the issue 102 study: a test pre-registered before any data was fetched, a backtest on real Kuru MON-USDC data, a negative result (the top fifth of genomes beat the bottom fifth by 0.028 sd per tick against 0.278 modeled), and a no-go recorded in a core document that keeps reallocation off in code. The study covers one strategy plugin only. Here a filled dot means a stage that was run and reported. Source: ECONOMICS.md section 8 and EVOLUTION.md section 7.">
+  <img className="block dark:hidden" src="/images/diagrams/12-evidence-chain-light.svg" alt="A negative study switched reallocation off, in code. The evidence chain as a vertical path: a pre-registered test, a backtest on real data, a negative result, a recorded no-go decision, and the reallocation switch set off with a production gate. The study scope is limited to one strategy plugin." />
+  <img className="hidden dark:block" src="/images/diagrams/12-evidence-chain-dark.svg" alt="A negative study switched reallocation off, in code. The evidence chain as a vertical path: a pre-registered test, a backtest on real data, a negative result, a recorded no-go decision, and the reallocation switch set off with a production gate. The study scope is limited to one strategy plugin." />
 </Frame>
 
 ## The harness

@@ -1,96 +1,56 @@
 """
-Monadeum - 08 Worker tick: what happens in one hourly tick of one agent.
+Monadeum - 08 Worker tick: one agent, one interval, and where it stops.
+
+Claim: a tick either submits an approved plan or stops without acting.
 
 Derived from:
-  ARCHITECTURE.md section 11  (worker architecture: BullMQ jobs, idempotency,
-                               per-agent lock, tick runner, signed policy gate,
-                               market signal, known limits)
-  ARCHITECTURE.md section 10  (TradingModule: plan shape, no double sell,
-                               submission, fill tracking)
-  ARCHITECTURE.md section 14  (failure handling, fail closed)
-  SECURITY.md section 8       (fail-closed behavior)
+  ARCHITECTURE.md section 11 (worker: BullMQ jobs, idempotency, per-agent lock,
+                  tick runner, signed policy gate, genome commitment check,
+                  population breaker)
+  ARCHITECTURE.md section 10 (TradingModule), section 14 (failure handling)
+  SECURITY.md sections 8 and 9 (fail closed, population circuit breaker)
   THREAT-MODEL.md invariants 6, 7, 10
 
-The tick runner is off by default (WORKER_TICK_RUNNER=enabled). No tick has
-run against the live testnet deployment: the testnet WMON/USDC market was not
-on chain on 2026-10-12, so every step below is implemented and tested offline
-but not observed live.
+Status on 2026-10-13: the tick runner is off by default (WORKER_TICK_RUNNER=enabled).
+No tick has run against the live testnet deployment, because the WMON/USDC market
+was not on chain on 2026-10-12. Every step is implemented and tested offline, so
+every node is a ring. The tick interval is one hour by design; the testnet value
+decided on 2026-10-13 is five minutes, so the figure names no interval.
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(__file__))
-from _style import *
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from toolkit import Diagram, OBSERVED, BUILT, DESIGN, build
 
-g = new_graph(
-    "worker-tick",
-    rankdir="TB",
-    title="Worker tick: one agent, one hour, and every point where it stops without acting",
-    subtitle="Any failure ends the tick with no action, and that outcome is final for that tick key.",
-    source="ARCHITECTURE.md sections 10, 11, 14; SECURITY.md section 8",
-    ranksep="0.4",
-    nodesep="0.6",
-    newrank="true",
+d = Diagram(
+    "08-worker-tick",
+    title="A tick either submits an approved plan or stops without acting",
+    subtitle="Any failure ends the tick with no action, and that outcome is final for the tick key.",
+    desc=("One worker tick as a vertical path: claim the tick, check the gates, observe, propose, "
+          "check risk, submit, and measure. Four steps can fail, and each failure leads to a single "
+          "no-action outcome that is final for that tick."),
+    cols=4, gutter=100, rows=7, gaps={0: 0, 1: 60, 2: 60, 3: 60, 4: 60, 5: 60, 6: 60},
 )
+d.node("claim", "Claim tick", "Per-agent lock, one key", 0, 0, span=2, status=BUILT)
+d.node("gates", "Check gates", "Breaker, policy, commitment", 0, 1, span=2, status=BUILT)
+d.node("observe", "Observe", "Market mid, balance, signal", 0, 2, span=2, status=BUILT)
+d.node("propose", "Propose plan", "Long, flat, or none", 0, 3, span=2, status=BUILT)
+d.node("risk", "Risk check", "Plan hash approved", 0, 4, span=2, status=BUILT, kind="accent")
+d.node("submit", "Submit", "Session key, approved hash", 0, 5, span=2, status=BUILT, kind="good")
+d.node("measure", "Measure", "One fitness cost entry", 0, 6, span=2, status=BUILT)
+d.node("stop", "No action", "Final for this tick key", 3, 3, status=BUILT, kind="bad")
+d.edge("claim", "gates", "locked")
+d.edge("gates", "observe", "all pass")
+d.edge("observe", "propose", "signal")
+d.edge("propose", "risk", "plan")
+d.edge("risk", "submit", "approved plan only", kind="good")
+d.edge("submit", "measure", "outcome")
+XM = d.gutter_x(1, 0.5) + 150
+d.edge("gates", "stop", "gate fails", kind="bad", mode="hvh", to=-32, mid=XM, lseg=0)
+d.edge("observe", "stop", "read fails", kind="bad", mode="hvh", to=-16, mid=XM, lseg=0)
+d.edge("propose", "stop", "no plan", kind="bad")
+d.edge("risk", "stop", "rejected", kind="bad", mode="hvh", to=32, mid=XM, lseg=0)
 
-steps = [
-    ("t1", "Trigger job fires",
-     ["Tick number = whole tick intervals since the Unix epoch", "Same number in every process for the same interval"], "service"),
-    ("t2", "Enqueue tick job",
-     ["Job id derived from the tick key (agent id, tick number)", "A duplicate trigger adds nothing"], "service"),
-    ("t3", "Take the per-agent Redis lock",
-     ["Concurrency of 1 per agent; lock held: retry later,", "not counted as a failed attempt"], "service"),
-    ("tb", "Population breaker check",
-     ["No tick runs while the latest breaker entry is a trip;", "only a human clear releases it, across restarts"], "control"),
-    ("t4", "Sample the market mid",
-     ["(best bid + best ask) / 2, first valid read of the tick,", "stored once in market_mid_samples, funded agent or not"], "service"),
-    ("t5", "Policy and commitment gate",
-     ["Verify every stored policy version against WORKER_POLICY_SIGNER;", "one in effect must cover the configured market",
-      "With AgentCommitments configured, genome and strategy version must match", "Otherwise skipped before anything is claimed or sent"], "control"),
-    ("t6", "Claim the tick record",
-     ["Insert-if-absent per (agent id, tick); a restart resumes", "the approved plan and never decides again"], "service"),
-    ("t7", "Observe and read the signal",
-     ["Balance and rolling-window spend read from chain", "Signal = trailing mean of mid returns over timeHorizon, minus entryThreshold"], "service"),
-    ("t8", "Propose and build the plan",
-     ["Long: approve exact notional, then swap with minAmountOut", "Flat: close the whole open position; no information offered"], "service"),
-    ("t9", "RiskModule evaluates the plan",
-     ["Approval and plan hash written to the tick record before submission"], "control"),
-    ("t10", "Submit through the session key",
-     ["Only a plan whose hash equals the approved hash is sent", "Restart: reconcile by tick key before any resend"], "service"),
-    ("t11", "Measure once per tick key",
-     ["Gas, fees, slippage, x402 spend, realized P&L of a close", "become one fitness cost entry"], "service"),
-]
-for nid, title, lines, kind in steps:
-    card(g, nid, title, lines, kind=kind, status=OFF)
-    g.node(nid, group="m")
-
-card(g, "stop", "No action, final for this tick key",
-     ["Breaker tripped, unreadable chain or market, policy unverified,", "genome commitment mismatch,",
-      "plan not buildable, RiskModule rejection, signer refusal,",
-      "unknown outcome: stays open and is reconciled by the same key",
-      "The next scheduled tick runs normally"],
-     kind="bad", status=OFF)
-card(g, "ev", "Evaluate job, every 20th tick",
-     ["Enqueued with the trigger, delayed by half a tick interval", "so that tick's agent jobs run first (diagram 5)"],
-     kind="control", status=OFF)
-card(g, "gap", "Known limits, not verified live",
-     ["No tick has run on the live deployment", "Signal needs timeHorizon + 1 whole samples:",
-      "25 ticks with the conservative preset", "A flat seeded book gives signal 0, so no buy"],
-     kind="threat", status=DESIGN)
-
-ids = [s[0] for s in steps]
-for a, b in zip(ids, ids[1:]):
-    link(g, a, b, kind="flow")
-link(g, "t5", "stop", "no valid policy", kind="danger", constraint="false")
-link(g, "t7", "stop", "read or signal fails", kind="danger", constraint="false")
-link(g, "t9", "stop", "rejected", kind="danger", constraint="false")
-link(g, "t10", "stop", "signer refuses", kind="danger", constraint="false")
-link(g, "t2", "ev", "on the evaluation cadence", kind="control", constraint="false")
-
-for a, b in (("t3", "ev"), ("t5", "stop"), ("t9", "gap")):
-    with g.subgraph() as sg:
-        sg.attr(rank="same")
-        sg.node(a)
-        sg.node(b)
-
-render(g, "08-worker-tick")
+if __name__ == "__main__":
+    build(d, "08-worker-tick")

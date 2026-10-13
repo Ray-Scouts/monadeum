@@ -1,88 +1,52 @@
 """
-Monadeum - 12 Evidence chain: from a hypothesis to a switched-off feature.
+Monadeum - 12 Evidence chain: from a pre-registered test to a switched-off feature.
+
+Claim: a negative study switched reallocation off, in code and not only in prose.
 
 Derived from:
-  EVOLUTION.md section 3.5   (simulation evidence, issues 85, 89, 92)
-  EVOLUTION.md section 7     (item 4, the gating unknown, and the issue 102 outcome)
-  EVOLUTION.md section 8.5   (how the mechanism was adopted and why it is gated)
-  ARCHITECTURE.md section 5  (reallocation switch, off by default, production
-                              acknowledgement)
+  EVOLUTION.md section 3.5 (simulation evidence), section 7 (item 4, the gating
+                  unknown, the issue 102 outcome), section 8.5 (why the mechanism
+                  is gated)
+  ARCHITECTURE.md section 5 (reallocation switch, production acknowledgement)
   simulation/results/genome-edge-preregistration.md and genome-edge.md
-  ECONOMICS.md section 8     (the decision rule the studies were held to)
+  ECONOMICS.md section 8 (the decision rule the studies were held to)
 
-The numbers below are quoted from simulation/results/genome-edge.md as
-summarized in EVOLUTION.md section 7. The study covers one strategy plugin on
-Kuru MON-USDC; it says nothing about strategies with a different signal or
-with information purchases that pay, which it could not replay.
+Numbers are quoted from simulation/results/genome-edge.md as summarized in
+EVOLUTION.md section 7: the top fifth beat the bottom fifth by 0.028 sd per tick,
+against 0.278 modeled. The study covers one strategy plugin on Kuru MON-USDC and
+says nothing about other strategies. In this figure the filled dot means a stage
+that was run and reported, not a testnet observation.
 """
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(__file__))
-from _style import *
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from toolkit import Diagram, OBSERVED, BUILT, DESIGN, build
 
-g = new_graph(
-    "evidence-chain",
-    rankdir="TB",
-    title="Evidence chain: how the issue 102 study turned reallocation off",
-    subtitle="A decision is written down with its evidence, and what it implies is switched off in code, not only in prose.",
-    source="EVOLUTION.md sections 3.5, 7, 8.5; ARCHITECTURE.md section 5; simulation/results/genome-edge*.md",
-    legend_extra=("In this diagram a thick border also marks a stage that was run and reported",),
-    ranksep="0.42",
-    nodesep="0.5",
-    newrank="true",
+d = Diagram(
+    "12-evidence-chain",
+    title="A negative study switched reallocation off, in code",
+    subtitle="The decision is written down with its evidence, and the feature is gated.",
+    desc=("The evidence chain as a vertical path: a pre-registered test, a backtest on real data, a negative "
+          "result, a recorded no-go decision, and the reallocation switch set off with a production gate. "
+          "The study scope is limited to one strategy plugin."),
+    cols=4, gutter=100, rows=5, gaps={0: 0, 1: 60, 2: 60, 3: 60, 4: 60},
+    legend_filled="Run and reported", legend_ring="Built, off by default",
+    legend_dashed="Not shown by the study",
 )
+d.node("pre", "Pre-registered test", "Rules fixed before any data", 0, 0, span=2, status=OBSERVED)
+d.node("sim", "Backtest", "1,000 genomes, held-out data", 0, 1, span=2, status=OBSERVED)
+d.node("res", "Edge not found", "0.028 observed, 0.278 modeled", 0, 2, span=2, status=OBSERVED, kind="bad")
+d.node("dec", "No-go recorded", "In EVOLUTION.md section 7", 0, 3, span=2, status=OBSERVED)
+d.node("off", "Reallocation off", "Unset means false", 0, 4, span=2, status=BUILT, kind="accent")
+d.node("limit", "Study scope", "One strategy plugin", 3, 2, status=DESIGN)
+d.node("gate", "Production gate", "Needs a new study", 3, 4, status=BUILT)
+d.edge("pre", "sim", "then run")
+d.edge("sim", "res", "reported")
+d.edge("res", "dec", "recorded")
+d.edge("dec", "off", "switched off", kind="accent")
+d.edge("res", "limit", "limits", dashed=True)
+d.edge("gate", "off", "unlocks")
 
-card(g, "pre", "Before the study: simulation evidence",
-     ["Issues 85, 89, 92 (simulation only, assumed genome edge 0.006 or 0.009):",
-      "owner-scoped reallocation beat a static population in 11 of 12 cells at 0.009",
-      "Adopted as a design, not as a claim about production returns"],
-     kind="neutral", status=IMPL)
-card(g, "hyp", "1  Hypothesis",
-     ["The production strategy's genomes carry a net, persistent edge", "of at least the modeled size (the gating unknown)",
-      "Reallocation converts an edge into return; it does not create one"],
-     kind="service", status=IMPL)
-card(g, "reg", "2  Pre-registration",
-     ["Design, thresholds, and decision rule fixed in genome-edge-preregistration.md,",
-      "committed before any study data was fetched",
-      "Deviations are stated before the results"],
-     kind="control", status=IMPL)
-card(g, "sim", "3  Backtest on real data",
-     ["1,000 genomes of the long-or-flat plugin on hourly closes built from Kuru MON-USDC trades",
-      "In-sample 2025-12-23 to 2026-05-31, held out 2026-06-01 to 2026-09-30",
-      "Net of measured costs: 0 bps taker fee, 7.4 bps half-spread, gas per swap"],
-     kind="service", status=IMPL)
-card(g, "res", "4  Result: negative on all three tests",
-     ["Edge: top fifth beat bottom fifth by 0.028 sd per tick (bounds 0.015 to 0.039), modeled 0.278",
-      "Rank persistence: 0.066 (bounds 0.027 to 0.103), modeled 0.416; at zero cost -0.017",
-      "Calibrated re-run at magnitude 0: inconclusive, 2 of 12 cells significant, both lower"],
-     kind="bad", status=IMPL)
-card(g, "dec", "5  Decision recorded in a core document",
-     ["EVOLUTION.md section 7 item 4: no-go for the current strategy plugin", "The product rests on well-calibrated static agents",
-      "ARCHITECTURE.md section 5 records the switch and its production gate"],
-     kind="control", status=IMPL)
-card(g, "off", "6  What is switched off as a result",
-     ["MONADEUM_REALLOCATION_ENABLED: unset means false; any other value refuses to start",
-      "Evaluation still runs fitness and retirement; no policy read, nothing planned or sent",
-      "API refuses POST /policies/reallocation with 409 reallocation-disabled; the web shows it off"],
-     kind="threat", status=OFF)
-card(g, "gate", "Production gate",
-     ["Needs MONADEUM_REALLOCATION_PRODUCTION_ACK, which may be set only after a new", "pre-registered study, on a strategy with a real signal, reports a persistent edge"],
-     kind="control", status=OFF)
-card(g, "limit", "What the study does not show",
-     ["Nothing about strategies with a different signal,", "or with information purchases that pay"],
-     kind="neutral", status=DESIGN)
-
-for a, b in (("pre", "hyp"), ("hyp", "reg"), ("reg", "sim"), ("sim", "res"), ("res", "dec"), ("dec", "off")):
-    link(g, a, b, kind="control")
-link(g, "off", "gate")
-link(g, "res", "limit", dashed=True, constraint="false")
-
-with g.subgraph() as sg:
-    sg.attr(rank="same")
-    sg.node("res")
-    sg.node("limit")
-for n in ("pre", "hyp", "reg", "sim", "res", "dec", "off", "gate"):
-    g.node(n, group="m")
-
-render(g, "12-evidence-chain")
+if __name__ == "__main__":
+    build(d, "12-evidence-chain")

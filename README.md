@@ -50,31 +50,52 @@ The explorer URL pattern (`https://testnet.monadscan.com/address/<address>`) is 
 
 Sources are in [`docs-site/images/diagrams/`](./docs-site/images/diagrams).
 
-![System architecture: web app and API, the worker with the risk engine and execution layer, the indexer, Postgres and Redis, x402 providers, Kuru, and the Monad chain.](./docs-site/images/diagrams/01-system-architecture.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs-site/images/diagrams/01-system-architecture-dark.svg">
+  <img src="./docs-site/images/diagrams/01-system-architecture-light.svg" alt="Services propose, the chain decides. System map in three bands: owner and browser, off-chain services, on-chain contracts. Reading: the tick runner sends an approved plan through ZeroDev to the agent account, where the spend policy contract checks it on chain.">
+</picture>
 
 *System architecture. Source: `ARCHITECTURE.md` section 2.*
 
-![Capital flow from the owner wallet to an agent smart account, and what the account may and may not spend on.](./docs-site/images/diagrams/03-capital-flow.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs-site/images/diagrams/03-capital-flow-dark.svg">
+  <img src="./docs-site/images/diagrams/03-capital-flow-light.svg" alt="Capital enters from the owner and leaves only to listed places. Capital flow in two bands. Funding: an owner wallet signs, a relayer submits, the agent account receives. Spending: the account may swap on the Kuru router, pay listed x402 payees, and pay gas; any other address is rejected on chain.">
+</picture>
 
 *Capital flow. Source: `ARCHITECTURE.md` section 3.*
 
-![Spend control layers: the signed application policy, the on-chain validation phase, and the on-chain execution phase with the rolling daily cap.](./docs-site/images/diagrams/04-spend-control-layers.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs-site/images/diagrams/04-spend-control-layers-dark.svg">
+  <img src="./docs-site/images/diagrams/04-spend-control-layers-light.svg" alt="Every spend is checked twice before capital moves. Spend control as a vertical path: a proposal passes the RiskModule off chain, then the spend policy validation and the daily cap record on chain, and only then does capital move. Each check has a refusal branch, and a circuit breaker can halt all proposals.">
+</picture>
 
 *Spend control layers. Source: `SECURITY.md` section 9.*
 
-![x402 payment flow: request, payment requirements, risk check, a signature bounded by the validator, settlement, and reconciliation.](./docs-site/images/diagrams/07-x402-payment-flow.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs-site/images/diagrams/07-x402-payment-flow-dark.svg">
+  <img src="./docs-site/images/diagrams/07-x402-payment-flow-light.svg" alt="An agent can pay only a listed payee, within chain-enforced bounds. The x402 payment path as a vertical flow: check budget, request, sign, retry with payment, reconcile. The validator contract checks the signature on chain, a provider and a facilitator sit outside, and both are unverified assumptions.">
+</picture>
 
 *x402 payment flow. Source: `ARCHITECTURE.md` section 16.3.*
 
-![One worker tick: sample the market, verify the signed policy, observe, propose, build the plan, risk evaluation, submit the approved plan hash, measure.](./docs-site/images/diagrams/08-worker-tick.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs-site/images/diagrams/08-worker-tick-dark.svg">
+  <img src="./docs-site/images/diagrams/08-worker-tick-light.svg" alt="A tick either submits an approved plan or stops without acting. One worker tick as a vertical path: claim the tick, check the gates, observe, propose, check risk, submit, and measure. Four steps can fail, and each failure leads to a single no-action outcome that is final for that tick.">
+</picture>
 
 *Worker tick. Source: `ARCHITECTURE.md` section 11.*
 
-![Trust boundaries between the model, the risk engine, the account, external providers, the owner wallet, the database, and the frontend.](./docs-site/images/diagrams/09-trust-boundaries.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs-site/images/diagrams/09-trust-boundaries-dark.svg">
+  <img src="./docs-site/images/diagrams/09-trust-boundaries-light.svg" alt="Every layer re-checks what the layer before it claims. Three bands: untrusted input, the platform, and Monad. The browser and provider responses are re-validated by the platform, the strategy's proposal is checked by the RiskModule, and the chain re-checks the approved plan and rejects any other address.">
+</picture>
 
 *Trust boundaries. Source: `THREAT-MODEL.md` section 3.*
 
-![Evidence chain: a pre-registered hypothesis and rule, a deterministic run, a committed result file, and a recorded decision.](./docs-site/images/diagrams/12-evidence-chain.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs-site/images/diagrams/12-evidence-chain-dark.svg">
+  <img src="./docs-site/images/diagrams/12-evidence-chain-light.svg" alt="A negative study switched reallocation off, in code. The evidence chain as a vertical path: a pre-registered test, a backtest on real data, a negative result, a recorded no-go decision, and the reallocation switch set off with a production gate. The study scope is limited to one strategy plugin.">
+</picture>
 
 *Evidence chain. Source: `ECONOMICS.md` section 8 and `EVOLUTION.md` section 7.*
 

@@ -23,8 +23,9 @@ room_j  = max(0, slot_ceiling * sink_j.principal - sink_j.capital)
 moved   = min(sum(offer), sum(room))
 ```
 
-<Frame caption="Reallocation and retirement on an evaluation. Source: ARCHITECTURE.md section 5.">
-  <img src="/images/diagrams/05-reallocation-retirement.svg" alt="Diagram of an evaluation: fitness and niches are computed, starved agents retire, and for owners with a signed policy capital moves from bottom ranked sources to top ranked sinks through one on-chain call per source." />
+<Frame caption="One evaluation: fitness and retirement always run and retirement moves nothing; a switch, off by default, gates the plan, the RiskModule check, the on-chain contract checks, and the move. Constants (cap 0.2, floor 0.06, every 20 ticks) are proposed defaults. Source: ARCHITECTURE.md section 5.">
+  <img className="block dark:hidden" src="/images/diagrams/05-reallocation-retirement-light.svg" alt="Reallocation is off by default, and retirement moves nothing. One evaluation as a vertical path. Evaluation always runs retirement, which leaves capital in place. A switch, off by default, gates planning, the RiskModule, the on-chain contract checks, and the move." />
+  <img className="hidden dark:block" src="/images/diagrams/05-reallocation-retirement-dark.svg" alt="Reallocation is off by default, and retirement moves nothing. One evaluation as a vertical path. Evaluation always runs retirement, which leaves capital in place. A switch, off by default, gates planning, the RiskModule, the on-chain contract checks, and the move." />
 </Frame>
 
 ## The owner's policy

@@ -5,8 +5,9 @@ description: "How spend is limited twice: the signed application-layer policy an
 
 Source of truth: `ARCHITECTURE.md` sections 16.1 and 16.3, `SECURITY.md` sections 1 and 9, `contracts/src/IAgentSpendPolicy.sol`, and `libs/risk`.
 
-<Frame caption="Spend control layers: application policy, then on-chain validation, then on-chain execution. Source: SECURITY.md section 9.">
-  <img src="/images/diagrams/04-spend-control-layers.svg" alt="Layered diagram of spend controls: the worker risk engine with its signed policy, the account's validation phase with allowlist, recipient rule and per-transaction cap, and the execution phase with the rolling daily cap." />
+<Frame caption="Spend control layers: the RiskModule checks a proposal off chain against a signed policy; the on-chain spend policy then validates the operation (allowlist, recipient, per-transaction cap) and records it in the execution phase against a rolling daily cap. The spend policy is deployed on Monad testnet and not audited, and no spend validated by it through a bundler has been observed yet, so the checks are shown as built, not observed. The population circuit breaker halts every tick until a human clears it. Source: SECURITY.md sections 1, 9, and 13.">
+  <img className="block dark:hidden" src="/images/diagrams/04-spend-control-layers-light.svg" alt="Every spend is checked twice before capital moves. Spend control as a vertical path: a proposal passes the RiskModule off chain, then the spend policy validation and the daily cap record on chain, and only then does capital move. Each check has a refusal branch, and a circuit breaker can halt all proposals." />
+  <img className="hidden dark:block" src="/images/diagrams/04-spend-control-layers-dark.svg" alt="Every spend is checked twice before capital moves. Spend control as a vertical path: a proposal passes the RiskModule off chain, then the spend policy validation and the daily cap record on chain, and only then does capital move. Each check has a refusal branch, and a circuit breaker can halt all proposals." />
 </Frame>
 
 ## Layer 1: the signed application policy

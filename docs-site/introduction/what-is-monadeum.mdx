@@ -9,8 +9,9 @@ Monadeum is a product for creating AI agents that own capital on Monad, make eco
 
 An owner creates an agent and funds it. From then on the agent runs on a schedule. At each tick it observes its environment, decides whether buying information is worth its price, reasons about an opportunity, and proposes at most one economic action. A deterministic Policy and Risk Engine evaluates the exact transaction the proposal would produce. Only an approved plan reaches the execution layer, and the agent's own smart account applies a second, independent limit on-chain. Afterward the outcome is measured and fitness is updated.
 
-<Frame caption="Agent lifecycle, from creation through ticks and evaluations to retirement. Source: ARCHITECTURE.md section 4.">
-  <img src="/images/diagrams/02-agent-lifecycle.svg" alt="Diagram of an agent's lifecycle: created, active with a tick loop of observe, decide, propose, check, execute and measure, then retired." />
+<Frame caption="Agent lifecycle: created, active, retired, and the separate owner stop. Retirement happens at an evaluation (capital below the floor, or the bottom of its niche for repeated windows; both are proposed defaults) and never moves capital. Source: ARCHITECTURE.md section 4.">
+  <img className="block dark:hidden" src="/images/diagrams/02-agent-lifecycle-light.svg" alt="Retiring an agent never moves its capital. Lifecycle in three states: Created, Active, Retired, with a separate Stopped state. Reading: a funded agent becomes active, a failed evaluation retires it and leaves its balance in place, and an owner stop revokes the session key without retiring." />
+  <img className="hidden dark:block" src="/images/diagrams/02-agent-lifecycle-dark.svg" alt="Retiring an agent never moves its capital. Lifecycle in three states: Created, Active, Retired, with a separate Stopped state. Reading: a funded agent becomes active, a failed evaluation retires it and leaves its balance in place, and an owner stop revokes the session key without retiring." />
 </Frame>
 
 ## Three design commitments
