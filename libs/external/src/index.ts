@@ -13,7 +13,8 @@ export {
   NansenSignalFeed,
   NansenUsageLedger,
   acceptNetflow,
+  acceptNetflowList,
   loadNansenConfig,
   signalFromNetflow,
 } from "./nansen.js";
-export type { NansenConfig, NansenResult, NansenUsageEntry, NetflowRow } from "./nansen.js";
+export type { NansenConfig, NansenResult, NansenUsageEntry, NetflowListRow, NetflowRow } from "./nansen.js";

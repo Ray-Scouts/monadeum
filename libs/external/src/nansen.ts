@@ -1,4 +1,4 @@
-import type { Accepted } from "./accept.js";
+import { acceptTokenField, type Accepted } from "./accept.js";
 
 /**
  * Nansen Smart Money signal (ARCHITECTURE.md section 8, "Nansen Smart Money signal"). Everything Nansen returns is
@@ -72,6 +72,31 @@ export function acceptNetflow(payload: unknown, tokenAddress: string): Accepted<
   return reject("token not in response");
 }
 
+export interface NetflowListRow {
+  /** Only if it matches the token-field pattern; otherwise "?". Never free text. */
+  symbol: string;
+  tokenAddress: string;
+  netFlow24hUsd: number;
+}
+
+/** Validates a netflow response for listing: at most `limit` rows, each reduced to a symbol, an address, and one number. */
+export function acceptNetflowList(payload: unknown, limit: number): Accepted<NetflowListRow[]> {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return reject("netflow shape");
+  const data = (payload as Record<string, unknown>).data;
+  if (!Array.isArray(data)) return reject("netflow data");
+  if (data.length > NANSEN_MAX_ROWS) return reject("netflow rows");
+  const rows: NetflowListRow[] = [];
+  for (const raw of data.slice(0, limit)) {
+    if (raw === null || typeof raw !== "object") return reject("netflow row");
+    const row = raw as Record<string, unknown>;
+    if (typeof row.token_address !== "string" || !/^[0-9a-zA-Z]{1,64}$/.test(row.token_address.replace(/^0x/, ""))) return reject("netflow token address");
+    if (!finite(row.net_flow_24h_usd)) return reject("netflow values");
+    const symbol = acceptTokenField(row.token_symbol);
+    rows.push({ symbol: symbol.ok ? symbol.value : "?", tokenAddress: row.token_address.toLowerCase(), netFlow24hUsd: row.net_flow_24h_usd });
+  }
+  return { ok: true, value: rows };
+}
+
 /** The signal: 24-hour smart money net flow over `normalizerUsd`, clamped to [-1, 1]. */
 export function signalFromNetflow(row: NetflowRow, normalizerUsd: number): number {
   if (!finite(normalizerUsd) || normalizerUsd <= 0) throw new Error("normalizerUsd must be positive");
@@ -113,7 +138,8 @@ export type NansenResult =
 
 export interface NansenClientOptions {
   apiKey: string;
-  tokenAddress: string;
+  /** Required for `smartMoneySignal`; `listNetflow` needs none. */
+  tokenAddress?: string;
   ledger?: NansenUsageLedger;
   normalizerUsd?: number;
   maxCreditsPerDay?: number;
@@ -125,7 +151,7 @@ export interface NansenClientOptions {
 export class NansenClient {
   readonly ledger: NansenUsageLedger;
   private readonly apiKey: string;
-  private readonly tokenAddress: string;
+  private readonly tokenAddress: string | null;
   private readonly normalizerUsd: number;
   private readonly maxCreditsPerDay: number;
   private readonly timeoutMs: number;
@@ -134,9 +160,9 @@ export class NansenClient {
 
   constructor(options: NansenClientOptions) {
     if (!options.apiKey.trim()) throw new Error("NANSEN_API_KEY is empty");
-    if (!ADDRESS.test(options.tokenAddress)) throw new Error("the Nansen token address is not a 20-byte hex address");
+    if (options.tokenAddress !== undefined && !ADDRESS.test(options.tokenAddress)) throw new Error("the Nansen token address is not a 20-byte hex address");
     this.apiKey = options.apiKey.trim();
-    this.tokenAddress = options.tokenAddress;
+    this.tokenAddress = options.tokenAddress ?? null;
     this.ledger = options.ledger ?? new NansenUsageLedger();
     this.normalizerUsd = options.normalizerUsd ?? DEFAULT_NORMALIZER_USD;
     this.maxCreditsPerDay = options.maxCreditsPerDay ?? DEFAULT_MAX_CREDITS_PER_DAY;
@@ -147,6 +173,39 @@ export class NansenClient {
 
   /** One call, one bounded signal or a refusal. Never throws on a network or data failure, and never invents a signal. */
   async smartMoneySignal(): Promise<NansenResult> {
+    const token = this.tokenAddress;
+    if (token === null) return { ok: false, reason: "no token address", usage: null };
+    const body = {
+      chains: ["monad"],
+      filters: { token_address: [token], include_stablecoins: true },
+      pagination: { page: 1, per_page: 10 },
+      order_by: [{ field: "net_flow_24h_usd", direction: "DESC" }],
+    };
+    const result = await this.run(body, (parsed) => acceptNetflow(parsed, token));
+    if (!result.ok) return result;
+    return { ok: true, signal: signalFromNetflow(result.value, this.normalizerUsd), row: result.value, usage: result.usage };
+  }
+
+  /**
+   * One call with no token filter: the top rows Nansen returns for chain monad, validated and bounded. For the owner's
+   * probe (`--list`), to see which tokens Nansen has data for. It counts against the same credit budget.
+   */
+  async listNetflow(limit = 20): Promise<{ ok: true; rows: NetflowListRow[]; usage: NansenUsageEntry } | { ok: false; reason: string; usage: NansenUsageEntry | null }> {
+    const bounded = Math.max(1, Math.min(NANSEN_MAX_ROWS, Math.floor(limit)));
+    const body = {
+      chains: ["monad"],
+      filters: { include_stablecoins: true },
+      pagination: { page: 1, per_page: bounded },
+      order_by: [{ field: "net_flow_24h_usd", direction: "DESC" }],
+    };
+    const result = await this.run(body, (parsed) => acceptNetflowList(parsed, bounded));
+    return result.ok ? { ok: true, rows: result.value, usage: result.usage } : result;
+  }
+
+  private async run<T>(
+    body: unknown,
+    parse: (parsed: unknown) => Accepted<T>,
+  ): Promise<{ ok: true; value: T; usage: NansenUsageEntry } | { ok: false; reason: string; usage: NansenUsageEntry | null }> {
     const at = this.clock().toISOString();
     const entry = (partial: Pick<NansenUsageEntry, "status" | "outcome"> & Partial<NansenUsageEntry>): NansenUsageEntry => ({
       at,
@@ -156,19 +215,13 @@ export class NansenClient {
       creditsRemaining: null,
       ...partial,
     });
-    const refuse = (usage: NansenUsageEntry, reason: string): NansenResult => {
+    const refuse = (usage: NansenUsageEntry, reason: string): { ok: false; reason: string; usage: NansenUsageEntry } => {
       this.ledger.record(usage);
       return { ok: false, reason, usage };
     };
     if (this.ledger.creditsOnDay(at.slice(0, 10)) + NANSEN_SMART_MONEY_CREDITS > this.maxCreditsPerDay) {
       return refuse(entry({ status: null, outcome: "budget" }), "daily credit budget");
     }
-    const body = {
-      chains: ["monad"],
-      filters: { token_address: [this.tokenAddress], include_stablecoins: true },
-      pagination: { page: 1, per_page: 10 },
-      order_by: [{ field: "net_flow_24h_usd", direction: "DESC" }],
-    };
     let response: Response;
     let text: string;
     try {
@@ -199,11 +252,11 @@ export class NansenClient {
     } catch {
       return refuse(entry({ status: response.status, outcome: "rejected", ...paid }), "not json");
     }
-    const accepted = acceptNetflow(parsed, this.tokenAddress);
+    const accepted = parse(parsed);
     if (!accepted.ok) return refuse(entry({ status: response.status, outcome: "rejected", ...paid }), accepted.anomaly);
     const usage = entry({ status: response.status, outcome: "signal", ...paid });
     this.ledger.record(usage);
-    return { ok: true, signal: signalFromNetflow(accepted.value, this.normalizerUsd), row: accepted.value, usage };
+    return { ok: true, value: accepted.value, usage };
   }
 }
 

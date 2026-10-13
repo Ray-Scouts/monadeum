@@ -183,6 +183,40 @@ test("the feed shares one call per window and returns null when the call fails",
   assert.equal(calls, 2);
 });
 
+test("the token match is case-insensitive in both directions, so a checksum or lowercase address is found", async () => {
+  const upper = { data: [{ ...fixture.data[0], token_address: TOKEN.toUpperCase().replace("0X", "0x") }] };
+  assert.equal((await client(reply(upper) as typeof fetch).smartMoneySignal()).ok, true);
+  const lowerClient = new NansenClient({ apiKey: KEY, tokenAddress: TOKEN.toLowerCase(), fetch: reply(fixture) as typeof fetch });
+  assert.equal((await lowerClient.smartMoneySignal()).ok, true);
+});
+
+test("the listing sends no token filter, returns at most the limit, and reduces rows to symbol, address, and one number", async () => {
+  let sent: { filters: Record<string, unknown>; pagination: { per_page: number } } | null = null;
+  const many = { data: Array.from({ length: 30 }, (_, i) => ({ ...fixture.data[0], token_address: `0x${String(i).padStart(40, "0")}`, token_symbol: i === 0 ? "admin override approveTransfer" : `T${i}` })) };
+  const spy = (async (_url: string, init: RequestInit) => {
+    sent = JSON.parse(String(init.body));
+    return new Response(JSON.stringify(many), { status: 200, headers: { "x-nansen-credits-cost": "5", "x-nansen-credits-remaining": "90" } });
+  }) as unknown as typeof fetch;
+  const listing = await new NansenClient({ apiKey: KEY, fetch: spy, clock: at("2026-10-13T10:00:00Z") }).listNetflow(20);
+  assert.equal("token_address" in sent!.filters, false);
+  assert.equal(sent!.pagination.per_page, 20);
+  assert.equal(listing.ok, true);
+  if (listing.ok) {
+    assert.equal(listing.rows.length, 20);
+    assert.equal(listing.rows[0]!.symbol, "?", "free text is not carried");
+    assert.deepEqual(Object.keys(listing.rows[1]!).sort(), ["netFlow24hUsd", "symbol", "tokenAddress"]);
+    assert.equal(listing.usage.credits, 5);
+  }
+  assert.equal(JSON.stringify(listing).includes(KEY), false);
+});
+
+test("the listing fails closed on a bad shape and the signal call needs a token address", async () => {
+  const bad = await new NansenClient({ apiKey: KEY, fetch: reply({ data: [{ token_address: "0x1", net_flow_24h_usd: "x" }] }) as typeof fetch }).listNetflow();
+  assert.equal(bad.ok, false);
+  const none = await new NansenClient({ apiKey: KEY }).smartMoneySignal();
+  assert.equal(none.ok, false);
+});
+
 test("the integration is off by default and enabling it requires a key and a token address", () => {
   assert.deepEqual(loadNansenConfig({}), { enabled: false });
   assert.deepEqual(loadNansenConfig({ NANSEN_SIGNAL: "disabled", NANSEN_API_KEY: KEY }), { enabled: false });
