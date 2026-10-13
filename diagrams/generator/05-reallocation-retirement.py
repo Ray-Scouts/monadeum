@@ -67,7 +67,7 @@ card(g, "chk", "AgentReallocation checks on chain",
       "Total within cap and floor; each sink within ceiling"],
      kind="chain", status=OFF)
 card(g, "move", "transferFrom(source, sink, amount)",
-     ["Once per credit, the contract never holds a balance", "Event Reallocated(owner, source, sink, amount, evaluation)"],
+     ["Once per credit, the contract never holds a balance", "Event Reallocated(owner, source, sink, amount, evaluation)", "Indexed per followed side when the indexer is configured"],
      kind="chain", status=OFF)
 card(g, "revert", "Whole call reverts",
      ["Nothing moves; not retried in this evaluation", "Next evaluation recomputes from fresh state"],

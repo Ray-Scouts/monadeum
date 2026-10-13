@@ -4,7 +4,7 @@ Monadeum - 04 Spend control layers: who checks a proposed action, and when.
 Derived from:
   SECURITY.md section 1   (on-chain spend policy, x402 payment bounds)
   SECURITY.md section 4   (proposal is not authorization)
-  SECURITY.md section 9   (layered caps, population circuit breaker)
+  SECURITY.md section 9   (layered caps, population circuit breaker as implemented)
   SECURITY.md section 13  (known limitations: daily cap breach pays gas,
                            layer 2 is deployment-wide)
   ARCHITECTURE.md section 16.1 (RiskModule rules)
@@ -79,8 +79,8 @@ with g.subgraph(name="cluster_side") as c:
          ["ERC-1271 check always fails; the", "skip-signature flag is never set"],
          kind="control", status=OFF)
     card(c, "l3", "Population circuit breaker",
-         ["Capital at risk and reallocation volume", "across all agents; not built"],
-         kind="control", status=DESIGN)
+         ["Checked every evaluation: capital at risk, and", "reallocation volume. A trip halts every tick across", "restarts until a human clears it; built, tested offline"],
+         kind="control", status=OFF)
     card(c, "stop", "Owner stop",
          ["Per-agent key revocation is immediate;", "bulk actions are held (diagram 11)"],
          kind="control", status=OFF)

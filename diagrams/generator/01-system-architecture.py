@@ -11,7 +11,8 @@ Derived from:
 Status shown follows the state recorded in those sections on 2026-10-12: the
 web app, API, indexer, Postgres, the Kernel account, and AgentSpendPolicy ran
 on Monad testnet (account deployment indexed); the tick runner, the x402
-payer, and reallocation are implemented but off; the identity registry and
+payer, and reallocation are implemented but off; AgentCommitments is tested but not
+deployed (main as of 2026-10-12); the identity registry and
 LLM reasoning are not built.
 """
 import os
@@ -54,10 +55,11 @@ card(g, "spend", "AgentSpendPolicy", ["install exercised; spend validation", "no
 card(g, "x402v", "X402PaymentValidator", ["deployed, installed", "on no account"], kind="chain", status=OFF)
 card(g, "realloc", "AgentReallocation", ["deployed, off"], kind="chain", status=OFF)
 card(g, "reg", "Identity registry", ["ERC-8004 compatible"], kind="chain", status=DESIGN)
+card(g, "commit", "AgentCommitments", ["genome and strategy hashes, write-once;", "tested, not deployed"], kind="chain", status=OFF)
 card(g, "kuru", "Kuru router", ["testnet market not", "on chain 2026-10-12"], kind="external", status=DESIGN)
 
 for grp in (("web", "privy", "redis"), ("api", "strategy", "llm"), ("pg", "risk", "x402c"),
-            ("indexer", "trading", "prov"), ("zerodev",), ("x402v", "acct", "kuru"),
+            ("indexer", "trading", "prov"), ("zerodev", "commit"), ("x402v", "acct", "kuru"),
             ("spend", "realloc", "reg")):
     with g.subgraph() as s:
         s.attr(rank="same")
@@ -85,6 +87,7 @@ link(g, "acct", "spend", "validate +\nhook", kind="gate")
 link(g, "x402v", "acct", "x402 key,\nERC-1271", kind="gate", dashed=True)
 link(g, "acct", "realloc", "approve + reallocate", kind="chain", dashed=True)
 link(g, "acct", "reg", kind="chain", dashed=True)
+link(g, "acct", "commit", "commit() at deployment", kind="chain", dashed=True)
 link(g, "acct", "indexer", "finalized logs", kind="chain", constraint="false")
 
 render(g, "01-system-architecture")

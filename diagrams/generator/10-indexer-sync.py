@@ -74,8 +74,11 @@ card(g, "conf", "Alternative to step 1: confirmation depth",
      ["Explicit setting only, default 10 blocks below head", "Never an automatic fallback; cursor not marked finalized"],
      kind="neutral", status=OFF)
 card(g, "later", "Handlers not yet added",
-     ["Reallocation contract events (one more handler)", "Identity registry and genome hash commitments"],
+     ["Identity registry (no contract yet)", "AgentCommitted (the worker reads the contract directly)"],
      kind="neutral", status=DESIGN)
+card(g, "rh", "Reallocation handlers",
+     ["With INDEXER_REALLOCATION_ADDRESS set: Reallocated per followed side,", "registry and policy events. In-memory tests only; testnet read-model synced without it"],
+     kind="neutral", status=OFF)
 
 link(g, "head", "chk")
 link(g, "chk", "roll", "mismatch", kind="danger")
@@ -90,8 +93,9 @@ link(g, "rm", "api", "reads")
 link(g, "rm", "pj", "reads", kind="control")
 link(g, "pj", "nodep", style="invis")
 link(g, "later", "hand", dashed=True, constraint="false")
+link(g, "rh", "hand", dashed=True, constraint="false")
 
-for a, b in (("chk", "roll"), ("hand", "follow"), ("val", "later"), ("apply", "conf"), ("api", "pj"), ("rm", "nodep")):
+for a, b in (("chk", "roll"), ("hand", "follow"), ("val", "later"), ("apply", "rh"), ("apply", "conf"), ("api", "pj"), ("rm", "nodep")):
     with g.subgraph() as sg:
         sg.attr(rank="same")
         sg.node(a)
