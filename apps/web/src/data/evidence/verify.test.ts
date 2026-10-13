@@ -217,7 +217,7 @@ describe("evidence records", () => {
     const before = c.calls;
     const out = await run(c, evidenceTasks(c, d, forged));
     expect(out.get(keys.event(H(11), 2))?.state).toBe("unverified");
-    expect(c.calls).toBe(before + 3);
+    expect(c.calls).toBe(before + 4);
   });
 
   test("the explorer link is the Monadscan testnet transaction page", () => {
