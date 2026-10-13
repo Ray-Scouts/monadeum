@@ -4,7 +4,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { loadWebConfig } from "../config";
 import { ApiError, createApiClient } from "./client";
 import { REALLOCATION_OFF_REASON } from "@monadeum/reallocation/switch";
-import { amount, explainAgent, REALLOCATION_OFF, REALLOCATION_ON, reallocationEnabled, reallocationNote } from "./present";
+import { agentNotServed, amount, explainAgent, feedEvents, outcomeExplained, REALLOCATION_OFF, REALLOCATION_ON, reallocationEnabled, reallocationNote, signedAmount } from "./present";
 import { explain, messageHex, rawPayload, signWith, walletCall, withDomainType } from "./signing";
 import { revocationFacts, stopViewFromError, stopViewFromResponse } from "./stop";
 import { apiAgent } from "./fixtures";
@@ -305,5 +305,62 @@ describe("explainer states from the API", () => {
     expect(REALLOCATION_OFF).toMatch(/off by default/);
     expect(REALLOCATION_OFF).toMatch(/adds nothing measurable/);
     expect(REALLOCATION_OFF).not.toMatch(/outperform|higher returns|earn more/i);
+  });
+});
+
+describe("recorded reallocation outcomes, earnings, and events", () => {
+  const settlement = { symbol: "USDC", decimals: 6 };
+  const owner: OwnerResponse = {
+    id: "u1", name: null, rootWallet: "0x1", reallocation: { enabled: true, reason: null },
+    policy: { agentIds: ["ag1", "ag2", "ag3"], reallocationCap: null, slotCeiling: null, signedAtEvaluation: null, sequence: 2, policyHash: "0x" },
+  };
+  const rank = (position: number) => ({ position, of: 3, quota: 1 });
+
+  test("a ranked agent that moved nothing names the binding reason, never the ranking formula", () => {
+    const held = (reason: string, position: number) => explainAgent(apiAgent({ id: "ag1", reallocationOutcome: { evaluation: 9, kind: "held", reason, amount: null, rank: rank(position) } }), owner, { flow: null, settlement });
+    expect(held("ceiling", 3).headline).toBe("Ranked, nothing moved");
+    expect(held("ceiling", 3).lines.join(" ")).toMatch(/At evaluation 9 it ranked highest among the 3 agents your policy covers, but received nothing: it is at its slot ceiling/);
+    expect(held("floor", 1).lines.join(" ")).toMatch(/ranked lowest .* but sent nothing: its capital is at the capital floor/);
+    expect(held("zero-downside", 3).lines.join(" ")).toMatch(/flagged for zero downside/);
+    expect(held("middle", 2).lines.join(" ")).toMatch(/ranked 2 of 3, counting from the lowest/);
+    expect(held("counterpart", 1).lines.join(" ")).toMatch(/the agent that would have received was at its slot ceiling or flagged/);
+    expect(held("counterpart", 3).lines.join(" ")).toMatch(/the agent that would have sent was at the capital floor/);
+    expect(held("middle", 2).lines.join(" ")).not.toMatch(/sortino|adjusted fitness of|formula/i);
+  });
+
+  test("a sent or received outcome states the amount and why", () => {
+    expect(outcomeExplained({ evaluation: 4, kind: "sent", reason: null, amount: "2000000", rank: rank(1) }, { flow: null, settlement })).toEqual({
+      headline: "Sent capital",
+      line: "At evaluation 4 it sent 2 USDC, because it ranked lowest among the 3 agents your policy covers.",
+    });
+    expect(outcomeExplained({ evaluation: 4, kind: "received", reason: null, amount: "2000000", rank: { position: 20, of: 20, quota: 2 } }, { flow: null, settlement })?.line).toMatch(/received 2 USDC, because it ranked in the top 2 among the 20/);
+    expect(outcomeExplained({ evaluation: 4, kind: "off", reason: "one-agent", amount: null, rank: null })?.line).toMatch(/your only live agent/);
+  });
+
+  test("net earnings are served per agent and shown signed; without them they are named as not served", () => {
+    expect(signedAmount("-36000", settlement)).toBe("-0.036 USDC");
+    expect(signedAmount("36000", settlement)).toBe("0.036 USDC");
+    expect(agentNotServed(apiAgent())).toContain("net earnings after costs");
+    const earnings = { realizedPnl: "1", x402: "0", gas: "0", gasWei: "0", fees: "0", slippage: "0", net: "1" };
+    expect(agentNotServed(apiAgent({ earnings }))).not.toContain("net earnings after costs");
+  });
+
+  test("the event feed reads retirements and reallocations as events, dated by the worker's clock", () => {
+    const names = new Map([["ag1", "alpha"], ["ag2", "beta"]]);
+    const feed = feedEvents(
+      [
+        { kind: "retirement", evaluation: 5, at: Date.UTC(2026, 9, 12, 10, 0), agentId: "ag1", rule: "capital_floor" },
+        { kind: "reallocation", evaluation: 4, at: Date.UTC(2026, 9, 12, 9, 0), sources: [{ agentId: "ag1", amount: "2000000" }], sinks: [{ agentId: "ag2", amount: "2000000" }] },
+      ],
+      names,
+      settlement,
+    );
+    expect(feed.map((e) => [e.kind, e.title, e.when])).toEqual([
+      ["retirement", "alpha retired at evaluation 5", "2026-10-12 10:00 UTC"],
+      ["reallocation", "Evaluation 4 moved 2 USDC between your agents", "2026-10-12 09:00 UTC"],
+    ]);
+    expect(feed[0]!.body).toMatch(/capital fell below the capital floor\. Its capital stayed in its own account/);
+    expect(feed[1]!.body).toMatch(/From alpha \(2 USDC\) to beta \(2 USDC\)/);
+    expect(feed[1]!.agentIds).toEqual(["ag1", "ag2"]);
   });
 });

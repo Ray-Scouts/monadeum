@@ -24,7 +24,7 @@ export { TradingConfigError, buildKuruTrading, loadTradingConfig, monPriceSource
 export type { TradingConfig } from "./config.js";
 export type { BookReader, MonPrice, MonPriceLimits, MonPriceSource } from "./mon-price.js";
 export type { Book, KuruMarket } from "./market.js";
-export { MemoryPositionStore, MemoryTradeStore, SignerRejected } from "./types.js";
+export { MemoryPositionStore, MemoryTradeStore, SignerRejected, sumCosts } from "./types.js";
 export { WalletsTradeSigner } from "./wallets-signer.js";
 export { MemoryMidSampleStore } from "./samples.js";
 export type { MidSample, MidSampleStore } from "./samples.js";
@@ -48,5 +48,6 @@ export type {
   TradeSigner,
   TradeStatus,
   TradeCounts,
+  RealizedPnl,
   TradeStore,
 } from "./types.js";

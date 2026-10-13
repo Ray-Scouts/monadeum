@@ -39,7 +39,7 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
 
     it("serves nulls before any evaluation", async () => {
       const { body } = await call(b.app, "GET", `/agents/${first}`, { auth: aliceAuth });
-      for (const field of ["capital", "fitnessPercentile", "lowWindows", "zeroDownsideFlag", "retirement", "capitalHistory"]) {
+      for (const field of ["capital", "fitnessPercentile", "lowWindows", "zeroDownsideFlag", "retirement", "capitalHistory", "reallocationOutcome"]) {
         assert.equal(body.agent[field], null, field);
       }
       const population = await call(b.app, "GET", "/population", { auth: aliceAuth });
@@ -71,6 +71,35 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
       assert.equal(retired.lowWindows, 3);
       assert.deepEqual(retired.retirement, { rule: "starvation", evaluation: 2 });
       assert.deepEqual(retired.capitalHistory.map((h: { capital: string }) => h.capital), ["7", "3"]);
+    });
+
+    it("serves the latest reallocation outcome, and the selection events newest first, to the owner only", async () => {
+      const { agentId: source } = await createAgent(b.app, aliceAuth, alice, "source");
+      const { agentId: sink } = await createAgent(b.app, aliceAuth, alice, "sink");
+      const { agentId: held } = await createAgent(b.app, aliceAuth, alice, "held");
+      await writer(b).record([
+        record(source, 3, { reallocation: { kind: "sent", reason: null, amount: 2_000_000n, rank: { position: 1, of: 3, quota: 1 } } }),
+        record(sink, 3, { reallocation: { kind: "received", reason: null, amount: 2_000_000n, rank: { position: 3, of: 3, quota: 1 } } }),
+        record(held, 3, { reallocation: { kind: "held", reason: "middle", amount: null, rank: { position: 2, of: 3, quota: 1 } } }),
+      ]);
+      await writer(b).record([
+        record(held, 4, { reallocation: { kind: "held", reason: "ceiling", amount: null, rank: { position: 3, of: 3, quota: 1 } } }),
+        record(source, 4, { capital: 1n, retired: true, retirementRule: "capital_floor", reallocation: { kind: "retired", reason: null, amount: null, rank: null } }),
+      ]);
+      const detail = (await call(b.app, "GET", `/agents/${held}`, { auth: aliceAuth })).body.agent;
+      assert.deepEqual(detail.reallocationOutcome, { evaluation: 4, kind: "held", reason: "ceiling", amount: null, rank: { position: 3, of: 3, quota: 1 } });
+      const sent = (await call(b.app, "GET", `/agents/${sink}`, { auth: aliceAuth })).body.agent;
+      assert.deepEqual(sent.reallocationOutcome, { evaluation: 3, kind: "received", reason: null, amount: "2000000", rank: { position: 3, of: 3, quota: 1 } });
+
+      const events = (await call(b.app, "GET", "/events", { auth: aliceAuth })).body.events;
+      const mine = events.filter((e: { evaluation: number }) => e.evaluation === 3 || e.evaluation === 4);
+      assert.deepEqual(mine, [
+        { kind: "retirement", evaluation: 4, at: 1_790_000_000_004, agentId: source, rule: "capital_floor" },
+        { kind: "reallocation", evaluation: 3, at: 1_790_000_000_003, sources: [{ agentId: source, amount: "2000000" }], sinks: [{ agentId: sink, amount: "2000000" }] },
+      ]);
+      assert.ok(events.some((e: { kind: string; agentId?: string }) => e.kind === "retirement" && e.agentId === second), "the earlier retirement is in the feed");
+      assert.deepEqual((await call(b.app, "GET", "/events", { auth: malloryAuth })).body.events, []);
+      assert.equal((await call(b.app, "GET", "/events")).status, 401);
     });
 
     it("bounds the capital history to the most recent evaluations", async () => {

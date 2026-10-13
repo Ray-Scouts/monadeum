@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
-import { PgPaymentLog, PgTradeStore } from "@monadeum/db";
-import { MemoryTradeStore, type TradeRecord, type TradeStore } from "@monadeum/trading";
+import { PgPaymentLog, PgPositionStore, PgTradeStore } from "@monadeum/db";
+import { MemoryPositionStore, MemoryTradeStore, emptyPosition, type PositionStore, type TradeRecord, type TradeStore } from "@monadeum/trading";
 import { MemoryPaymentLog, type PaymentLog, type PaymentLogEntry, type Provider } from "@monadeum/x402";
 import type { Hex } from "viem";
 import { roleScoped } from "../src/index.js";
@@ -29,7 +29,7 @@ function trade(agentId: string, tick: number, status: TradeRecord["status"]): Tr
     fill: status === "filled"
       ? { transactionHash: hash(1000 + tick), blockNumber: 2n, quoteIn: 1_000_000n, baseOut: 10n, grossBaseFilled: 10n, feeSource: "trade-events", feeBase: 0n, executedPrice: 10n ** 18n }
       : null,
-    costs: null,
+    costs: status === "filled" ? { gasWei: 10n ** 15n, gas: 3_000n, fees: 1_000n, slippage: 500n } : null,
     failure: status === "failed" ? { kind: "policy", reason: "rejected" } : null,
   };
 }
@@ -60,6 +60,8 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
       const worker = b.db ? roleScoped(b.db, "monadeum_worker") : null;
       const trades: TradeStore = worker ? new PgTradeStore(worker) : (b.stores.trades as MemoryTradeStore);
       const payments: PaymentLog = worker ? new PgPaymentLog(worker) : (b.stores.payments as MemoryPaymentLog);
+      const positions: PositionStore = worker ? new PgPositionStore(worker) : (b.stores.positions as MemoryPositionStore);
+      await positions.write({ ...emptyPosition(aliceAgent, "WETH/USDC"), realized: 100_000n });
       for (const t of [
         trade(aliceAgent, 1, "filled"), trade(aliceAgent, 2, "filled"), trade(aliceAgent, 3, "failed"), trade(aliceAgent, 4, "submitted"),
         trade(malloryAgent, 1, "filled"), trade(malloryAgent, 2, "filled"), trade(malloryAgent, 3, "filled"),
@@ -90,6 +92,16 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
       assert.equal(detail.status, 200);
       assert.equal(detail.body.agent.tradeCount, 2);
       assert.deepEqual(detail.body.agent.x402, expected);
+    });
+
+    it("serves net earnings after costs: realized P&L less x402, gas, fees, and slippage", async () => {
+      const detail = (await call(b.app, "GET", `/agents/${aliceAgent}`, { auth: aliceAuth })).body.agent;
+      // Two filled trades with costs; x402 spend 55000; realized 100000.
+      assert.deepEqual(detail.earnings, {
+        realizedPnl: "100000", x402: "55000", gas: "6000", gasWei: (2n * 10n ** 15n).toString(), fees: "2000", slippage: "1000", net: "36000",
+      });
+      const idle = (await call(b.app, "GET", `/agents/${idleAgent}`, { auth: aliceAuth })).body.agent;
+      assert.equal(idle.earnings.net, "0");
     });
 
     it("never serves another owner's agent activity", async () => {
