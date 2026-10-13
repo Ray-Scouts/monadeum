@@ -2,7 +2,7 @@
 
 The checklist for issue #48: what a valid Monad testnet deployment must show before a mainnet opt-in decision can even be considered, mapped to the Testnet mode of `SECURITY.md` section 10 (wallets, x402, reallocation and retirement, accounting, trading, policies). It records, for each item, what this repository already holds as evidence and what still needs a human run on testnet. It adds no control; each item points at the document that specifies it.
 
-State as of 2026-10-12, commit `513e943`. **No item is validated on the strength of a claim alone.** The status of each item is one of:
+State as of 2026-10-13, re-observed at commit `4a7856b` (first written 2026-10-12 at `513e943`). **No item is validated on the strength of a claim alone.** The status of each item is one of:
 
 | Status | Meaning |
 | --- | --- |
@@ -19,10 +19,10 @@ The fork tests named below read live chain state but run in Foundry's EVM, not t
 | # | Check | Status | Evidence, or the human step |
 | --- | --- | --- | --- |
 | 0.1 | `AgentSpendPolicy`, `AgentReallocation`, `X402PaymentValidator` deployed on chain 10143 from the recorded deployer | **Evidenced** | `contracts/deployments/monad-testnet.json`: transactions `0xe57f5b86...f344e`, `0x654a555c...13ee3e`, `0x914bb2d2...17bf0f`, blocks 70167444 to 70167461, receipts status 1 (checked 2026-10-11) |
-| 0.2 | The deployed bytecode is the audited source | **Evidenced** | `contracts/audit/README.md` section 14: 3 of 3 match a build of `513e943` on 2026-10-12, repeatable with `contracts/audit/check-deployed-bytecode.py` |
+| 0.2 | The deployed bytecode is the audited source | **Evidenced** | `contracts/audit/README.md` section 14: 3 of 3 match a build of `513e943` on 2026-10-12. Repeated on 2026-10-13 against a build of `4a7856b`: `AgentSpendPolicy` 6716 bytes, `AgentReallocation` 9276 bytes, `X402PaymentValidator` 6566 bytes, all MATCH, with `contracts/audit/check-deployed-bytecode.py` |
 | 0.3 | `AgentReallocation` roles held by a 2-of-3 Safe; constructor values as decided | **Evidenced** | `contracts/deployments/monad-testnet.json` (`verified`, `safe`): operator and admin are Safe `0x9671dB7A...9897`, threshold 2, 3 owners, `minEvaluationInterval` 36000, `capitalFloor` 60000 |
 | 0.4 | Safe owner keys held by different people on different devices | **Not run** | Owner confirms who holds each key (`deploy/README.md`, "Before mainnet" and open question 5). No contract can show it |
-| 0.5 | API, web, worker, indexer, Postgres, Redis running on the VPS, behind TLS | **Recorded** | `deploy/README.md`, "Live testnet deployment" (2026-10-11), PRs #126, #127, #135. Human: attach the output of `deploy/README.md` step 5 (`dc ps`, `/health`) to the report |
+| 0.5 | API, web, worker, indexer, Postgres, Redis running on the VPS, behind TLS | **Recorded**, partly re-observed from outside on 2026-10-13 | `deploy/README.md`, "Live testnet deployment" (2026-10-11), PRs #126, #127, #135. Observed from outside at 06:51 UTC: `https://api.monadeum.xyz/health` returns 200 with `{"status":"ok","wallets":"configured","funding":"configured"}`; `https://app.monadeum.xyz/`, `/evidence`, `/robots.txt`, and `/sitemap.xml` return 200; `https://api.monadeum.xyz/public/evidence` returns 200 with `indexedThrough` 70615622, so the API, web app, and indexer are serving over TLS. The worker, Postgres, and Redis cannot be seen from outside. Human: attach the output of `deploy/README.md` step 5 (`dc ps`, `/health`) to the report |
 | 0.6 | Explorer source verification of the three contracts | **Not run** | `deploy/README.md`, open question 4 |
 | 0.7 | ZeroDev sponsorship limit set for chain 10143 | **Not run** | `deploy/README.md`, open question 2: sponsors all transactions today, accepted on testnet only |
 
@@ -31,7 +31,7 @@ The fork tests named below read live chain state but run in Foundry's EVM, not t
 | # | Check | Status | Evidence, or the human step |
 | --- | --- | --- | --- |
 | 1.1 | Owner signs in with Privy and an embedded wallet is recorded | **Recorded** | `deploy/README.md`, "Live testnet deployment"; PRs #130, #131 |
-| 1.2 | Agent account provisioned: Kernel v3.1 account deployed through ZeroDev's bundler with sponsored gas, spend policy installed with limits and allowlist | **Recorded** | `deploy/README.md` and `ARCHITECTURE.md` section 11: the indexer recorded `account.deployed`, `spend.limits-set`, `spend.call-allowed` for the first agent (2026-10-11). Human: record the account address and the deployment user operation's transaction hash |
+| 1.2 | Agent account provisioned: Kernel v3.1 account deployed through ZeroDev's bundler with sponsored gas, spend policy installed with limits and allowlist | **Evidenced** | The first agent's account is `0x604bd1f3ec0001abbd58404595005faf925a3955`, deployed in transaction `0xd69f7a2964494334f70b26882fa9e243ca9cce752fce7fe25ff42a86968765cd` (block 70200443, sent to the EntryPoint v0.7 at `0x0000000071727De22E5E9d8BAf0edAc6f37da032`, receipt status 1, 12 logs, account code present, read on chain on 2026-10-13). The indexer recorded `account.deployed` (paymaster `0x777777777777aec03fd955926dbf81597e66834c`, userOp hash `0xeec314fe8cf2d83ead44288534ca7fd33d55d3a8a82ae5894d7234a5051f5df9`), `spend.limits-set` (per-transaction cap 1000000 and daily cap 5000000 in USDC base units, that is 1 and 5 USDC), and four `spend.call-allowed` rows (`transfer` and `approve` on the settlement asset, the Kuru router selector, and the reallocation contract selector), all in that transaction, served by `GET /public/evidence` |
 | 1.3 | Session key issued ("Activate this agent", `POST /agents/:id/activate`), signed by a Privy embedded wallet and accepted by Kernel | **Not run** | `ARCHITECTURE.md` section 11 ("Verified on testnet, and not yet"): built (PR #137), not run on testnet; Privy's `eth_signTypedData_v4` over Kernel's enable data is an assumption until this runs |
 | 1.4 | A session-key operation within the caps executes through the bundler and is recorded in the window | **Not run** (fork: Off-chain only) | `contracts/audit/README.md` section 7.2, step 3. Fork evidence: `KernelV31Fork.t.sol`, 8 passed on 2026-10-12 |
 | 1.5 | Over `perTxCap`: the bundler refuses it in simulation | **Not run** (fork: Off-chain only) | Section 7.2; closes assumption E3 |
@@ -59,7 +59,7 @@ Reallocation is off in the testnet deployment by decision (`MONADEUM_REALLOCATIO
 
 | # | Check | Status | Evidence, or the human step |
 | --- | --- | --- | --- |
-| 3.1 | Contract deployed with the decided parameters, and no evaluation opened yet | **Evidenced** | Item 0.3; `currentEvaluation()` and `lastEvaluationAt()` read 0 on 2026-10-12, block 70562473 (`contracts/audit/README.md` 13.5, item 7) |
+| 3.1 | Contract deployed with the decided parameters, and no evaluation opened yet | **Evidenced** | Item 0.3; `currentEvaluation()` and `lastEvaluationAt()` read 0 on 2026-10-12, block 70562473 (`contracts/audit/README.md` 13.5, item 7), and again on 2026-10-13, block 70615562, together with `operator()` and `admin()` (the Safe), `pendingAdmin()` (zero), `minEvaluationInterval()` 36000, `capitalFloor()` 60000, and `settlementAsset()` |
 | 3.2 | Operator registers two agents of one owner and sets principal, through the Safe | **Not run** | `deploy/README.md` step 6 |
 | 3.3 | Owner commits a reallocation policy naming both agents | **Not run** | `ARCHITECTURE.md` section 16.5 |
 | 3.4 | Operator advances the evaluation; a second advance before 36000 seconds is refused | **Not run** | Off-chain: `test_evaluationSpacingAtTheBound` |
@@ -102,12 +102,12 @@ Reallocation is off in the testnet deployment by decision (`MONADEUM_REALLOCATIO
 
 | # | Gate | Status |
 | --- | --- | --- |
-| 7.1 | External audit of the three contracts complete, or engaged with a tracked follow-up (issue #46) | **Blocked on a human**: the package is ready (`contracts/audit/README.md`, section 16); no auditor is engaged |
-| 7.2 | End-to-end suite (issue #47) passes against the live testnet deployment, not only in CI | **Not run**: issue #47 is open |
+| 7.1 | Independent security review of the three contracts (issue #46) | **Not run**. Decision of 2026-10-13: no external auditor is engaged for the testnet phase; an automated AI-assisted scan of the audit package is run instead and its findings are triaged and published. An automated scan is not an audit and does not replace the independent audit that `SECURITY.md` section 3 keeps as a precondition for any mainnet opt-in |
+| 7.2 | End-to-end suite (issue #47) passes against the live testnet deployment, not only in CI | **Not run**: issue #47 is closed and the suite runs in CI; it has not been run against the live deployment |
 | 7.3 | Written validation report, stating whether the system is ready for a mainnet opt-in decision or what remains | **Not run**: written after the items above. It must state explicitly that unrestricted autonomous mainnet trading is never the default (`BRIEF.md`, `SECURITY.md` section 10, Mainnet) |
 
 ## Summary
 
-Of the 48 items above, 5 are Evidenced (the deployment, its bytecode, its roles, the deployed x402 validator, and the reallocation contract's initial state), 3 are Recorded and need a hash or log attached, 5 are covered off-chain only, 31 need a human run (4 of them, 1.4 to 1.7, already pass on a fork), and 4 are blocked on a decision or dependency (x402 payees and facilitator, and the external audit). On this evidence the testnet deployment is not validated, and the system is not ready for a mainnet opt-in decision.
+Of the 48 items above, 6 are Evidenced (the deployment, its bytecode, its roles, the first agent's account, the deployed x402 validator, and the reallocation contract's initial state), 2 are Recorded and need a hash or log attached, 5 are covered off-chain only, 32 need a human run (4 of them, 1.4 to 1.7, already pass on a fork), and 3 are blocked on a decision or dependency (x402 payees and facilitator). The written report for item 7.3 is `docs/testnet-validation-report.md`. On this evidence the testnet deployment is not validated, and the system is not ready for a mainnet opt-in decision.
 
 Suggested order for the human runs, each safe to stop after: item 0.5 output; 1.2 hash; 1.3 activation; 4.1 and 4.2 funding; 1.4 to 1.7 (section 7.2 of the audit package); 5.1 to 5.4 trading; 1.8 and 6.5 stop; then the controlled reallocation run (3.2 to 3.7, 4.4) once the owner decides to turn reallocation on for test agents. Record every transaction hash and account address in this file as each item moves to Evidenced.
