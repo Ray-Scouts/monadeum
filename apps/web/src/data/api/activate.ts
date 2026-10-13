@@ -1,5 +1,6 @@
 import type { WebConfig } from "../config";
 import { ApiError } from "./client";
+import { plainThrown, safeDetail } from "./plain";
 import { amount } from "./present";
 import type { ActivateResult, ApiAgent, Operation, SessionView } from "./types";
 
@@ -58,12 +59,12 @@ export function sessionFacts(session: SessionView): { verdict: string; facts: st
 export function activateViewFromOperation(operation: Operation): ActivateView {
   if (operation.status === "awaiting-signature" || operation.status === "running") return { state: "signing", operation };
   if (operation.status === "failed") {
-    return { state: "failed", message: `Activation did not complete (${operation.error ?? "unknown"}). No key was kept. You can start it again.` };
+    return { state: "failed", message: "Activation did not complete. No key was kept. Choose Activate agent to start it again." };
   }
   const r = operation.result as ActivateResult | null;
   if (!r?.result) return { state: "failed", message: "The API reported no activation result. Nothing is assumed; reload the page to check." };
   if (!r.result.ok) {
-    return { state: "failed", message: `Activation was refused (${r.result.reason}${r.result.detail ? `: ${r.result.detail}` : ""}). No key was kept. You can start it again.` };
+    return { state: "failed", message: `The server refused to issue the key (${r.result.reason}${safeDetail(r.result.detail) ? `: ${safeDetail(r.result.detail)}` : ""}). No key was kept. You can choose Activate agent to try again.` };
   }
   if (r.session && !r.session.acceptedOnChain) {
     return { state: "failed", message: "A key was issued, but the chain does not accept it. Stop this agent to destroy it, then activate again." };
@@ -77,12 +78,12 @@ export function activateViewFromError(error: unknown): ActivateView {
       return { state: "unavailable", message: "This server cannot issue session keys: it has no chain or session key vault configured. Nothing was changed." };
     }
     if (error.reason === "already-active") return { state: "active", session: null, message: "This agent already has an active session key." };
-    if (error.reason === "not-deployed") return { state: "error", message: "The agent's account is not deployed yet. Deploy it first." };
+    if (error.reason === "not-deployed") return { state: "error", message: "The agent's account is not deployed yet. Use \"Deploy the account\" on this page first." };
     if (error.reason === "revocation-pending") return { state: "error", message: "The previous key's revocation is not verified on chain yet. Finish the stop first." };
     if (error.reason === "agent-retired") return { state: "error", message: "This agent is retired, so it is not given a new session key." };
     if (error.reason === "not-found") return { state: "error", message: "This agent was not found among your agents." };
     if (error.status === 401) return { state: "error", message: "Your session has ended. Sign in again, then retry." };
-    return { state: "error", message: `The activation request failed (${error.reason}). Nothing is assumed to have changed.` };
+    return { state: "error", message: `The activation request failed (${error.reason}). Nothing is assumed to have changed. Reload the page to see the current state, then try again.` };
   }
-  return { state: "error", message: error instanceof Error ? error.message : "The activation request failed." };
+  return { state: "error", message: plainThrown(error, "The activation request failed. Nothing is assumed to have changed. Reload the page, then try again.") };
 }

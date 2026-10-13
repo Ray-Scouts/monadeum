@@ -1,6 +1,7 @@
 import { formatUnits, isAddress, parseUnits } from "viem";
 import { FUNDING_RULE } from "../funding";
 import { ApiError } from "./client";
+import { detailSuffix, plainThrown } from "./plain";
 import type { Explanation } from "./signing";
 import type { FundingInfo, FundingPrepared, FundingView, Operation } from "./types";
 
@@ -41,9 +42,11 @@ export function fundingAmount(raw: string, info: Pick<FundingInfo, "decimals" | 
 
 /** Why the card cannot be used right now, or null when it can. */
 export function fundingBlocked(info: FundingInfo): string | null {
+  if (info.chainError) return "The API could not read the chain just now, so it cannot tell whether the account is deployed or what your wallet holds. Nothing was changed. Reload the page in a moment.";
   if (info.retired) return "This agent is retired, so it cannot be funded.";
   if (!info.deployed) return "The agent's account is not deployed yet. Funds sent before deployment would not count as principal, so funding opens once the account is deployed.";
   if (info.daily.remaining === 0) return `You have used all ${info.daily.limit} relayed transfers for the last 24 hours. The next one opens as the oldest leaves the window.`;
+  if (info.ownerBalance === "0") return "Your owner wallet holds no USDC, so there is nothing to send yet. Add USDC to the owner wallet on the Monad testnet, then reload this page.";
   return null;
 }
 
@@ -103,7 +106,7 @@ export function fundingStep(funding: FundingView, decimals = USDC_DECIMALS): Fun
       return {
         state: "failed",
         funding,
-        message: `The transfer failed (${funding.error ?? "unknown"}). ${funding.error === "not-included" ? "It expired without being included, so no USDC moved." : "No USDC moved."} You can prepare a new one.`,
+        message: `The transfer failed. ${funding.error === "not-included" ? "It expired without being included, so no USDC moved." : "No USDC moved."} You can prepare a new one.`,
       };
     case "expired":
       return { state: "failed", funding, message: "The authorization expired before it was submitted. Nothing moved; prepare a new one." };
@@ -125,7 +128,7 @@ export function fundingErrorText(error: unknown): string {
       case "insufficient-balance":
         return "Your owner wallet does not hold that much USDC. Nothing was changed.";
       case "limit-too-high":
-        return `That is above the per-transfer limit${error.detail ? ` (${error.detail})` : ""}. Nothing was changed.`;
+        return `That is above the per-transfer limit${detailSuffix(error.detail)}. Enter a smaller amount. Nothing was changed.`;
       case "funding-budget-exceeded":
         return "You have used all relayed transfers for the last 24 hours. Nothing was submitted.";
       case "too-many-open-authorizations":
@@ -137,7 +140,7 @@ export function fundingErrorText(error: unknown): string {
       case "authorization-expired":
         return "This authorization expired. Nothing was submitted; prepare a new one.";
       case "relay-simulation-failed":
-        return `USDC would refuse this transfer (${error.detail ?? "simulation failed"}), so nothing was submitted.`;
+        return `The USDC contract would refuse this transfer${detailSuffix(error.detail)}, so nothing was submitted. Check your balance and the amount, then prepare a new one.`;
       case "already-submitted":
         return "This authorization was already submitted. Check its status below.";
       case "settlement-asset-unverified":
@@ -147,7 +150,7 @@ export function fundingErrorText(error: unknown): string {
         return "The API could not be reached. If you had signed, check the status below before signing again.";
     }
     if (error.status === 401) return "Your session has ended. Sign in again, then retry.";
-    return `The API refused the request (${error.reason}${error.detail ? `: ${error.detail}` : ""}).`;
+    return `The API refused the request (${error.reason})${detailSuffix(error.detail)}. Nothing was submitted. Reload the page and try again.`;
   }
-  return error instanceof Error ? error.message : "Funding failed.";
+  return plainThrown(error, "Funding failed. Nothing was submitted. Reload the page and try again.");
 }
