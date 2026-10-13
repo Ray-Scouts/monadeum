@@ -14,3 +14,9 @@
 {$API_DOMAIN} {
 	reverse_proxy api:3001
 }
+
+# The bare domain and www only redirect to the web app, whose root route is the landing. The app is not served here
+# directly, because sign-in is bound to WEB_DOMAIN (AUTH_SIWE_DOMAIN) and the API's CORS allows only that origin.
+{$ROOT_DOMAIN}, www.{$ROOT_DOMAIN} {
+	redir https://{$WEB_DOMAIN}{uri} permanent
+}

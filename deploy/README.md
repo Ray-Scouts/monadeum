@@ -13,7 +13,7 @@ How to run Monadeum on Monad testnet (chain 10143) from a single VPS the owner c
 | `worker` | `server` | internal and outbound | no | BullMQ consumer, WalletsModule on the same vault. |
 | `indexer` | `server` | internal and outbound | no | Chain sync into the read-model. |
 | `web` | `web` | outbound | `BIND_ADDRESS:3000` | Next.js app built in `api` mode. |
-| `proxy` (optional) | `caddy:2.10.2` | outbound | 80, 443 | TLS for `WEB_DOMAIN` and `API_DOMAIN`. |
+| `proxy` (optional) | `caddy:2.10.2` | outbound | 80, 443 | TLS for `WEB_DOMAIN` and `API_DOMAIN`, and a permanent redirect from `ROOT_DOMAIN` and `www.ROOT_DOMAIN` to `https://WEB_DOMAIN`. |
 
 The `backend` network is `internal`: Postgres and Redis have no route out and no published port. Each service receives only the variables it reads, and connects to Postgres as its own login role:
 
@@ -48,7 +48,7 @@ What this deployment has and has not yet shown, item by item against `SECURITY.m
 
 ## 1. Prepare the VPS
 
-Ubuntu 24.04 LTS, at least 2 vCPU, 4 GB RAM, and 40 GB disk (the server image holds the whole compiled workspace and is large). Create two DNS A records pointing at the VPS: `WEB_DOMAIN` (for example `app.example.com`) and `API_DOMAIN` (for example `api.example.com`). They must be same-site, because the session cookie is `SameSite=Strict`.
+Ubuntu 24.04 LTS, at least 2 vCPU, 4 GB RAM, and 40 GB disk (the server image holds the whole compiled workspace and is large). Create DNS A records pointing at the VPS: `WEB_DOMAIN` (for example `app.example.com`), `API_DOMAIN` (for example `api.example.com`), and, for the `proxy` profile's redirect to the landing, `ROOT_DOMAIN` and `www.ROOT_DOMAIN` (for example `example.com`). They must be same-site, because the session cookie is `SameSite=Strict`.
 
 Install Docker Engine and the Compose plugin from Docker's repository:
 
