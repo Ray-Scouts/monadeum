@@ -10,6 +10,7 @@
     "start": "node dist/src/main.js"
   },
   "dependencies": {
+    "@envio-dev/hypersync-client": "1.4.1",
     "@monadeum/db": "workspace:*",
     "@monadeum/read-model": "workspace:*",
     "@zerodev/sdk": "5.5.10",

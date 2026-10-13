@@ -37,6 +37,7 @@
     "apps/indexer": {
       "name": "@monadeum/indexer",
       "dependencies": {
+        "@envio-dev/hypersync-client": "1.4.1",
         "@monadeum/db": "workspace:*",
         "@monadeum/read-model": "workspace:*",
         "@zerodev/sdk": "5.5.10",
@@ -344,6 +345,18 @@
     "@emotion/is-prop-valid": ["@emotion/is-prop-valid@1.4.0", "", { "dependencies": { "@emotion/memoize": "^0.9.0" } }, "sha512-QgD4fyscGcbbKwJmqNvUMSE02OsHUa+lAWKdEUIJKgqe5IwRSKd7+KhibEWdaKwgjLj0DRSHA9biAIqGBk05lw=="],
 
     "@emotion/memoize": ["@emotion/memoize@0.9.0", "", {}, "sha512-30FAj7/EoJ5mwVPOWhAyCX+FPfMDrVecJAM+Iw9NRoSl4BBAQeqj4cApHHUXOVvIPgLVDsCFoz/hGD+5QQD1GQ=="],
+
+    "@envio-dev/hypersync-client": ["@envio-dev/hypersync-client@1.4.1", "", { "optionalDependencies": { "@envio-dev/hypersync-client-darwin-arm64": "1.4.1", "@envio-dev/hypersync-client-darwin-x64": "1.4.1", "@envio-dev/hypersync-client-linux-arm64-gnu": "1.4.1", "@envio-dev/hypersync-client-linux-x64-gnu": "1.4.1", "@envio-dev/hypersync-client-linux-x64-musl": "1.4.1" } }, "sha512-BZhMVeC8v6M13GgSqjltLf2jfbb6dUJ25X6NjlrxBGHThaBzzBQd1PKYew52Xd7LZLoNDP4HArEJbhb7kWTXEA=="],
+
+    "@envio-dev/hypersync-client-darwin-arm64": ["@envio-dev/hypersync-client-darwin-arm64@1.4.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-dSIHXpuZR4/yGcnwrhjbT/gcgbBAnJy9u0QwBvJG1voDjUzgDZBjIoj8oDZssUOHApvTmIJFwVDsOyOwblnwHw=="],
+
+    "@envio-dev/hypersync-client-darwin-x64": ["@envio-dev/hypersync-client-darwin-x64@1.4.1", "", { "os": "darwin", "cpu": "x64" }, "sha512-KVvt8SkltLpzp9vGjhKVoSFCV3gH5FT/QpLmObjEvRj1lDBIbqGktaBcA1B/wdV7Jk64BKGNMx/GoCm2Ndr7dg=="],
+
+    "@envio-dev/hypersync-client-linux-arm64-gnu": ["@envio-dev/hypersync-client-linux-arm64-gnu@1.4.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-o9t1742PpHV/Z0I9K1mGGbiTGGzvC8dVOeNzeTVkYNoUn5JZDRuKkVrRtDwH/yVHCXlXzMuC/dIbgA6ws1/LRA=="],
+
+    "@envio-dev/hypersync-client-linux-x64-gnu": ["@envio-dev/hypersync-client-linux-x64-gnu@1.4.1", "", { "os": "linux", "cpu": "x64" }, "sha512-AF8tvZksKWafNbw40sZ8yf8hUxNci+ES0y9Si67+1yLfEIPFsgCd95LJPg1Jt4S493J34aObFvlfQKXS2n+kzQ=="],
+
+    "@envio-dev/hypersync-client-linux-x64-musl": ["@envio-dev/hypersync-client-linux-x64-musl@1.4.1", "", { "os": "linux", "cpu": "x64" }, "sha512-rCi06vwwZhV+mHwujInaEBu+pNNsv/VRC9TNtgaqibzT6tcbsx1hado+feDwmC7XZ47VyKL/rBqwT0aDo/JNaA=="],
 
     "@ethereumjs/common": ["@ethereumjs/common@3.2.0", "", { "dependencies": { "@ethereumjs/util": "^8.1.0", "crc-32": "^1.2.0" } }, "sha512-pksvzI0VyLgmuEF2FA/JR/4/y6hcPq8OUail3/AvycBaW1d5VSauOZzqGvJ3RTmR4MU35lWE8KseKOsEhrFRBA=="],
 
