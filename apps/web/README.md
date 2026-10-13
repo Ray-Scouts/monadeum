@@ -99,3 +99,7 @@ The app works from a 320 px viewport to wide desktop with no horizontal page scr
 - **Text is at least 12 px.**
 
 These rules were checked with a mock API and same-origin frames at 320, 375, 414, 768, 1024, and 1440 px. They were not checked on a physical phone.
+
+## Discovery metadata
+
+Crawler rules (`/robots.txt`), `/sitemap.xml`, the home page `Link` header, `/.well-known/api-catalog`, markdown for `Accept: text/markdown` on `/` and `/evidence`, and two read-only WebMCP tools on `/evidence` are described in `ARCHITECTURE.md` section 15. They are built from `src/lib/site.ts` and `src/lib/markdown.ts`. The production build sets `NEXT_PUBLIC_MONADEUM_WEB_URL` and `NEXT_PUBLIC_MONADEUM_API_URL`; without the API URL the catalog answers 404 and the home page omits its link.

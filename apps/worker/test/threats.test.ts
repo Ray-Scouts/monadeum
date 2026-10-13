@@ -374,3 +374,16 @@ test("scenario D, breaker: on Postgres the trip outlives the worker, and the pol
     await pg.close();
   }
 });
+
+test("scenario D, breaker: a bullish smart money signal cannot resume or influence a tripped worker", async () => {
+  let reads = 0;
+  const smartMoney = { read: async () => { reads += 1; return 1; } };
+  const w = await world({ smartMoney, breaker: { capitalAtRisk: 1n, reallocationVolume: null } });
+  const { worker } = await w.boot();
+  const evaluation = await worker.evaluate(EVALUATION_CADENCE);
+  assert.equal(evaluation.breaker?.signal, "capital-at-risk");
+  const before = reads;
+  for (const id of ["1", "2", "3"]) assert.equal(await worker.tick(id, EVALUATION_CADENCE + 1), null);
+  assert.equal(reads, before, "the signal is not even read while the breaker is tripped");
+  assert.equal(sessions(w), 0, "nothing was sent");
+});

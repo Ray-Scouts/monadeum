@@ -4,6 +4,10 @@
 
 {$WEB_DOMAIN} {
 	encode zstd gzip
+	# The web app answers `/` and `/evidence` with markdown when the request's Accept lists text/markdown, and with HTML
+	# otherwise. Next.js sets its own Vary on the HTML response, so Accept is appended here to keep caches from mixing the two.
+	@negotiated path / /evidence
+	header @negotiated +Vary Accept
 	reverse_proxy web:3000
 }
 

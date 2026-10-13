@@ -364,3 +364,27 @@ test("reallocation switch off: retirement still runs (EVOLUTION.md section 6) an
   assert.equal(await w.token.balanceOf(w.accounts.get("2")!), before, "its balance stays in its own account");
   assert.deepEqual(evaluation.settled, []);
 });
+
+test("the optional smart money signal changes only the entry decision, and a failed feed is the same as off", async () => {
+  const weak = [{ agentId: "1", owner: "a" as const, signal: -0.0005 }];
+  const decide = async (smartMoney?: { read(): Promise<number | null> }) => {
+    const w = await world({ agents: weak, information: false, ...(smartMoney ? { smartMoney } : {}) });
+    const { worker } = await w.boot();
+    const result = await worker.tick("1", 1);
+    return { result, w };
+  };
+  const off = await decide();
+  assert.equal(off.result?.action, "none", "no signal and a weak market signal: no entry");
+  const failing = await decide({ read: async () => { throw new Error("nansen down"); } });
+  assert.equal(failing.result?.action, "none");
+  const empty = await decide({ read: async () => null });
+  assert.equal(empty.result?.action, "none");
+  const bullish = await decide({ read: async () => 1 });
+  assert.equal(bullish.result?.action, "executed", "a bullish signal can tip the entry condition");
+  assert.equal(sessions(bullish.w), 1);
+  const absurd = await decide({ read: async () => 1e12 });
+  assert.equal(absurd.result?.action, "executed");
+  const bearish = await decide({ read: async () => -1 });
+  assert.equal(bearish.result?.action, "none");
+  assert.equal(sessions(off.w), 0);
+});
