@@ -1,0 +1,56 @@
+---
+title: "Threat model"
+description: "The assets, attacker capabilities, attack scenarios, and security invariants of Monadeum, with residual risk stated as plainly as the mitigations."
+---
+
+Source of truth: `THREAT-MODEL.md`, with controls in `SECURITY.md`. This is a project-specific model. Each scenario is grounded in a documented incident, a cited attack class against a component the project uses, or, where no prior art exists, is labeled first-principles.
+
+## Assets worth protecting
+
+User capital in each agent's smart account is the primary asset. The rest exist to protect it or depend on it: the platform's gas-sponsorship budget, agent identity and its on-chain record, the off-chain accounting that ranking and retirement are computed from, the session keys and the separate x402 key, the user's root wallet and login credential, and the selection mechanism itself, whose integrity decides whether every other invariant keeps holding over time.
+
+## What an external attacker can do
+
+Serve a malicious x402 response or run a fake provider. Try to bias which provider an agent picks (a published study measured selection bias of roughly 72 percent from metadata manipulation alone). Replay or cache-poison a payment header at an intermediary. Send an unsolicited token or NFT to an agent's public address. Inject text into any content that reaches the model. Manipulate settlement timing by compromising shared infrastructure.
+
+An attacker with no privileged access cannot invoke an account's privileged functions without the session key or the owner's signature (assuming the validator is correct, which is an audit question), and cannot mint capital. Every path is about making an agent misuse capital it already holds.
+
+## Scenarios
+
+| Scenario | Pattern | Primary mitigation |
+| --- | --- | --- |
+| A | Fake-authorization prompt injection (a 2024 incident, 13.19 ETH) | The risk engine checks the transaction's structure and ignores claims of authorization in the model's trace |
+| B | Unsolicited-transfer permission escalation (a 2026 incident, roughly $150,000 to $200,000) | Invariant 2: receiving an asset never changes permissions. No code path reads "received an asset" as a permission input |
+| C | x402 discovery-layer manipulation | Two named providers, no open discovery |
+| D | Selection-driven erosion of safety constraints | Constants outside the genome, caps on reallocation, a population-level circuit breaker |
+| E | Settlement race or replay on x402 | Client idempotency, the token's nonce registry, and the validator's rate bound |
+| F | Hallucinated or malformed transaction proposal (no prior art found; first-principles) | Structural validation on every proposal, independent of rationale |
+| G | Compromised root credential with population-wide blast radius | Bulk recovery hold, see [Recovery](/security/recovery) |
+| H | Phishing and address substitution at funding (first-principles) | API sets the destination, asset locked, credit only from an observed on-chain transfer |
+| I | Signature-path drain through ERC-1271 (first-principles, reproduced on a mainnet fork on 2026-10-10) | Trading key cannot sign through ERC-1271. A separate bounded x402 validator, see [x402 validator](/security/x402-validator) |
+
+## Invariants
+
+Seventeen numbered invariants are stated in `THREAT-MODEL.md` section 7 and are expressed, where the chain can see them, as Foundry invariant tests. The ones that carry the financial guarantees:
+
+- **1.** An account rejects any transaction over its on-chain spend limit, whatever the application layer approved.
+- **3, 13, 15.** Reallocation moves only existing capital between two existing accounts of one owner, in one atomic transfer, and creates nothing. No capital crosses an owner boundary. Retirement moves no capital.
+- **4, 12.** A source loses at most the cap and never goes below the floor. A sink never exceeds the slot ceiling.
+- **5, 14.** Protocol parameters are not part of any genome and are changed only by an explicit operator action outside any agent's or user's reasoning path.
+- **7, 10.** The model's output is never sufficient authorization, and an undeterminable state fails closed.
+- **8.** The owner can revoke one agent's session key at any time without affecting any other agent.
+- **16, 17.** A balance is credited only from an observed on-chain transfer of the canonical settlement asset. No platform-held key can make an account authorize a token movement through ERC-1271 except a bounded x402 payment.
+
+## Residual risk, stated plainly
+
+- The reallocation ranking is computed off-chain and cannot be verified on-chain. A corrupted record or a compromised operator can misdirect capital among one owner's agents, within the bounds, without breaking an invariant.
+- The reallocation contract's owner, principal, and status come from an operator role. A compromised operator key cannot move capital between owners, but can raise a principal, advance evaluations as fast as the minimum spacing allows, register a new account, or retire agents.
+- No real-world incident exists for an exploited selecting agent population, so the selection-specific defenses rest on first-principles invariants and academic analysis, not incident experience.
+- The operator of Monad's official x402 facilitator is not identified in Monad's documentation, and the project cannot independently verify its uptime or security posture.
+- The x402 bound is a rate, and it adds to the daily cap. A fully compromised platform holding both keys of an agent could move up to the daily cap plus the x402 bound in a day.
+- Invariant 1 depends on the validator being implemented correctly. That requirement is stated, not discharged, and no audit has been completed.
+- The bulk-recovery hold can be waited out by an attacker who holds the root credential longer than its delay.
+
+## Non-goals
+
+Agent-to-agent interaction, a fully adversarial platform operator (the operator is trusted for the MVP), and formal verification of contracts.

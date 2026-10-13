@@ -1,0 +1,48 @@
+---
+title: "Spend policy"
+description: "How spend is limited twice: the signed application-layer policy and the on-chain AgentSpendPolicy contract with its allowlist, recipient rule, per-transaction cap, and rolling daily cap."
+---
+
+Source of truth: `ARCHITECTURE.md` sections 16.1 and 16.3, `SECURITY.md` sections 1 and 9, `contracts/src/IAgentSpendPolicy.sol`, and `libs/risk`.
+
+<Frame caption="Spend control layers: application policy, then on-chain validation, then on-chain execution. Source: SECURITY.md section 9.">
+  <img src="/images/diagrams/04-spend-control-layers.svg" alt="Layered diagram of spend controls: the worker risk engine with its signed policy, the account's validation phase with allowlist, recipient rule and per-transaction cap, and the execution phase with the rolling daily cap." />
+</Frame>
+
+## Layer 1: the signed application policy
+
+The risk engine is a fixed set of typed, pure functions. Its thresholds are a versioned, signed JSON document. It is deliberately not an interpreted rules language: a data change would then alter what is checked, not only a threshold, moving the most load-bearing control to a place code review does not see. An external rules engine would add a network hop to the enforcement path and a new failure mode. The schema is in [Policy rule schema](/reference/policy-rule-schema).
+
+Rules that bear on spending: the call must be on the allowlist; a `transfer` or `approve` on the settlement asset must name an allowlisted recipient; `perActionCap` applies to the sum of every call in the plan, so splitting an action does not multiply the cap; `session-daily-cap` compares the chain's own `windowTotal` plus the plan's amount against the cap, over the same rolling window the chain enforces. The engine derives each call's spend from its calldata, never from a figure the plan declares.
+
+Policy versions are an append-only table. No application role may `UPDATE` or `DELETE` it, the worker can only `SELECT`, and the role that writes genomes has no grant on it. Each version is signed with EIP-191 by an operator key distinct from every session key and pinned in the worker's configuration. On load the engine verifies the signature, the `previousHash` chain back to version 1, and that `effectiveFrom` never moves backward. If any check fails it evaluates nothing and returns `policy-unverified` for every request. This gives the opening constraint of `EVOLUTION.md` a concrete home: the evolutionary process writes genomes and holds no credential that can write a policy version.
+
+<Note>
+  Known gap, stated in the documents: the pair check and `maxPositionFraction` read the pair and notional from the proposal's declared trade intent, not from decoded router calldata, because router calls are not decoded. The settlement-asset `approve` the plan carries is decoded and capped, so the spend caps bound this gap, and the pair and position checks do not.
+</Note>
+
+## Layer 2: the account's own policy
+
+`AgentSpendPolicy` holds per-account limits and a call allowlist keyed by smart account address, with the settlement asset fixed at deployment. It is installed on the session key's permission as both a policy and a hook.
+
+**Validation phase** (`check`): the allowlist at `(target, selector)` granularity, a zero native value, the recipient rule, and the per-transaction cap on the sum of every call in the operation. None of these needs the current time, so all can reject an operation before it is included.
+
+**Execution phase** (`record`): the rolling daily cap. ERC-7562's validation rules forbid reading `TIMESTAMP` during validation, so the daily cap cannot be checked there. A breach therefore surfaces as a reverted execution that still pays gas. This is a documented constraint of the ERC-4337 validation rules, and whether the bundlers used on Monad accept exactly these storage reads is still to be confirmed with a deployed-account run.
+
+**Counting.** Only calls that move the settlement asset count. `transfer` and `approve` on it count their `amount` in full, when called. A call to Kuru's router or the reallocation contract counts 0, on the assumption that each pulls funds only through an allowance set by a counted `approve`. That holds by construction for the reallocation contract. For Kuru's router it is not yet verified. `setAllowed` refuses any other selector on the settlement asset, so no allowlist entry can move it through an uncounted call such as `transferFrom` or `increaseAllowance`.
+
+**Recipients** are checked on-chain: the first argument of a counted call must be an address on which the account has an allowed selector, and must not be the settlement asset, the policy itself, or the account. With the MVP allowlist that is Kuru's router and the reallocation contract.
+
+**Traded assets.** A close sells the market's ERC-20 base (WETH on mainnet, WMON on testnet), approving the router. The owner marks that token with `setTradedAsset`. The contract then admits only `transfer` and `approve` on it, applies the recipient rule, counts the call as 0 against the caps (it has no price for the token), and never treats it as a recipient. What this leaves open: a compromised key can still approve the router for the whole traded balance and sell it at a bad price, a wider version of a buy's bad-trade exposure.
+
+**Self-protection.** `check` rejects any call whose target is the policy contract or the account itself, whatever the allowlist says, so a session-key operation can never reach the owner functions or the account's module management. Without both rules, one mistaken allowlist entry would let a compromised key raise its own caps. An account whose limits were never set has both caps at 0, so any counted call fails closed.
+
+**Rolling window.** Spend is stored in 25 one-hour buckets per account, and the window total at hour `h` sums buckets `h - 24` through `h`. That span covers between 24 and 25 hours, so it can over-count by up to one hour of spend and never under-counts.
+
+## Why a custom contract
+
+ZeroDev ships no native resetting cap on value. A testnet run (issue 18) of the closest native combination, a call policy with a per-call cap plus a rate limit, failed as a value cap in two independent ways: the rate limit counts operations, so one batched operation of two capped transfers took one slot and moved 0.004 MON against a nominal 0.003 bound, and the window is fixed, not rolling, so spending late in one window and early in the next moved 0.005 MON within 65 seconds. Rotating the session key daily keeps both failures. The custom contract's batch-aware `check` and 25-bucket window answer each failure directly.
+
+## Layers beyond these two
+
+A session-level budget is enforced by the risk engine, tighter than the on-chain cap. On testnet it is deployment-wide, not per agent, so for an agent whose owner chose lower on-chain caps, the chain's caps are the tighter bound. A population-level circuit breaker and a manual per-agent stop are specified in `SECURITY.md` section 9. See [Recovery](/security/recovery).

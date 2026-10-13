@@ -1,0 +1,32 @@
+---
+title: "Responsible disclosure"
+description: "How to report a security vulnerability in Monadeum, what is in scope, and what to expect. Do not report vulnerabilities in public issues."
+---
+
+Source of truth: `SECURITY.md` section 14.
+
+## How to report
+
+Report a suspected vulnerability privately, using GitHub private vulnerability reporting on the repository's Security tab. Do not open a public issue, pull request, or discussion for a vulnerability, and do not test against accounts or funds you do not own.
+
+<Note>
+  Assumption to confirm before the repository is made public: private vulnerability reporting is a repository setting that must be enabled by a maintainer. No dedicated security email address is published, and none is invented here. If the setting is not enabled when you read this, open a minimal public issue asking for a private contact, with no technical detail.
+</Note>
+
+## What to include
+
+The affected component and file, the commit or deployment you tested, the steps to reproduce, the impact you believe it has, and whether any funds, real or testnet, were involved. A proof of concept against the Monad testnet deployment is welcome. Do not run one against mainnet systems you do not own.
+
+## Scope
+
+In scope: the contracts in `contracts/src`, the libraries and apps in this repository, and the testnet deployment at `app.monadeum.xyz` and `api.monadeum.xyz`. Of particular interest are the spend-policy and x402 signature paths, the reallocation contract's owner boundary, authorization in the API, and the handling of keys.
+
+Out of scope: third-party services (Privy, ZeroDev, Kuru, Ramp, Nansen, DeFiLlama, Monad infrastructure) beyond how this project uses them, denial of service by volume, and social engineering of maintainers. A weakness in a third party that this project depends on is still worth telling us about, because the dependency is ours.
+
+## What to expect
+
+There is no bug bounty. This is testnet software and no program is promised or implied. Acknowledgement times and a fix timeline are not committed here, because no process has yet been run to measure them. Reports will be handled in good faith. No legal safe-harbor terms are published yet.
+
+## Known limitations are already documented
+
+Before reporting, check [Audit status](/security/audit-status), [Threat model](/security/threat-model), and `SECURITY.md` section 13. A limitation already listed there is a known and accepted state. A new way to exploit one, or an interaction that makes one worse, is exactly what is worth reporting.
