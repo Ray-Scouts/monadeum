@@ -269,6 +269,22 @@ The agent worker's x402 client treats every external service response as untrust
 
 **Every x402 payment is logged with its outcome**: what was paid, to which provider, what was returned, and whether the resulting information changed the agent's decision. This is both an economics requirement (x402 spend is a cost line in the fitness function, see `EVOLUTION.md`) and a security requirement (an anomalous pattern of x402 spend, for instance an agent that starts paying the same provider on every tick regardless of outcome, is one of the signals the circuit breaker in `SECURITY.md` watches for).
 
+### 8.1 Nansen Smart Money signal (API key, optional, off by default)
+
+**Decision**: the strategy plugin accepts one optional input, a bounded number in [-1, 1] derived from Nansen's Smart Money netflow endpoint. It is off unless `NANSEN_SIGNAL=enabled`. With it off, or with no signal for a tick, the strategy, the tick, and every test behave exactly as before.
+
+**What it does**: `libs/external` (`nansen.ts`) calls `POST https://api.nansen.ai/api/v1/smart-money/netflow` with the key in the `apikey` header, for chain `monad` and one configured token address (`NANSEN_TOKEN_ADDRESS`). It validates the response (size limit 256 KiB, at most 1000 rows, finite numbers, the configured token's row must be present, chain must be `monad`), and reduces the row to `signal = clamp(net_flow_24h_usd / NANSEN_NORMALIZER_USD, -1, 1)`. No string from the response survives into the result. The worker passes it to the strategy as `AgentView.smartMoney`, and `propose` adds `smartMoney * SMART_MONEY_WEIGHT` (0.001) to the entry edge, next to `INFO_EDGE` (0.002). It changes only whether the entry condition holds. It never changes `notional`, so the signal cannot enlarge a position. The RiskModule evaluates the built plan exactly as before, and the spend policy and the position fraction cap remain the final authority.
+
+**What it does not do**: it does not pay Nansen with x402 (only the API key path is implemented, and the x402 payer stays off, section 16.3 open question 1). It does not reach the RiskModule's base-unit information ledger, because an API key call moves no funds from an agent account. It does not use Nansen's MCP or CLI. It does not make any claim that the signal improves returns: the weight and the normalizer are starting values and hypotheses, untested against the simulation.
+
+**Budget and accounting**: an API key call spends Nansen credits, not settlement asset. Credits are therefore a separate budget: `NANSEN_MAX_CREDITS_PER_DAY` (default 10, a hypothesis aligned with the documented free plan top-up of 10 credits a day; a Smart Money call is documented at 5 credits). Each call is recorded with its timestamp, endpoint, HTTP status, credits (from the `X-Nansen-Credits-Cost` header when reported, otherwise the documented 5, marked as an estimate), and outcome. A call that would exceed the day's budget is not made. One live call is shared by all agents for `NANSEN_CACHE_SECONDS` (default 3600, the tick interval). The ledger is in memory, so a restart resets the day's count; Nansen's own plan limit still applies. Credit prices and free plan limits are time-sensitive vendor facts, read from Nansen's documentation on 2026-10-12 and to be re-verified.
+
+**Fail closed**: an unreachable service, a timeout, a non-2xx status (including 401, 402, 403, 429), invalid JSON, an invalid shape, a missing token row, or an exhausted budget yields no signal for the window, and the tick proceeds as if the integration were off. A signal is never invented, and a failure is never treated as a neutral or a default value.
+
+**Data caveat (assumption)**: Nansen documents `monad` as a supported chain for Smart Money data. This product trades on Monad testnet, and that testnet token has no Nansen data (assumption: Nansen covers mainnet only). `NANSEN_TOKEN_ADDRESS` is therefore a Monad mainnet token address, and the signal is mainnet smart money flow used as a market sentiment input for the testnet agents. This is stated in any demo.
+
+**Live verification**: the schema and the client are tested against recorded fixtures shaped from Nansen's documented response, not against a live response. `bun run nansen:probe` makes one live call and prints a redacted proof record. Until it is run with a real key, the live behavior is unverified.
+
 ## 9. On-chain vs off-chain boundary
 
 **On-chain** (Monad, ERC-8004-compatible identity registry plus each agent's own smart account state):
