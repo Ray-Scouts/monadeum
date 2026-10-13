@@ -1,0 +1,30 @@
+---
+title: "What Monadeum is"
+description: "The thesis behind Monadeum, the agent loop, and the three design commitments that shape every component: separated authority, double-enforced limits, and a chain-anchored record."
+---
+
+Monadeum is a product for creating AI agents that own capital on Monad, make economic decisions with it, and are judged by measured economic fitness. The initial environment is trading. The underlying question, stated in `BRIEF.md`, is whether autonomous economic agents can improve when capital, information, and computation are treated as scarce resources.
+
+## The agent loop
+
+An owner creates an agent and funds it. From then on the agent runs on a schedule. At each tick it observes its environment, decides whether buying information is worth its price, reasons about an opportunity, and proposes at most one economic action. A deterministic Policy and Risk Engine evaluates the exact transaction the proposal would produce. Only an approved plan reaches the execution layer, and the agent's own smart account applies a second, independent limit on-chain. Afterward the outcome is measured and fitness is updated.
+
+<Frame caption="Agent lifecycle, from creation through ticks and evaluations to retirement. Source: ARCHITECTURE.md section 4.">
+  <img src="/images/diagrams/02-agent-lifecycle.svg" alt="Diagram of an agent's lifecycle: created, active with a tick loop of observe, decide, propose, check, execute and measure, then retired." />
+</Frame>
+
+## Three design commitments
+
+The architecture changed from its starting hypothesis in three ways, each for a concrete reason recorded in `ARCHITECTURE.md` section 1.
+
+1. **A model never authorizes a financial action.** Two documented incidents in which an AI agent lost funds (13.19 ETH in 2024, and roughly $150,000 to $200,000 in 2026) share one cause: the language model was the only judge of whether an action was allowed. In Monadeum the model produces a proposal. A deterministic component with no language model in it decides whether the proposal's actual transaction is within policy.
+2. **Limits are enforced twice, at independent layers.** The application-layer policy engine is checked first. Each agent's smart account then enforces its own spend caps and call allowlist on-chain, so a bug in the application layer cannot move capital past what the account allows. The two layers do not trust each other.
+3. **The chain is the record of identity, custody, and capital movement.** The database is a read-model. Anything security-critical can be checked against an on-chain hash or event, and the indexer that populates the read-model is its own component, not part of the API.
+
+## What is deliberately out of scope
+
+Agents do not pay or message each other. Agent-to-agent interaction is deferred because populations of communicating agents bring Sybil and collusion risks that the single-agent design has not yet been tested against (`ARCHITECTURE.md` section 13). The information economy is limited to two providers, Nansen and DeFiLlama, reached through x402 (see [x402](/architecture/x402)). Trading is the only strategy plugin.
+
+## Where the original brief changed
+
+The founding brief imagined agents that reproduce and pass strategies to children. Simulation did not support that mechanism, and it was replaced. The reasoning is on [Why reproduction was superseded](/concepts/why-reproduction-was-superseded).

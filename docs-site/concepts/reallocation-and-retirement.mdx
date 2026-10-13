@@ -1,0 +1,48 @@
+---
+title: "Reallocation and retirement"
+description: "The adopted selection mechanism: owner-scoped capital reallocation under a policy the owner signs, plus retirement of starved agents. Off by default, with the reason stated."
+---
+
+Selection in Monadeum shifts capital among one owner's existing agents toward the better ranked ones, and stops agents that keep failing. It never creates an agent, copies a genome, or moves capital across owners. Source of truth: `EVOLUTION.md` sections 3 and 6, `ARCHITECTURE.md` sections 5 and 16.5.
+
+<Warning>
+  Reallocation is off. After the pre-registered study reported no measurable genome edge for the current strategy, the switch `MONADEUM_REALLOCATION_ENABLED` is off unless set, and production refuses to start with it on unless a new pre-registered study reports a persistent edge. Retirement is not behind that switch and runs either way.
+</Warning>
+
+## The mechanism
+
+1. **Fixed slots.** The set of agents changes only when an owner creates one or an agent retires.
+2. **Evaluation cadence.** Ranking, reallocation, and the starvation check run every 20 ticks (proposed default), which is every 20 hours at the decided one-hour tick.
+3. **Pool.** For each owner, the pool is that owner's Active agents that have an adjusted fitness and are covered by that owner's reallocation policy.
+4. **Sources and sinks.** In a pool of `n`: none when `n < 2`; the bottom one and top one when `2 <= n <= 19`; the bottom and top `floor(n / 10)` when `n >= 20`.
+5. **Amounts.** Each source offers up to `reallocation_cap` (0.2) of its capital, never going below the capital floor. Each sink can take capital up to `slot_ceiling` (4) times its principal. The amount moved is the smaller of the total offer and the total room.
+
+```
+offer_i = max(0, min(reallocation_cap * source_i.capital, source_i.capital - capital_floor))
+room_j  = max(0, slot_ceiling * sink_j.principal - sink_j.capital)
+moved   = min(sum(offer), sum(room))
+```
+
+<Frame caption="Reallocation and retirement on an evaluation. Source: ARCHITECTURE.md section 5.">
+  <img src="/images/diagrams/05-reallocation-retirement.svg" alt="Diagram of an evaluation: fitness and niches are computed, starved agents retire, and for owners with a signed policy capital moves from bottom ranked sources to top ranked sinks through one on-chain call per source." />
+</Frame>
+
+## The owner's policy
+
+Reallocation runs among an owner's agents only while that owner has signed a policy naming at least two of them. The policy can tighten the protocol bounds, a lower cap or a lower ceiling, and can never loosen them or lower the floor. The owner can revoke it at any time. An owner's total capital across their agents is unchanged by any reallocation, but an individual agent can fall below its own principal. That is the property the owner consents to when signing, and the product must state it in those terms.
+
+## What the chain checks and what it cannot
+
+The contract checks on-chain, at execution: same owner, the owner's policy in force and naming both agents, the cap, the floor, the ceiling, and one debit per source per evaluation. The ranking itself is computed off-chain from fitness data and cannot be verified on-chain. A corrupted ranking can therefore misdirect capital only among one owner's agents and within those bounds (`THREAT-MODEL.md` section 8).
+
+## Retirement
+
+An agent retires when its capital falls below the floor (0.06, proposed), when it sits in the bottom decile of its niche for `K` consecutive evaluations (`K = 3`, proposed), or when its owner retires it. Retirement stops ticking, never deletes identity or history, and never moves capital: the balance stays in the agent's account, recoverable by the owner. A retired agent is never a source or sink.
+
+## What is deliberately excluded
+
+Genome replacement, mutation of live agents, recycling a retired agent's capital into a sibling, higher reallocation intensity, and a treasury were all considered. The first two are excluded because their value in simulation came from stopping a failing genome, which retirement also does without copying anyone's genome. The others are recorded as hypotheses with the evidence that did not meet the bar (`EVOLUTION.md` section 3.2).
+
+## What it is, plainly
+
+This is selection on capital without variation. It pays off only if fitness rank persists, meaning an agent ranked high now tends to earn more in the next window. That requires a genome that carries a real, persistent edge. Without one, reallocation moves capital on noise. See [Results](/evidence/results) for what was measured. Owners with one agent get no benefit from it.

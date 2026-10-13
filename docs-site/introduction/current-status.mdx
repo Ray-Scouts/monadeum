@@ -1,0 +1,47 @@
+---
+title: "Current status"
+description: "A candid account of what runs on Monad testnet today, what is built but switched off, and what is design only, with the date each fact was verified."
+---
+
+This page separates three things that are easy to blur: what has been observed running, what is implemented and tested but off or unproven live, and what is design. Dates are the dates the source documents record the check. Facts about Monad, ZeroDev, Privy, Kuru, and USDC are time-sensitive and should be re-verified before they are relied on for anything involving capital.
+
+<Warning>
+  Everything on this page concerns Monad testnet with testnet assets. No Monadeum contract is on mainnet, none has been audited, and no mainnet capital is at risk anywhere in the system.
+</Warning>
+
+## Observed running on Monad testnet
+
+| Item | State | Verified |
+| --- | --- | --- |
+| Three contracts deployed on chain 10143 | `AgentSpendPolicy`, `AgentReallocation`, `X402PaymentValidator`. All three receipts succeeded, each address has code, and constructor-set values read back correctly. | 2026-10-11 |
+| 2-of-3 Safe holds the reallocation operator and admin roles | Safe version 1.4.1+L2, threshold 2, three owners, read on chain and from the Safe transaction service. | 2026-10-11 |
+| Web app and API served publicly | `https://app.monadeum.xyz` and `https://api.monadeum.xyz`, one VPS, Privy in development mode. | 2026-10-11 |
+| Sign-in, agent creation, account deployment | An owner signed in through Privy and created the first agent. Its Kernel account was deployed with sponsored gas. | 2026-10-11 |
+| Indexer reading the chain | The indexer recorded `account.deployed`, `spend.limits-set`, and `spend.call-allowed` for that agent, reading finalized blocks. | 2026-10-11 |
+
+Source: `ARCHITECTURE.md` section 10 ("Live testnet deployment"), `contracts/deployments/monad-testnet.json`, `deploy/README.md`.
+
+## Implemented and tested, but not observed live, or switched off
+
+| Item | What is true | What is not yet observed |
+| --- | --- | --- |
+| Tick runner (trading loop) | Built and tested offline. Off unless `WORKER_TICK_RUNNER=enabled`. | No tick has run against the live deployment. On 2026-10-12 the testnet WMON/USDC market was not on chain, so a trade through the bundler and a Kuru fill on it are unobserved. |
+| Session key activation | Built in the API and wallets library. | Not run through a Privy embedded wallet on testnet. That Privy's `eth_signTypedData_v4` over Kernel's enable data produces a signature Kernel accepts is an assumption. |
+| Spending operation through the spend policy | Contract has unit, fuzz, and invariant tests and a fork test against Kernel v3.1 on Monad testnet. | No spending operation validated by the contract through a bundler has been observed. |
+| Relayed funding transfer | Built and tested against an in-memory token with EIP-3009 semantics. | A relayed `transferWithAuthorization` has not been executed on Monad. |
+| x402 payments | Client, validator contract, and reconciliation are built. The worker's payer is off (`WORKER_X402_PAYER_ENABLED`). The testnet runbook installs the validator on no account. | Whether the facilitator used on Monad accepts ERC-1271 signatures for EIP-3009 is unverified, and gates turning the payer on. |
+| Reallocation | Contract deployed with a 2-of-3 Safe as operator and admin. The switch `MONADEUM_REALLOCATION_ENABLED` is off, and the worker's executor sends nothing. | No reallocation has been submitted. Production refuses to start with it on unless a new pre-registered study reports a persistent edge. |
+| Retirement | The retirement rules run in the evaluation, with or without reallocation. | The API's agent retirement endpoint is not built. |
+
+## Design only, not built
+
+- Mainnet deployment of any contract, and any audit. The audit package exists (`contracts/audit/README.md`), and no auditor is engaged.
+- A production secrets manager for session and x402 keys. The only vault is a local encrypted file vault that refuses `MONADEUM_ENV=production`.
+- The on-chain agent identity registry (ERC-8004 compatible). Until it exists, the reallocation contract's own registry holds owner, principal, and status.
+- The card on-ramp session (Ramp Network is the decided vendor) and usability testing of the funding flow.
+- A per-agent policy limit tighter than the deployment-wide signed policy. The worker does not yet read an account's own on-chain limits.
+- Agent-to-agent payments, and any strategy other than trading.
+
+## The product claim that is supported today
+
+For the current strategy plugin, a pre-registered study found no measurable benefit from selection, so the supported product is well-calibrated static agents under hard limits, with reallocation off. That result, and its limits, are on [Evidence](/evidence/results). Testnet trading results carry no economic meaning: the only liquidity on the testnet market is seeded by the project, so profit or loss there is a transfer to or from that seed (`ARCHITECTURE.md` section 10, "Testnet market").

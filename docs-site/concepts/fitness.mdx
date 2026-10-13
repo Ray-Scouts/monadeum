@@ -1,0 +1,48 @@
+---
+title: "Fitness"
+description: "How Monadeum measures an agent: net economic performance after every cost, a downside-risk adjustment, shrinkage toward the population to separate skill from luck, and relative ranking."
+---
+
+Fitness is the number the rest of the evolutionary design acts on. Raw profit is rejected as the metric because it says nothing about how the return was earned. Source of truth: `EVOLUTION.md` section 2.
+
+## Net economic performance
+
+Over an evaluation window:
+
+```
+NEP = realized_PnL - x402_costs - gas_costs - trading_fees - slippage_costs
+```
+
+Realized P&L arises only when a position closes, and is measured at reference prices (the book mid when the plan was built, or the best bid when there is no ask) against the average cost of what was bought. The gap between a reference price and the price actually paid is that trade's fee and slippage, which the formula already subtracts. Measuring P&L at execution prices would subtract those costs twice. With this definition, realized P&L less every trade's costs equals the settlement asset received less the amount paid, less gas.
+
+Unrealized P&L on an open position is not an input, because it is a mark rather than a cash flow, and counting it would move fitness with no trade. The consequence is that an agent holding a losing position does not see the loss in fitness until it closes. Whether a mark-to-market term belongs in the formula is an open hypothesis that has not been tested.
+
+## Risk adjustment
+
+Fitness uses a Sortino-style ratio. Only downside deviation counts as risk, because the concern is loss of capital, not variance in general.
+
+```
+downside_deviation = sqrt( mean( min(0, r_i - target)^2 ) )
+raw_sortino = (mean(r_i) - target) / downside_deviation
+```
+
+`r_i` is the per-tick return net of costs and `target` defaults to zero. If downside deviation is exactly zero over a window with at least one trade, the agent is not given a maximal score. It is flagged for operator review, because genuine zero downside over a meaningful sample usually means wash trading against a predictable counterparty, a policy gap being exploited, or an accounting bug. A flagged agent keeps trading but cannot be a reallocation sink while the flag is set.
+
+## Skill versus luck
+
+Short samples reflect luck. Monadeum does not claim to solve this. It shrinks each estimate toward the population median in proportion to how little evidence the agent has produced:
+
+```
+w(n) = n / (n + k)
+adjusted_fitness = w(n) * raw_sortino + (1 - w(n)) * population_median_sortino
+```
+
+`n` is the agent's trade count in the window and `k` is a protocol constant, proposed at 20. The claim is narrow: an agent with few trades is scored near the population average, and an agent with a long record increasingly on its own merits. The value of `k` is a proposed default, not a measured one.
+
+## Relative, not absolute
+
+Fitness is expressed as a percentile within the live population over a trailing window, proposed at 100 ticks. Research on artificial markets finds that evolving populations cycle through regimes rather than converging on one best strategy, so a fixed absolute bar would reward everyone in a favorable regime and no one in an unfavorable one.
+
+## Honest limits
+
+The constants above (`k`, the window, the evaluation cadence, the retirement horizon) are starting hypotheses. The pre-registered study also found that on the current strategy the rank this function produces barely persists out of sample, and what persists sorts agents by how often they trade (see [Results](/evidence/results)).

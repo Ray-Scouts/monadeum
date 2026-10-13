@@ -1,0 +1,52 @@
+---
+title: "Agents and genome"
+description: "What an agent is in Monadeum, what its genome contains, which parameters are bounded by the protocol, and why an owner picks a preset instead of writing a genome."
+---
+
+An agent is an independent economic identity: its own ERC-4337 smart account on Monad, its own spend limits, its own revocable session key, and a committed description of how it behaves, its genome. Source of truth: `EVOLUTION.md` section 1 and `ARCHITECTURE.md` section 6.
+
+## The genome
+
+The genome is the set of parameters that define one agent's strategy. Each field is classified so that nothing is assumed mutable by default.
+
+| Field | Meaning | Bound |
+| --- | --- | --- |
+| `strategyType` | Strategy plugin. Only `trading` exists. | Immutable |
+| `assetUniverse` | Pairs the agent may trade. | Subset of a platform-defined list. Today one pair. |
+| `riskTolerance` | Maximum position size as a fraction of capital. | Protocol ceiling 0.25 and floor 0.01 (proposed defaults) |
+| `executionFrequency` | Ticks between decisions. | 1 to 50 (proposed default range) |
+| `timeHorizon` | Signal lookback window. | Strategy bounds |
+| `entryThreshold`, `exitThreshold` | Indicator thresholds. | Plugin bounds. The current plugin does not read `exitThreshold`. |
+| `informationSources`, `informationBudget` | Which x402 providers to query and how much to spend. | Protocol daily spend ceiling |
+| `modelConfiguration` | Reasoning depth from a short allow-listed set. | Allow-listed values only |
+
+Fitness, reallocation rank, and similar values are derived, never stored in or inherited through the genome.
+
+## What is not in the genome
+
+The reallocation cap, slot ceiling, capital floor, evaluation cadence, spend ceilings, position-size ceiling, and population caps are protocol constants. They are identical for every agent, never inherited, and never touched by selection or by an owner's request. This is the opening constraint of `EVOLUTION.md`: nothing that protects capital is allowed to be optimized away by the thing it constrains.
+
+## One genome for an agent's whole life
+
+Under the adopted mechanism a genome is fixed when the agent is created. Nothing copies it, mutates it, or lets the owner edit it. An owner who wants a different strategy creates a new agent. This keeps every fitness history attributable to exactly one committed genome, whose hash is recorded as described in [Genome hash](/reference/genome-hash).
+
+## Owners choose a preset, not parameters
+
+Agent creation takes the name of a preset. The server builds the genome from the preset and the deployment's trading pair, normalizes and hashes it, and stores both. A request carrying any genome field is refused with `400 unknown-field` rather than ignored.
+
+The reasons are in `EVOLUTION.md` section 1.1. The pre-registered study found that the current plugin's genome fields carry no edge the selection mechanism can use, so a free-form genome would invite owners to tune noise and present it as strategy. Every field has to be bounded server-side anyway, and building the genome there removes an input from the trust boundary between client and API. There is one preset, `conservative`.
+
+| Field | `conservative` value | Basis |
+| --- | --- | --- |
+| `riskTolerance` | 0.10 | Assumption derived from measured costs: about 17.8 bps per swap at a 1 USD position on 10 USD capital |
+| `executionFrequency` | 24 | Assumption: at most one position change a day at the one-hour tick |
+| `timeHorizon` | 24 | Assumption, no calibration evidence |
+| `entryThreshold` | 0.0002 | Assumption: covers one round trip's cost spread over the decision interval |
+| `informationSources`, `informationBudget` | none, 0 | No history shows a purchase pays |
+| `modelConfiguration` | `low` | The cheaper allow-listed value; the plugin does not read it yet |
+
+None of these values is a calibrated edge, because the study found none to calibrate to. They limit what an agent can lose to costs and exposure. They were derived from MON/USDC cost snapshots, and the owner then decided that agents trade WETH/USDC on mainnet, so the derivation must be redone with measured WETH/USDC costs before testnet capital is treated as meaningful (`EVOLUTION.md` section 1.1).
+
+<Frame caption="Agent lifecycle with creation, ticks, evaluation, and retirement. Source: ARCHITECTURE.md section 4.">
+  <img src="/images/diagrams/02-agent-lifecycle.svg" alt="Agent lifecycle diagram: created, active, evaluated on a fixed cadence, and retired with identity preserved." />
+</Frame>
