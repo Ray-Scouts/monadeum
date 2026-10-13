@@ -86,3 +86,16 @@ SMOKE_API_URL=http://127.0.0.1:3901 SMOKE_ORIGIN=http://localhost:3000 bun scrip
 - The login gate was checked in a browser against an `api` build with no reachable API and a rejected Privy app ID (redirect to `/login?next=`, the API and Privy errors shown, the wallet button enabled). The signed-in redirect (from `/login` to `next`) and sign-out returning to `/login` are covered by the decision tests only, not by a browser run with a live session.
 - No owner-signed operation has been signed by a real wallet through this page: the running API has no WalletsModule, so deployment and stop answer 503. The signing path is covered by tests with a local key standing in for the wallet.
 - MetaMask-style wallets require `types.EIP712Domain` and an active chain matching the typed data's `chainId`; the page adds the former and asks the wallet to switch to Monad testnet, but no specific wallet has been tried.
+
+## Responsive rules
+
+The app works from a 320 px viewport to wide desktop with no horizontal page scroll. These rules live in shared tokens and components (`src/app/globals.css`, `src/components/ui.tsx`), not in per-screen patches, and `src/components/responsive.test.tsx` asserts them.
+
+- **Minimum width 320 px.** Grids of KPI cards are one column below 400 px and two columns up to `lg`. The side rail appears at `lg` (1024 px); below it navigation is the fixed bottom bar, whose five items share the width equally.
+- **Targets are at least 44 px.** Buttons (`btn`), the theme toggle, the copy button, segmented controls, links in tables and feeds (`tap`, `tap-y`), switches, range sliders, and the rows that hold checkboxes and radios.
+- **Inputs are 16 px.** `input`, `select`, and `textarea` are 16 px and at least 44 px tall, which stops iOS Safari from zooming on focus.
+- **Long values wrap.** A hash, an address, or a large amount must never widen its container: use the `long-value` utility (`overflow-wrap: anywhere`) and, where the user may need the value, a copy control. Grid tracks that hold such values use `minmax(0, 1fr)`.
+- **Wide tables scroll inside their card** and show an edge shadow (`scroll-hint`) while there is more to scroll to.
+- **Text is at least 12 px.**
+
+These rules were checked with a mock API and same-origin frames at 320, 375, 414, 768, 1024, and 1440 px. They were not checked on a physical phone.
