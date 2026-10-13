@@ -65,9 +65,9 @@ export function Landing() {
   return (
     <div className={s.page}>
       <header className={s.nav}>
-        <Link href="/" className="inline-flex items-center gap-2.5 rounded-lg font-display text-lg font-bold">
+        <Link href="/" aria-label="Monadeum" className="tap inline-flex items-center gap-2.5 rounded-lg font-display text-lg font-bold">
           <Logo className="size-[28px] flex-none" />
-          Monadeum
+          <span className={s.wordmark}>Monadeum</span>
         </Link>
         <nav aria-label="Main" className="flex items-center gap-1.5">
           <a className={s.navtxt} href="#how">How it works</a>
@@ -75,7 +75,9 @@ export function Landing() {
           <a className={s.navtxt} href="#security">Security</a>
           <a className={s.navtxt} href="#faq">FAQ</a>
           <details className={s.menu}>
-            <summary aria-label="Page sections">Menu</summary>
+            <summary aria-label="Page sections">
+              <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+            </summary>
             <div className={s.menuList}>
               <a href="#how">How it works</a>
               <a href="#genome">Genome</a>

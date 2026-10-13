@@ -28,14 +28,15 @@
 .navtxt:hover { color: var(--fg); background: var(--surface-2); }
 @media (max-width: 980px) { .navtxt { display: none; } }
 /* Below 980px the section links collapse into a menu; the disclosure is a 44px target. */
-.menu { position: relative; display: none; }
-.menu summary { display: grid; place-items: center; min-width: 44px; min-height: 44px; list-style: none; cursor: pointer; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--fg); font-size: 14px; font-weight: 500; padding: 0 14px; }
+.menu { display: none; }
+.menu summary { display: grid; place-items: center; min-width: 44px; min-height: 44px; list-style: none; cursor: pointer; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--fg); font-size: 14px; font-weight: 500; padding: 0; }
 .menu summary::-webkit-details-marker { display: none; }
-.menuList { position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; display: grid; min-width: 180px; padding: 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
+.menuList { position: absolute; right: clamp(16px, 4vw, 48px); top: calc(100% + 8px); z-index: 20; display: grid; width: min(240px, calc(100vw - 32px)); padding: 6px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
 .menuList a { display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px; color: var(--fg); text-decoration: none; font-size: 15px; }
 .menuList a:hover { background: var(--surface-2); }
 @media (max-width: 980px) { .menu { display: block; } }
 @media (max-width: 380px) { .nav { gap: 8px; } }
+@media (max-width: 420px) { .wordmark { display: none; } }
 
 /* sections */
 .section { max-width: 1280px; margin: 0 auto; padding: 56px clamp(16px, 4vw, 48px); scroll-margin-top: 72px; }
