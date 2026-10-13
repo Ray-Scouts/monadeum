@@ -77,4 +77,13 @@ The write-once genome commitment contract (`contracts/src/AgentCommitments.sol`)
 
 ## Other testnet addresses used by the system
 
-The testnet WMON/USDC market on Kuru's testnet router is planned and was simulated only on 2026-10-11, and nothing was sent (`contracts/deployments/monad-testnet-wmon-market.json`). On 2026-10-12 the market was not on chain. Its addresses are therefore not listed here as deployed.
+The testnet WMON/USDC market on Kuru's testnet router was created and seeded by the project on 2026-10-13. Its liquidity is the project's own seed, so its prices carry no economic meaning. Receipts are in `contracts/deployments/monad-testnet-wmon-market.json`.
+
+| Item | Address or value |
+|---|---|
+| WMON/USDC market | `0x46b66f84317941eC371E7791753f35653341aeBC` |
+| AMM vault | `0x1fDa5CC22F809BC5e446e7F47c2b45DFC1Fc44F3` |
+| Kuru testnet router | `0x7EFbE105Ca7415dE98F96622173458ac1c054630` |
+| Create transaction | `0x2d574382e8eaf42bd5e83d49d79a046a0a2d398619ebbf9c59d2bf5826432688` (block 70616912) |
+| Seed | Six transactions, blocks 70617279 to 70617295, ending with `batchUpdate` `0xda948845e20ce1b9ed8a833f5839652f1c1fbd504e6113dcaa78e0f16d150569` |
+| Book after the seed | Best bid 0.025116, best ask 0.025242 USDC per WMON, 50 bps spread, 6 USDC and 45 WMON resting |

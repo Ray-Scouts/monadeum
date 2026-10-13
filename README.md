@@ -141,7 +141,7 @@ Testnet only. Dates are when the check was made. The fuller account is [Current 
 | Genome commitment on chain | `AgentCommitments` is written and tested. **Not deployed**, so no agent has an on-chain commitment yet | 2026-10-12 |
 | Reallocation events in the indexer, event feed, net earnings | Built, tested against in-memory stores. The testnet read-model was synced without the reallocation handlers | 2026-10-12 |
 | End-to-end threat tests | Offline suite over the worker loop, mapped in `docs/e2e-traceability.md`. Not run against the live deployment | 2026-10-12 |
-| **Trades** | **No trade has been recorded.** The tick runner is built, tested offline, and off by default. No tick has run on the live deployment, and the testnet market was not on chain | 2026-10-12 |
+| **Trades** | **No trade has been recorded.** The tick runner is built, tested offline, and off by default. No tick has run on the live deployment. The testnet WMON/USDC market was created and seeded on 2026-10-13 | 2026-10-13 |
 | **x402 payments** | **No payment has been recorded.** Client, validator, and reconciliation are built. The payer is off by default, and whether the facilitator on Monad accepts ERC-1271 signatures is unverified | 2026-10-12 |
 | Reallocation | Contract deployed, switch off by default, nothing submitted. Pre-registered study found no edge for the current strategy | 2026-10-11 |
 | Relayed funding transfer | Built, tested against an in-memory token, not executed on Monad | 2026-10-11 |

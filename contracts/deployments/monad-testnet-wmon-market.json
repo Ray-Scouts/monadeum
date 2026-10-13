@@ -1,7 +1,7 @@
 {
   "chainId": 10143,
-  "status": "planned, simulated only (nothing was sent)",
-  "note": "The committed record of the testnet WMON/USDC market (ARCHITECTURE.md section 10, Testnet market). contracts/script/wmon-market.sh writes deployments/monad-testnet-wmon-market.latest.json and deployments/monad-testnet-wmon-seed.latest.json (not committed) on every run; after the owner's broadcasts, copy the market, the transaction hashes, blocks, and gas from the receipts here, set status to created and seeded, and commit. The market address is fixed by the parameters (CREATE2 at the router, no sender in the salt), so it is known before the broadcast. Addresses are public.",
+  "status": "created and seeded",
+  "note": "The committed record of the testnet WMON/USDC market (ARCHITECTURE.md section 10, Testnet market). Created and seeded on Monad testnet on 2026-10-13 from the monadeum-testnet-deployer keystore account through contracts/script/wmon-market.sh. The figures under created and seeded are copied from the on-chain receipts. The simulation of 2026-10-11 is kept below for comparison. contracts/script/wmon-market.sh writes deployments/monad-testnet-wmon-market.latest.json and deployments/monad-testnet-wmon-seed.latest.json (not committed) on every run. Addresses are public.",
   "pair": "WMON/USDC",
   "router": "0x7EFbE105Ca7415dE98F96622173458ac1c054630",
   "orderBookImplementation": "0x72caE0a99C19B574e8a6De558F43fc1D019c9374",
@@ -23,6 +23,75 @@
     "makerFeeBps": 0,
     "kuruAmmSpread": 10
   },
+  "created": {
+    "date": "2026-10-13",
+    "tx": "0x2d574382e8eaf42bd5e83d49d79a046a0a2d398619ebbf9c59d2bf5826432688",
+    "block": 70616912,
+    "gasLimit": 1620368,
+    "gasUsedReported": 1620368,
+    "effectiveGasPriceGwei": 102,
+    "costMon": "0.16527753600",
+    "note": "Monad reports the gas limit as gas used and charges it in full. On the 2026-10-11 fork the same call executed in 1224662 gas."
+  },
+  "seeded": {
+    "date": "2026-10-13",
+    "mid": "0.025179 USDC per WMON (REFERENCE: Kuru mainnet MON/USDC book 0x065C9d28E428A0db40191a54d33d5b7c71a9C394 read 2026-10-13, bid 0.025161, ask 0.025196; not a testnet price), passed as SEED_MID_USDC",
+    "ladder": "3 levels a side, 25 bps out and 25 bps apart, 2 USDC per bid, 15 WMON per ask",
+    "transactions": [
+      {
+        "call": "WMON.deposit",
+        "tx": "0x52bfd103cd662901f7dcd81bdc0dd4eb0ce7467bcd84a307ca3d95bf3d5ab554",
+        "block": 70617279,
+        "gas": 66587
+      },
+      {
+        "call": "USDC.approve",
+        "tx": "0x6db665e7f14fb9f426e3a7d85e8e09467c8094a497f487fd3f2f3bd7749fde15",
+        "block": 70617282,
+        "gas": 113920
+      },
+      {
+        "call": "MarginAccount.deposit(USDC)",
+        "tx": "0xa75655a00471a2815a7e1d16016c827cae08c0ddbce76bcaec3e2daa4cf29d64",
+        "block": 70617285,
+        "gas": 214067
+      },
+      {
+        "call": "WMON.approve",
+        "tx": "0xd41bcc3ee050fdd529ffea39d9f76a0680213d3274f38ef0370fc3c2504e09b5",
+        "block": 70617288,
+        "gas": 68508
+      },
+      {
+        "call": "MarginAccount.deposit(WMON)",
+        "tx": "0x7844b0c73b4ed918d3166521e8a7c842ff925985eeb8644c628ebe2c8617150a",
+        "block": 70617292,
+        "gas": 188961
+      },
+      {
+        "call": "OrderBook.batchUpdate",
+        "tx": "0xda948845e20ce1b9ed8a833f5839652f1c1fbd504e6113dcaa78e0f16d150569",
+        "block": 70617295,
+        "gas": 1320670
+      }
+    ],
+    "gasLimitTotal": 1972713,
+    "effectiveGasPriceGwei": 102,
+    "gasCostMon": "0.201216726",
+    "monWrapped": "45",
+    "usdcDeposited": "6",
+    "wmonDeposited": "45",
+    "resultingBook": {
+      "bestBid": "0.025116",
+      "bestAsk": "0.025242",
+      "spreadBps": 50,
+      "readOnChain": "bestBidAsk() after block 70617295"
+    },
+    "deployerAfter": {
+      "mon": "4.726063544789795036",
+      "usdc": "4"
+    }
+  },
   "simulation": {
     "date": "2026-10-11",
     "rpc": "https://testnet-rpc.monad.xyz, and an anvil fork of it for the seed (the market must exist first)",
@@ -35,11 +104,22 @@
     },
     "seed": {
       "transactions": 6,
-      "calls": ["WMON.deposit", "USDC.approve", "MarginAccount.deposit(USDC)", "WMON.approve", "MarginAccount.deposit(WMON)", "OrderBook.batchUpdate"],
+      "calls": [
+        "WMON.deposit",
+        "USDC.approve",
+        "MarginAccount.deposit(USDC)",
+        "WMON.approve",
+        "MarginAccount.deposit(WMON)",
+        "OrderBook.batchUpdate"
+      ],
       "gasLimit": 2127815,
       "maxCostMonAt110Gwei": "0.23405965",
       "inputs": "mid 0.026904 USDC per WMON (REFERENCE: Kuru mainnet MON/USDC mid read 2026-10-11, not a testnet price), 3 levels a side, 25 bps out and 25 bps apart, 2 USDC per bid, 15 WMON per ask",
-      "resultingBook": { "bestBid": "0.026836", "bestAsk": "0.026972", "spreadBps": 50 },
+      "resultingBook": {
+        "bestBid": "0.026836",
+        "bestAsk": "0.026972",
+        "spreadBps": 50
+      },
       "needs": "6 USDC and 45 MON to wrap, plus gas. On the real chain on 2026-10-11 the deployer held 20 USDC and 0.2637 MON, so the seed reverts in the script's preflight (Insufficient MON to wrap) until the deployer holds about 45.5 MON."
     },
     "takerDryRun": {
@@ -48,5 +128,6 @@
       "close": "37.0034302368 WMON -> 0.993024 USDC, value 0, 447269 gas from an EOA",
       "note": "Foundry's EVM, not Monad's client, and from an EOA rather than an agent's ERC-4337 account, so the gas figures are indicative only."
     }
-  }
+  },
+  "deployer": "0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3"
 }

@@ -26,7 +26,7 @@ Source: `ARCHITECTURE.md` section 10 ("Live testnet deployment"), `contracts/dep
 
 | Item | What is true | What is not yet observed |
 | --- | --- | --- |
-| Tick runner (trading loop) | Built and tested offline. Off unless `WORKER_TICK_RUNNER=enabled`. | No tick has run against the live deployment. On 2026-10-12 the testnet WMON/USDC market was not on chain, so a trade through the bundler and a Kuru fill on it are unobserved. |
+| Tick runner (trading loop) | Built and tested offline. Off unless `WORKER_TICK_RUNNER=enabled`. | No tick has run against the live deployment. The testnet WMON/USDC market was created and seeded on 2026-10-13, but a trade through the bundler and a Kuru fill on it are still unobserved. |
 | Session key activation | Built in the API and wallets library. | Not run through a Privy embedded wallet on testnet. That Privy's `eth_signTypedData_v4` over Kernel's enable data produces a signature Kernel accepts is an assumption. |
 | Spending operation through the spend policy | Contract has unit, fuzz, and invariant tests and a fork test against Kernel v3.1 on Monad testnet. | No spending operation validated by the contract through a bundler has been observed. |
 | Relayed funding transfer | Built and tested against an in-memory token with EIP-3009 semantics. | A relayed `transferWithAuthorization` has not been executed on Monad. |
@@ -41,7 +41,7 @@ Source: `ARCHITECTURE.md` section 10 ("Live testnet deployment"), `contracts/dep
 
 ## No trade and no x402 payment recorded
 
-As of 2026-10-12, no trade and no x402 payment have been recorded by the deployment. The tick runner and the x402 payer are both off, and the testnet market was not on chain. The testnet market, once created, is seeded by the project, so profit or loss on it is not evidence of skill.
+As of 2026-10-13, no trade and no x402 payment have been recorded by the deployment. The tick runner and the x402 payer are both off. The testnet market was created on 2026-10-13 and is seeded by the project, so profit or loss on it is not evidence of skill.
 
 ## Design only, not built
 
