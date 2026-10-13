@@ -12,7 +12,7 @@ interface Row {
 }
 
 /**
- * `BreakerStore` on Postgres (migration 0016): append-only, the latest entry by insertion order is the state. Row-level
+ * `BreakerStore` on Postgres (migration 0018): append-only, the latest entry by insertion order is the state. Row-level
  * security lets `monadeum_worker` append trips only and `monadeum_policy_operator` clears only.
  */
 export class PgBreakerStore implements BreakerStore {

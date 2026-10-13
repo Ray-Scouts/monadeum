@@ -28,7 +28,7 @@ export const WORKER_STORES = Symbol("WORKER_STORES");
 
 /**
  * The stores the worker reads and writes, as one bundle so the process picks Postgres or memory for all of them at
- * once, never a mix. Their Postgres tables are granted to `monadeum_worker` in libs/db migrations 0004, 0005, 0006, 0011, 0012, 0013, 0015, and 0016; on
+ * once, never a mix. Their Postgres tables are granted to `monadeum_worker` in libs/db migrations 0004, 0005, 0006, 0011, 0012, 0013, 0015, and 0018; on
  * `worker_agents` the worker may read and update (retire) but not insert, because agent creation is not the worker's.
  *
  * Not here: the owner reallocation policy source, which is still the in-memory `OwnerPolicies`, and the session key
@@ -59,7 +59,7 @@ export interface WorkerStores {
   policies: PolicyVersions;
   /** The market mid series the tick runner's signal reads (migration 0015): the worker inserts and reads. */
   marketSamples: MidSampleStore;
-  /** The population breaker's log (migration 0016): the worker appends trips and reads; only the policy operator clears. */
+  /** The population breaker's log (migration 0018): the worker appends trips and reads; only the policy operator clears. */
   breaker: BreakerStore;
 }
 

@@ -38,7 +38,7 @@ import {
  *     Prints the population breaker's state (SECURITY.md section 9, layer 3): the trip in force, or that none is.
  *   breaker-clear --by <who reviewed> --reason <why it is safe to resume>
  *     Releases a tripped breaker after a human review. Ticks and reallocation resume on the worker's next tick. Only
- *     `monadeum_policy_operator` may append a clear (migration 0016); the worker can trip the breaker, never clear it.
+ *     `monadeum_policy_operator` may append a clear (migration 0018); the worker can trip the breaker, never clear it.
  *
  * Nothing here logs a key, a password, or a connection string. The operator key is never read from the environment.
  */
