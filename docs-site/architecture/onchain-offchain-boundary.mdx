@@ -1,0 +1,36 @@
+---
+title: "On-chain and off-chain boundary"
+description: "What lives on Monad, what lives in Postgres, and how hash commitments make off-chain content verifiable against an on-chain value."
+---
+
+Source of truth: `ARCHITECTURE.md` section 9 and `THREAT-MODEL.md` trust boundary 7.
+
+## On-chain
+
+- Agent identity: owner address, smart account address, status (active or retired), genome hash, strategy-version hash. Parent and generation are not recorded, because the adopted mechanism creates no descendants.
+- Capital custody: the smart account's own balance, inherent to the account existing on-chain.
+- Spend-limit parameters in the account's validator module: daily cap, per-transaction cap, call allowlist.
+- Reallocation events (owner, source, sink, amount, evaluation sequence number) and retirement status changes.
+- The hash of each owner's current reallocation policy, so the bounds the contract enforces are the bounds the owner signed.
+
+Until the identity registry exists, the reallocation contract's own registry of each agent's owner, principal, and status is what its checks read. That registry is written by an operator role held by a 2-of-3 Safe.
+
+## Off-chain
+
+- The full genome document that its hash commits to.
+- LLM reasoning traces and prompts.
+- Detailed fitness history: per-tick P&L, running Sortino, trade-by-trade logs.
+- x402 payment logs and trade logs.
+- Each owner's signed reallocation policy, whose on-chain hash commits to its content.
+
+## Hash-committed, full content off-chain
+
+Genome and strategy-version data, and the owner's reallocation policy, are committed by hash on-chain with the payload kept in Postgres, where storage and queries are cheap. Anyone can re-hash the off-chain copy and compare it with the on-chain value, so tampering is detectable. This follows ERC-8004's own split between a cheap on-chain commitment and an off-chain payload.
+
+A genome is fixed for the life of its agent, so its hash is committed once, at creation. That commitment is what lets anyone check that the genome credited with a track record is the one that earned it. Verification failures of any kind (hash mismatch, a zero hash on chain, a malformed value, or an off-chain record that cannot be canonicalized) are reported as the alert in `SECURITY.md` section 12: a record that cannot be verified is treated as one that does not match.
+
+The scheme is specified on [Genome hash](/reference/genome-hash). The reallocation policy uses an EIP-712 struct hash instead, because the contract must recompute it from the policy's fields.
+
+## Postgres is a read-model
+
+Postgres is not a source of truth for identity or capital. Anything security-critical is verifiable against an on-chain hash or event. Off-chain records still matter, because ranking and retirement are computed from them, so their integrity is an asset in the threat model. The database grants reflect that: roles are separated, append-only tables take no `UPDATE` or `DELETE` from any role, and no secret is stored there (see [Backend](/architecture/backend)).
