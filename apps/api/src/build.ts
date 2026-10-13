@@ -18,6 +18,7 @@ import { MemoryPositionStore, MemoryTradeStore, type PositionStore, type Realize
 import { MemoryAgentWalletStore, MemorySponsorshipLedger, type AgentWalletStore, type SponsorshipLedger, type WalletsService } from "@monadeum/wallets";
 import { MemoryPaymentLog, type PaymentTotals } from "@monadeum/x402";
 import type { ApiSettings } from "./config.js";
+import type { EvidenceCrossCheck } from "./evidence-crosscheck.js";
 import type { FundingChain } from "./funding-chain.js";
 import type { FundingSettings } from "./funding-runtime.js";
 import { MemoryFundingStore, PgFundingStore, type FundingStore } from "./funding-store.js";
@@ -127,6 +128,8 @@ export interface BuildInput {
   policyWriter?: ReallocationPolicyWriter | null;
   /** The funding relayer's chain adapter and limits; omitted or null leaves funding unavailable. */
   funding?: { chain: FundingChain; settings: FundingSettings } | null;
+  /** The evidence endpoint's HyperSync cross-check; omitted or null leaves it off. */
+  crossCheck?: EvidenceCrossCheck | null;
   handoff?: OwnerWalletHandoff;
   now?: () => number;
   newId?: () => string;
@@ -152,6 +155,7 @@ export function buildDependencies(input: BuildInput): ApiDependencies {
     payments: stores.payments,
     positions: stores.positions,
     funding: input.funding ? { ...input.funding, store: stores.funding } : null,
+    crossCheck: input.crossCheck ?? null,
     relay: new SignatureRelay(input.settings.signatureTimeoutMs, input.settings.operationWaitMs),
     settings: input.settings,
     now,

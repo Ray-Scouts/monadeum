@@ -6,6 +6,7 @@ import { NestFactory } from "@nestjs/core";
 import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
 import { ApiModule, configureApp } from "./app.module.js";
 import { buildDependencies, memoryStores, postgresStores } from "./build.js";
+import { loadEvidenceCrossCheck } from "./evidence-crosscheck.js";
 import { loadApiConfig } from "./config.js";
 import { loadFundingRuntime, type FundingRuntime, type FundingRuntimeOptions } from "./funding-runtime.js";
 
@@ -50,8 +51,10 @@ export async function bootApi(options: ApiBootOptions) {
     throw error;
   }
   try {
+    const stores = database ? postgresStores(database.db) : memoryStores();
     const deps = buildDependencies({
-      stores: database ? postgresStores(database.db) : memoryStores(),
+      stores,
+      crossCheck: loadEvidenceCrossCheck(options.env, stores.readModel, { log: options.log }),
       privy: options.privy ?? new PrivyTokenVerifier(config.auth.privy.appId, config.auth.privy.verificationKey),
       authSettings: config.auth.settings,
       settings: config.settings,
@@ -85,7 +88,7 @@ async function main() {
   const booted = await bootApi({ env: process.env, log });
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.once(signal, () => void booted.close());
   await booted.app.listen(booted.config.port, booted.config.host);
-  log(`api listening on ${booted.config.host}:${booted.config.port} on ${booted.durable ? "Postgres" : "in-memory"} stores; wallet operations ${booted.deps.wallets ? "configured" : "unavailable (WALLETS_CHAIN_ID is not set)"}; funding ${booted.deps.funding ? `relayed by ${booted.deps.funding.chain.relayer}` : "unavailable (API_FUNDING_RELAYER_VAULT_DIR is not set)"}`);
+  log(`api listening on ${booted.config.host}:${booted.config.port} on ${booted.durable ? "Postgres" : "in-memory"} stores; wallet operations ${booted.deps.wallets ? "configured" : "unavailable (WALLETS_CHAIN_ID is not set)"}; envio cross-check ${booted.deps.crossCheck ? "on" : "off (ENVIO_API_TOKEN is not set)"}; funding ${booted.deps.funding ? `relayed by ${booted.deps.funding.chain.relayer}` : "unavailable (API_FUNDING_RELAYER_VAULT_DIR is not set)"}`);
 }
 
 const entry = process.argv[1] ?? "";

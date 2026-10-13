@@ -8,6 +8,7 @@ import type { AgentWalletStore, WalletsService } from "@monadeum/wallets";
 import type { PaymentTotals } from "@monadeum/x402";
 import { HttpException } from "@nestjs/common";
 import type { ApiSettings } from "./config.js";
+import type { EvidenceCrossCheck } from "./evidence-crosscheck.js";
 import type { FundingChain } from "./funding-chain.js";
 import type { FundingSettings } from "./funding-runtime.js";
 import type { FundingStore } from "./funding-store.js";
@@ -51,6 +52,8 @@ export interface ApiDependencies {
   payments: PaymentTotals;
   /** TradingModule's positions, read for realized P&L, through `monadeum_reader` on Postgres; `get` serves the public evidence page. */
   positions: RealizedPnl & Pick<PositionStore, "get">;
+  /** The Envio HyperSync cross-check of the evidence endpoint (ARCHITECTURE.md section 10). Null unless `ENVIO_API_TOKEN` is set: the field is then absent. */
+  crossCheck: EvidenceCrossCheck | null;
   relay: SignatureRelay;
   /** The relayed funding transfer. Null when no relayer is configured: the funding endpoints answer 503. */
   funding: FundingDependencies | null;
