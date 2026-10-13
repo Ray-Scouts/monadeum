@@ -58,7 +58,7 @@ export default async function Page({ params }: Props) {
 
       <AgentHero agent={agent} owner={owner ? { id: owner.id, name: owner.name } : null} sample={IS_SAMPLE_DATA} />
 
-      <section aria-label="Key figures" className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      <section aria-label="Key figures" className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Kpi label="Capital" value={usd(agent.capital)} detail={`Principal ${usd(agent.principal)}`} />
         <Kpi
           label="Window NEP"

@@ -18,9 +18,9 @@ function Switch({ id, checked, onChange, title, code }: { id: string; checked: b
       <label htmlFor={id} className="min-w-0 cursor-pointer">
         <b className="font-semibold">{title}</b>
         <br />
-        <code className="font-mono text-[13px] break-all text-muted">{code}</code>
+        <code className="font-mono text-[13px] break-words text-muted">{code}</code>
       </label>
-      <span className="relative h-[26px] w-11 flex-none">
+      <span className="relative h-11 w-11 flex-none">
         <input
           id={id}
           type="checkbox"
@@ -32,7 +32,7 @@ function Switch({ id, checked, onChange, title, code }: { id: string; checked: b
         />
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 rounded-full bg-line transition-colors peer-checked:bg-accent peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent-hi after:absolute after:top-[3px] after:left-[3px] after:size-5 after:rounded-full after:bg-white after:transition-transform after:content-[''] peer-checked:after:translate-x-[18px]"
+          className="pointer-events-none absolute inset-x-0 top-[9px] h-[26px] rounded-full bg-line transition-colors peer-checked:bg-accent peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent-hi after:absolute after:top-[3px] after:left-[3px] after:size-5 after:rounded-full after:bg-white after:transition-transform after:content-[''] peer-checked:after:translate-x-[18px]"
         />
       </span>
     </div>

@@ -14,7 +14,7 @@ const TONE: Record<Tone, string> = {
 
 export function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${TONE[tone]}`}>
+    <span className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${TONE[tone]}`}>
       <span className="size-1.5 rounded-full bg-current" />
       {children}
     </span>
@@ -45,7 +45,7 @@ export function Kpi({ label, value, detail }: { label: string; value: ReactNode;
   return (
     <div className="flex min-w-0 flex-col gap-1.5 rounded-[14px] border border-line-soft bg-surface px-[18px] py-4">
       <span className="eyebrow">{label}</span>
-      <span className="font-display text-[26px] leading-tight font-bold tabular">{value}</span>
+      <span className="long-value font-display text-[26px] leading-tight font-bold tabular">{value}</span>
       {detail && <span className="text-xs text-muted">{detail}</span>}
     </div>
   );

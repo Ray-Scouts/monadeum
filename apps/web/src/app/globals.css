@@ -77,17 +77,30 @@
   h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; letter-spacing: -0.02em; margin: 0; }
   :focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; border-radius: 6px; }
   button { cursor: pointer; }
+  /* Fields are 16px so iOS Safari does not zoom on focus, and at least 44px tall. */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="hidden"]), select, textarea { font-size: 16px; min-height: 44px; }
+  /* Checkboxes, radios and range sliders: the control is drawn at a usable size and the row around it is the target. */
+  input[type="checkbox"]:not([role="switch"]), input[type="radio"] { width: 20px; height: 20px; flex: none; }
+  input[type="range"] { min-height: 44px; cursor: pointer; }
 }
 
 @utility tabular { font-variant-numeric: tabular-nums; }
-@utility eyebrow { font: 500 11px/1 var(--f-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+@utility eyebrow { font: 500 12px/1.35 var(--f-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); overflow-wrap: anywhere; }
+
+/* Long unbroken values (hashes, addresses, amounts) wrap at any character instead of widening the page. Pair with a copy control where the value is a hash or an address. */
+@utility long-value { overflow-wrap: anywhere; min-width: 0; }
+/* Minimum touch target: 44px on both axes. */
+/* Edge shadows that appear only while a horizontally scrolling region has more content on that side. */
+@utility scroll-hint { background: linear-gradient(to right, var(--surface) 30%, transparent) left center / 24px 100% no-repeat local, linear-gradient(to left, var(--surface) 30%, transparent) right center / 24px 100% no-repeat local, radial-gradient(farthest-side at 0 50%, rgba(128,128,150,.35), transparent) left center / 10px 100% no-repeat scroll, radial-gradient(farthest-side at 100% 50%, rgba(128,128,150,.35), transparent) right center / 10px 100% no-repeat scroll; }
+@utility tap { min-height: 44px; min-width: 44px; }
+@utility tap-y { min-height: 44px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 
 /* Buttons: one shape, four roles. */
-@utility btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--line); background: var(--surface-2); padding: 10px 16px; border-radius: 999px; font-weight: 500; transition: transform .15s, background .15s, border-color .15s, box-shadow .15s; &:hover { border-color: var(--accent); } &:active { transform: scale(.98); } &:disabled { opacity: .45; cursor: not-allowed; } }
+@utility btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--line); background: var(--surface-2); padding: 10px 16px; min-height: 44px; border-radius: 999px; font-weight: 500; transition: transform .15s, background .15s, border-color .15s, box-shadow .15s; &:hover { border-color: var(--accent); } &:active { transform: scale(.98); } &:disabled { opacity: .45; cursor: not-allowed; } }
 @utility btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; &:hover { background: var(--accent-hi); } }
 @utility btn-ink { background: var(--ink-btn); border-color: var(--ink-btn); color: var(--ink-btn-fg); &:hover { box-shadow: 0 0 0 4px var(--accent-wash); } }
 @utility btn-ghost { background: transparent; border-color: transparent; }

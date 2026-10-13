@@ -66,7 +66,7 @@ export function Landing() {
     <div className={s.page}>
       <header className={s.nav}>
         <Link href="/" className="inline-flex items-center gap-2.5 rounded-lg font-display text-lg font-bold">
-          <Logo className="size-[28px]" />
+          <Logo className="size-[28px] flex-none" />
           Monadeum
         </Link>
         <nav aria-label="Main" className="flex items-center gap-1.5">
@@ -74,8 +74,17 @@ export function Landing() {
           <a className={s.navtxt} href="#genome">Genome</a>
           <a className={s.navtxt} href="#security">Security</a>
           <a className={s.navtxt} href="#faq">FAQ</a>
+          <details className={s.menu}>
+            <summary aria-label="Page sections">Menu</summary>
+            <div className={s.menuList}>
+              <a href="#how">How it works</a>
+              <a href="#genome">Genome</a>
+              <a href="#security">Security</a>
+              <a href="#faq">FAQ</a>
+            </div>
+          </details>
           <ThemeToggle />
-          <Link href="/population" className="btn btn-ink">Open app</Link>
+          <Link href="/population" className="btn btn-ink whitespace-nowrap px-4">Open app</Link>
         </nav>
       </header>
 
@@ -119,7 +128,7 @@ export function Landing() {
         </section>
 
         <div className="flex items-stretch border-y border-line-soft bg-surface" role="region" aria-label="Sample recent activity">
-          <span className="z-[1] flex flex-none items-center border-r border-line-soft px-3 font-mono text-[11px] tracking-[0.12em] text-warn uppercase">Sample</span>
+          <span className="z-[1] flex flex-none items-center border-r border-line-soft px-3 font-mono text-xs tracking-[0.12em] text-warn uppercase">Sample</span>
           <div className={`${s.ticker} min-w-0 flex-1`}>
             <div className={s.tickerTrack}>
               {[0, 1].map((copy) =>

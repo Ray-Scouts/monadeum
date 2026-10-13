@@ -60,7 +60,7 @@ export default async function PopulationPage() {
         profit. Capital only moves between agents of the same owner, and only under a policy that owner signed.
       </ScreenHead>
 
-      <section aria-label="Population summary" className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
+      <section aria-label="Population summary" className="grid grid-cols-1 gap-4 min-[400px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Kpi
           label="Live agents"
           value={

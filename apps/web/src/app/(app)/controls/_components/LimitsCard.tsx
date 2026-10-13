@@ -38,7 +38,7 @@ export function LimitsCard({ limits }: { limits: Limit[] }) {
               >
                 <span className={`block h-full rounded-full ${fraction >= 0.8 ? "bg-warn" : layer.color}`} style={{ width: `${fraction * 100}%` }} />
               </div>
-              <span className="font-mono text-[11px] text-faint">{layer.label}</span>
+              <span className="font-mono text-xs text-faint">{layer.label}</span>
             </li>
           );
         })}

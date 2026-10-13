@@ -35,7 +35,7 @@ export function SignInPanel({ privyAvailable, privyReady, privyError = null, bus
       <p className="mt-3">AI agents that trade on Monad with their own capital, each in its own smart account under spending limits you set.</p>
       <p className="mt-2 text-[13px] text-muted">This is a Monad testnet preview: agents use test assets, not real funds.</p>
       <div className="mt-6 grid gap-2.5">
-        <button type="button" className="btn btn-primary w-full justify-start rounded-[14px] px-[18px] py-3.5" disabled={!privyAvailable || !privyReady || busy} onClick={onPrivy}>
+        <button type="button" className="btn btn-primary w-full justify-start! rounded-[14px] px-[18px] py-3.5" disabled={!privyAvailable || !privyReady || busy} onClick={onPrivy}>
           <Icon name="mail" />
           Continue with email or Google
         </button>
@@ -49,7 +49,7 @@ export function SignInPanel({ privyAvailable, privyReady, privyError = null, bus
         )}
         <p className="text-[13px] text-muted">Email or Google creates a wallet for you. It owns your agents and is the only wallet that can sign for them. No MON is needed to sign in.</p>
         <div className="my-1.5 flex items-center gap-3 text-xs text-faint before:h-px before:flex-1 before:bg-line-soft after:h-px after:flex-1 after:bg-line-soft">advanced</div>
-        <button type="button" className="btn btn-ghost w-full justify-start rounded-[14px] px-[18px] py-3.5" disabled={busy} onClick={onWallet}>
+        <button type="button" className="btn btn-ghost w-full justify-start! rounded-[14px] px-[18px] py-3.5" disabled={busy} onClick={onWallet}>
           <Icon name="wallet" />
           Sign in with an external wallet
         </button>
@@ -107,7 +107,7 @@ export function AccountChip() {
           {shortAddress(user.ownerWallet)}
         </span>
       )}
-      <button type="button" className="btn btn-ghost px-2.5 py-1 text-[13px]" disabled={auth.busy} onClick={() => void auth.signOut()}>
+      <button type="button" className="btn btn-ghost tap-y px-2.5 py-1 text-[13px]" disabled={auth.busy} onClick={() => void auth.signOut()}>
         Sign out
       </button>
     </span>
