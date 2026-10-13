@@ -32,6 +32,11 @@ export interface CrosscheckOptions {
   maxLogs?: number;
   /** Followed accounts per query, as in the indexer. Default 500. */
   addressChunk?: number;
+  /**
+   * Restricts the comparison to rows whose kind this accepts, on both sides. Absent means every kind. A handler whose
+   * kinds are all rejected is not queried, so a narrow comparison also asks the source for fewer logs.
+   */
+  kinds?: (kind: string) => boolean;
 }
 
 export interface RowRef {
@@ -59,6 +64,8 @@ export interface CrosscheckReport {
   status: CrosscheckStatus;
   range: { from: number; to: number };
   source: string;
+  /** The highest block the source reported, when it was read. Present on any report that got that far. */
+  sourceHeight?: number;
   /** Present only when `status` is `unverified`. */
   reason?: string;
   counts: { indexer: number; source: number };
@@ -87,10 +94,13 @@ class CrosscheckError extends Error {}
  */
 export async function crosscheck(options: CrosscheckOptions): Promise<CrosscheckReport> {
   const { source, store, registry, from, to } = options;
+  const wanted = options.kinds ?? (() => true);
+  let sourceHeight: number | undefined;
   const empty = (reason: string): CrosscheckReport => ({
     status: "unverified",
     range: { from: Number(from), to: Number(to) },
     source: source.name,
+    ...(sourceHeight === undefined ? {} : { sourceHeight }),
     reason,
     counts: { indexer: 0, source: 0 },
     matched: 0,
@@ -110,6 +120,7 @@ export async function crosscheck(options: CrosscheckOptions): Promise<Crosscheck
     if (!cursor) throw new CrosscheckError("the read-model has no cursor yet");
     if (to > cursor.number) throw new CrosscheckError(`block ${to} is above the stored cursor ${cursor.number}`);
     const height = await source.height();
+    if (height <= BigInt(Number.MAX_SAFE_INTEGER)) sourceHeight = Number(height);
     if (height < to) throw new CrosscheckError(`${source.name} has indexed up to block ${height}, below ${to}`);
 
     const tracked = new Set<Address>(await store.trackedAccounts());
@@ -118,12 +129,13 @@ export async function crosscheck(options: CrosscheckOptions): Promise<Crosscheck
     const theirs = new Map<string, ChainEvent>();
     let received = 0;
     for (const handler of registry.list()) {
+      if (!handler.kinds.some(wanted)) continue;
       for (const query of logQueries(handler, from, to, accounts, addressChunk)) {
         for (const log of await source.logs(query)) {
           if (++received > maxLogs) throw new CrosscheckError(`${source.name} returned more than ${maxLogs} logs`);
           const row = decodeRow(handler, log);
           // The same rule the indexer applies: a discovery handler sees every account, only followed ones are stored.
-          if (!row || (row.account !== null && !tracked.has(row.account))) continue;
+          if (!row || !wanted(row.kind) || (row.account !== null && !tracked.has(row.account))) continue;
           const event: ChainEvent = { ...row, address: log.address, blockNumber: log.blockNumber, blockHash: log.blockHash, transactionHash: log.transactionHash, logIndex: log.logIndex };
           theirs.set(key(event), event);
         }
@@ -132,12 +144,12 @@ export async function crosscheck(options: CrosscheckOptions): Promise<Crosscheck
 
     const mine = new Map<string, ChainEvent>();
     for (const row of await store.events()) {
-      if (row.blockNumber < from || row.blockNumber > to) continue;
+      if (row.blockNumber < from || row.blockNumber > to || !wanted(row.kind)) continue;
       if (mine.size >= maxLogs) throw new CrosscheckError(`the read-model holds more than ${maxLogs} rows in the range`);
       mine.set(key(row), row);
     }
 
-    return compare(mine, theirs, { from, to, source: source.name });
+    return compare(mine, theirs, { from, to, source: source.name, sourceHeight });
   } catch (error) {
     return empty(error instanceof Error ? error.message : String(error));
   }
@@ -151,7 +163,7 @@ function ref(row: ChainEvent): RowRef {
   return { kind: row.kind, blockNumber: Number(row.blockNumber), logIndex: row.logIndex, transactionHash: row.transactionHash };
 }
 
-function compare(mine: Map<string, ChainEvent>, theirs: Map<string, ChainEvent>, info: { from: bigint; to: bigint; source: string }): CrosscheckReport {
+function compare(mine: Map<string, ChainEvent>, theirs: Map<string, ChainEvent>, info: { from: bigint; to: bigint; source: string; sourceHeight?: number }): CrosscheckReport {
   const keys = [...new Set([...mine.keys(), ...theirs.keys()])].sort();
   const missingInSource: RowRef[] = [];
   const missingInIndexer: RowRef[] = [];
@@ -173,6 +185,7 @@ function compare(mine: Map<string, ChainEvent>, theirs: Map<string, ChainEvent>,
     status: clean ? "match" : "mismatch",
     range: { from: Number(info.from), to: Number(info.to) },
     source: info.source,
+    ...(info.sourceHeight === undefined ? {} : { sourceHeight: info.sourceHeight }),
     counts: { indexer: mine.size, source: theirs.size },
     matched,
     missingInSource,
