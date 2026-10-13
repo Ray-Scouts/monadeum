@@ -1,5 +1,5 @@
 import type { TickRecord, TickStore } from "@monadeum/tick";
-import type { Position, PositionStore, TradeCounts, TradeRecord, TradeStore } from "@monadeum/trading";
+import { sumCosts, type Position, type PositionStore, type RealizedPnl, type TradeCosts, type TradeCounts, type TradeRecord, type TradeStore } from "@monadeum/trading";
 import type { PaymentLog, PaymentLogEntry, PaymentSpend, PaymentTotals, SlotClaim, X402SlotStore } from "@monadeum/x402";
 import type { Address, Hex } from "viem";
 import { decode, encode } from "./codec.js";
@@ -55,6 +55,23 @@ export class PgTradeStore implements TradeStore, TradeCounts {
   async filledTotal(): Promise<number> {
     const { rows } = await this.db.query<{ n: string }>("SELECT count(*)::text AS n FROM trade_records WHERE status = 'filled'");
     return Number(rows[0]!.n);
+  }
+
+  // Costs are bigints tagged by the codec inside `body`, so they are summed here after decoding, not in SQL.
+  async costsByAgent(agentIds: readonly string[]): Promise<Map<string, TradeCosts>> {
+    const byAgent = new Map<string, TradeCosts[]>(agentIds.map((id) => [id, []]));
+    if (agentIds.length > 0) {
+      const { rows } = await this.db.query<{ body: string }>(
+        `SELECT body::text AS body FROM trade_records
+         WHERE body->'order'->>'agentId' = ANY($1::text[]) AND jsonb_typeof(body->'costs') = 'object'`,
+        [[...agentIds]],
+      );
+      for (const r of rows) {
+        const record = decode<TradeRecord>(r.body);
+        if (record.costs) byAgent.get(record.order.agentId)?.push(record.costs);
+      }
+    }
+    return new Map([...byAgent].map(([id, costs]) => [id, sumCosts(costs)]));
   }
 }
 
@@ -199,7 +216,7 @@ export class PgTickStore implements TickStore {
  * TradingModule's `PositionStore` on Postgres (migration 0011). One row per agent, replaced whole by `write`, which is
  * durable when it resolves. Writes for one agent are serialized by the worker, as the interface states.
  */
-export class PgPositionStore implements PositionStore {
+export class PgPositionStore implements PositionStore, RealizedPnl {
   constructor(private readonly db: Database) {}
 
   async get(agentId: string): Promise<Position | undefined> {
@@ -213,5 +230,16 @@ export class PgPositionStore implements PositionStore {
        ON CONFLICT (agent_id) DO UPDATE SET body = EXCLUDED.body`,
       [position.agentId, encode(position)],
     );
+  }
+
+  async realizedByAgent(agentIds: readonly string[]): Promise<Map<string, bigint>> {
+    const realized = new Map<string, bigint>(agentIds.map((id) => [id, 0n]));
+    if (agentIds.length === 0) return realized;
+    const { rows } = await this.db.query<{ body: string }>("SELECT body::text AS body FROM trade_positions WHERE agent_id = ANY($1::text[])", [[...agentIds]]);
+    for (const r of rows) {
+      const p = decode<Position>(r.body);
+      realized.set(p.agentId, p.realized);
+    }
+    return realized;
   }
 }

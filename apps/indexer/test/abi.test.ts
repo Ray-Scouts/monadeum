@@ -4,9 +4,10 @@ import { test } from "node:test";
 import { KernelV3_1AccountAbi } from "@zerodev/sdk";
 import { toEventSelector, toEventSignature, type AbiEvent } from "viem";
 import { entryPoint07Abi } from "viem/account-abstraction";
-import { entryPointEvents, kernelEvents, spendPolicyEvents } from "../src/handlers/abi.js";
+import { entryPointEvents, kernelEvents, reallocationEvents, spendPolicyEvents } from "../src/handlers/abi.js";
 
 const solidity = readFileSync(new URL("../../../../contracts/src/IAgentSpendPolicy.sol", import.meta.url), "utf8");
+const reallocationSolidity = readFileSync(new URL("../../../../contracts/src/IAgentReallocation.sol", import.meta.url), "utf8");
 
 /** Canonical `Name(type indexed name,...)` forms of every event declared in the Solidity source. */
 function declaredEvents(source: string): string[] {
@@ -22,6 +23,10 @@ function humanReadable(e: AbiEvent): string {
 
 test("the spend policy event ABI matches contracts/src/IAgentSpendPolicy.sol, including indexed parameters", () => {
   assert.deepEqual(spendPolicyEvents.map(humanReadable).sort(), declaredEvents(solidity).sort());
+});
+
+test("the reallocation event ABI matches contracts/src/IAgentReallocation.sol, including indexed parameters", () => {
+  assert.deepEqual(reallocationEvents.map(humanReadable).sort(), declaredEvents(reallocationSolidity).sort());
 });
 
 test("Kernel and EntryPoint events come from the installed package ABIs", () => {

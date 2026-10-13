@@ -1,8 +1,6 @@
 export const INFO_EDGE = 0.002;
 export const RISK_FLOOR = 0.01;
 export const RISK_CEILING = 0.25;
-/** STARTING value (hypothesis, ARCHITECTURE.md section 8.1): the most the optional Smart Money signal moves the entry edge. */
-export const SMART_MONEY_WEIGHT = 0.001;
 
 export interface Quote {
   provider: string;
@@ -17,8 +15,6 @@ export interface AgentView {
   pair: string;
   ticksSinceTrade: number;
   signal: number;
-  /** Optional bounded external signal in [-1, 1]. Absent or non-finite means none. It never changes `notional`. */
-  smartMoney?: number;
 }
 
 export interface Action {
@@ -47,7 +43,6 @@ export function propose(state: AgentView, quote: Quote | null): Action | null {
       INFO_EDGE * notional > quote.price,
   );
   const edge = buyInformation ? INFO_EDGE : 0;
-  const bias = Number.isFinite(state.smartMoney) ? Math.max(-1, Math.min(1, state.smartMoney as number)) * SMART_MONEY_WEIGHT : 0;
-  if (state.signal + edge + bias <= 0) return { kind: "trade", pair: state.pair, side: "flat", notional: 0, buyInformation: false };
+  if (state.signal + edge <= 0) return { kind: "trade", pair: state.pair, side: "flat", notional: 0, buyInformation: false };
   return { kind: "trade", pair: state.pair, side: "long", notional, buyInformation };
 }

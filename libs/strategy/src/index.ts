@@ -1,6 +1,6 @@
 export { StrategyModule } from "./strategy.module.js";
 export { StrategyService } from "./strategy.service.js";
-export { INFO_EDGE, RISK_CEILING, RISK_FLOOR, SMART_MONEY_WEIGHT, clipRisk, propose } from "./propose.js";
+export { INFO_EDGE, RISK_CEILING, RISK_FLOOR, clipRisk, propose } from "./propose.js";
 export type { Action, AgentView, Quote } from "./propose.js";
 export {
   ALLOWED_INFORMATION_SOURCES,
@@ -14,3 +14,4 @@ export {
   genomePreset,
 } from "./presets.js";
 export type { GenomePreset } from "./presets.js";
+export { STRATEGY_CODE_FILE, STRATEGY_VERSION } from "./version.js";

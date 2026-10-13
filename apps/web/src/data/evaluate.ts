@@ -5,7 +5,8 @@ import {
   SLOT_CEILING,
   STARVATION_PERCENTILE as STARVATION_FRACTION,
 } from "@monadeum/reallocation/constants";
-import { planEvaluation, reallocationQuota, type AgentState, type ReallocationPolicy as PlannerPolicy } from "@monadeum/reallocation/plan";
+import { evaluationOutcomes, offerOf as offerIn, roomOf as roomIn } from "@monadeum/reallocation/outcomes";
+import { planEvaluation, type AgentState, type ReallocationPolicy as PlannerPolicy } from "@monadeum/reallocation/plan";
 import type { Agent, AgentEvaluation, Outcome, Owner, Reallocation } from "./types";
 
 /** The bounds one owner's reallocation runs under. */
@@ -33,9 +34,9 @@ export const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
 const down6 = (v: number) => Math.floor(v * 1e6 + 1e-9) / 1e6;
 
 /** Most this agent could send at one evaluation: a capped share of its capital, never going below the floor. */
-export const offerOf = (capital: number, b: Bounds) => down6(Math.max(0, Math.min(b.cap * capital, capital - b.floor)));
+export const offerOf = (capital: number, b: Bounds) => offerIn(capital, b.cap, b.floor);
 /** Most this agent could receive at one evaluation: up to its ceiling, a multiple of its principal. */
-export const roomOf = (capital: number, principal: number, b: Bounds) => down6(Math.max(0, b.ceiling * principal - capital));
+export const roomOf = (capital: number, principal: number, b: Bounds) => roomIn(capital, principal, b.ceiling);
 
 export interface EvaluationResult {
   moves: Reallocation[];
@@ -74,7 +75,6 @@ export function runEvaluation(agents: Agent[], owners: Owner[], evaluation: numb
     o.policy ? [{ owner: o.id, agents: o.policy.agentIds, reallocationCap: o.policy.reallocationCap, slotCeiling: o.policy.slotCeiling }] : [],
   );
   const plan = planEvaluation(population, policies);
-  const planOf = new Map(plan.owners.map((p) => [p.owner, p]));
   const byId = new Map(agents.map((a) => [a.id, a]));
 
   // amounts rounded down to six decimals, applied to both sides, so each owner's total is unchanged exactly
@@ -90,47 +90,19 @@ export function runEvaluation(agents: Agent[], owners: Owner[], evaluation: numb
     byId.get(m.sinkId)!.capital = round6(byId.get(m.sinkId)!.capital + m.amount);
   }
 
-  for (const owner of owners) {
-    const mine = agents.filter((a) => a.ownerId === owner.id);
-    for (const a of mine) if (a.status === "retired") set(a, { kind: "retired", rule: a.retirement?.rule ?? "owner" });
-    const live = mine.filter((a) => a.status !== "retired");
-    if (live.length === 1) {
-      set(live[0]!, { kind: "off", reason: "one-agent" });
-      continue;
-    }
-    const p = planOf.get(owner.id);
-    if (!p || p.outcome !== "planned") {
-      const covered = new Set(owner.policy?.agentIds ?? []);
-      for (const a of live) {
-        if (!p || p.outcome === "no_policy" || p.outcome === "revoked") set(a, { kind: "off", reason: "no-policy" });
-        else if (!covered.has(a.id)) set(a, { kind: "off", reason: "not-covered" });
-        else set(a, { kind: "off", reason: p.outcome === "too_few_agents" ? "too-few-covered" : "policy-invalid" });
-      }
-      continue;
-    }
-    const covered = new Set(owner.policy?.agentIds ?? []);
-    for (const a of live) {
-      if (!covered.has(a.id)) set(a, { kind: "off", reason: "not-covered" });
-      else if (a.status === "paused") set(a, { kind: "unranked", reason: "paused" });
-      else if (a.fitnessPercentile === null) set(a, { kind: "unranked", reason: "no-fitness" });
-    }
-    // the planner's pool, lowest first, and its small-pool quota
-    const pool = [...p.ranked].reverse().map((id) => byId.get(id)!);
-    const n = pool.length;
-    const q = reallocationQuota(n);
-    const rankOf = (a: Agent) => ({ position: pool.indexOf(a) + 1, of: n, quota: q });
-    const b = boundsFor(owner);
-    pool.forEach((a, i) => {
-      const r = rankOf(a);
-      if (q < 1) set(a, { kind: "held", reason: "alone" }, r);
-      else if (sent.has(a.id)) set(a, { kind: "sent", amount: sent.get(a.id)! }, r);
-      else if (got.has(a.id)) set(a, { kind: "received", amount: got.get(a.id)! }, r);
-      else if (i < q) set(a, { kind: "held", reason: offerOf(a.capital, b) > 0 ? "counterpart" : "floor" }, r);
-      else if (i >= n - q) {
-        if (a.zeroDownsideFlag) set(a, { kind: "held", reason: "zero-downside" }, r);
-        else set(a, { kind: "held", reason: roomOf(a.capital, a.principal, b) > 0 ? "counterpart" : "ceiling" }, r);
-      } else set(a, { kind: "held", reason: "middle" }, r);
-    });
+  // What the plan did to each agent comes from `evaluationOutcomes`, the function the worker records with, so the
+  // sample and a running deployment explain an evaluation the same way. Only amounts and the two sample-only facts
+  // (a paused agent, the retirement rule) are added here.
+  const explained = evaluationOutcomes(population, policies, plan, { sent: new Set(sent.keys()), received: new Set(got.keys()) });
+  for (const a of agents) {
+    const e = explained.get(a.id);
+    if (!e) continue;
+    const o = e.outcome;
+    if (o.kind === "retired") set(a, { kind: "retired", rule: a.retirement?.rule ?? "owner" });
+    else if (o.kind === "sent") set(a, { kind: "sent", amount: sent.get(a.id)! }, e.rank);
+    else if (o.kind === "received") set(a, { kind: "received", amount: got.get(a.id)! }, e.rank);
+    else if (o.kind === "unranked") set(a, { kind: "unranked", reason: a.status === "paused" ? "paused" : "no-fitness" });
+    else set(a, o, e.rank);
   }
 
   for (const a of agents) if (!outcomes.has(a.id)) set(a, { kind: "unranked", reason: a.status === "paused" ? "paused" : "no-fitness" });

@@ -187,6 +187,29 @@ export interface TradeCounts {
   filledByAgent(agentIds: readonly string[]): Promise<Map<string, number>>;
   /** Filled trades across every agent. */
   filledTotal(): Promise<number>;
+  /**
+   * The summed costs of every trade of each agent in `agentIds` that carries costs, a reverted one included (it still
+   * paid gas): the same entries `toCostedFill` hands FitnessModule. An agent with none maps to zeros.
+   */
+  costsByAgent(agentIds: readonly string[]): Promise<Map<string, TradeCosts>>;
+}
+
+/** Sums trade costs field by field. */
+export function sumCosts(costs: Iterable<TradeCosts>): TradeCosts {
+  const total: TradeCosts = { gasWei: 0n, gas: 0n, fees: 0n, slippage: 0n };
+  for (const c of costs) {
+    total.gasWei += c.gasWei;
+    total.gas += c.gas;
+    total.fees += c.fees;
+    total.slippage += c.slippage;
+  }
+  return total;
+}
+
+/** Cumulative realized P&L per agent, read from the positions (base units, signed). */
+export interface RealizedPnl {
+  /** Realized P&L of each agent in `agentIds`; an agent with no position maps to 0. */
+  realizedByAgent(agentIds: readonly string[]): Promise<Map<string, bigint>>;
 }
 
 /** In-memory store for tests and local development only. */
@@ -217,6 +240,10 @@ export class MemoryTradeStore implements TradeStore, TradeCounts {
   }
   async filledTotal(): Promise<number> {
     return [...this.rows.values()].filter((r) => r.status === "filled").length;
+  }
+  async costsByAgent(agentIds: readonly string[]): Promise<Map<string, TradeCosts>> {
+    const rows = [...this.rows.values()];
+    return new Map(agentIds.map((id) => [id, sumCosts(rows.filter((r) => r.order.agentId === id && r.costs).map((r) => r.costs!))]));
   }
 }
 
@@ -255,7 +282,7 @@ export interface PositionStore {
 }
 
 /** In-memory store for tests and local development only. */
-export class MemoryPositionStore implements PositionStore {
+export class MemoryPositionStore implements PositionStore, RealizedPnl {
   private readonly rows = new Map<string, Position>();
   async get(agentId: string): Promise<Position | undefined> {
     const p = this.rows.get(agentId);
@@ -263,5 +290,8 @@ export class MemoryPositionStore implements PositionStore {
   }
   async write(position: Position): Promise<void> {
     this.rows.set(position.agentId, structuredClone(position));
+  }
+  async realizedByAgent(agentIds: readonly string[]): Promise<Map<string, bigint>> {
+    return new Map(agentIds.map((id) => [id, this.rows.get(id)?.realized ?? 0n]));
   }
 }

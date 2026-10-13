@@ -14,6 +14,8 @@ export interface IndexerConfig {
   kernelFactory: Address;
   /** The settlement asset (USDC) whose transfers to and from followed accounts are indexed. No default. */
   settlementAsset: Address;
+  /** The reallocation contract whose events are indexed, or null to index none. */
+  reallocation: Address | null;
   pollIntervalMs: number;
   sync: SyncOptions;
 }
@@ -71,6 +73,7 @@ export function loadIndexerConfig(env: Env = process.env): IndexerConfig {
     entryPoint: address(env.INDEXER_ENTRY_POINT_ADDRESS?.trim() || entryPoint07Address, "INDEXER_ENTRY_POINT_ADDRESS"),
     kernelFactory: address(env.INDEXER_KERNEL_FACTORY_ADDRESS?.trim() || DEFAULT_KERNEL_FACTORY, "INDEXER_KERNEL_FACTORY_ADDRESS"),
     settlementAsset: address(required(env, "INDEXER_SETTLEMENT_ASSET_ADDRESS"), "INDEXER_SETTLEMENT_ASSET_ADDRESS"),
+    reallocation: env.INDEXER_REALLOCATION_ADDRESS?.trim() ? address(env.INDEXER_REALLOCATION_ADDRESS.trim(), "INDEXER_REALLOCATION_ADDRESS") : null,
     pollIntervalMs: Number(integer(env, "INDEXER_POLL_INTERVAL_MS", 1000n, 100n)),
     sync: {
       startBlock: integer(env, "INDEXER_START_BLOCK", null, 0n),

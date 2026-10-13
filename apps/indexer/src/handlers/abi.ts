@@ -5,9 +5,9 @@ import { entryPoint07Abi } from "viem/account-abstraction";
 /**
  * Event ABIs, taken from the installed packages wherever one ships them, never restated from memory:
  * Kernel v3.1 from `@zerodev/sdk` 5.5.10 (`KernelV3_1AccountAbi`, the account version WalletsModule deploys) and
- * EntryPoint v0.7 from viem 2.56.9 (`entryPoint07Abi`), and the ERC-20 `Transfer` event from viem's `erc20Abi`. `AgentSpendPolicy` has no published ABI artifact, so its
- * events are parsed from the declarations in `contracts/src/IAgentSpendPolicy.sol`; a test reads that file and fails
- * if the two drift apart.
+ * EntryPoint v0.7 from viem 2.56.9 (`entryPoint07Abi`), and the ERC-20 `Transfer` event from viem's `erc20Abi`. `AgentSpendPolicy` and `AgentReallocation` have no
+ * published ABI artifact, so their events are parsed from the declarations in `contracts/src/IAgentSpendPolicy.sol` and
+ * `contracts/src/IAgentReallocation.sol`; a test reads those files and fails if either drifts apart.
  */
 export function pickEvents(abi: Abi, names: readonly string[]): AbiEvent[] {
   return names.map((name) => {
@@ -22,6 +22,19 @@ export const spendPolicyEvents = parseAbi([
   "event CallAllowed(address indexed account, address indexed target, bytes4 indexed selector, bool allowed)",
   "event Spent(address indexed account, uint256 amount, uint256 windowTotal)",
   "event TradedAssetSet(address indexed account, address indexed token, bool traded)",
+]);
+
+export const reallocationEvents = parseAbi([
+  "event Reallocated(address indexed owner, address indexed source, address indexed sink, uint256 amount, uint256 evaluation)",
+  "event AgentRegistered(address indexed account, address indexed owner, uint256 principal)",
+  "event PrincipalSet(address indexed account, uint256 principal)",
+  "event AgentRetired(address indexed account, address indexed owner, address indexed by)",
+  "event PolicyCommitted(address indexed owner, bytes32 policyHash, uint256 nonce)",
+  "event PolicyRevoked(address indexed owner, uint256 nonce)",
+  "event EvaluationAdvanced(uint256 evaluation)",
+  "event OperatorSet(address indexed operator)",
+  "event AdminProposed(address indexed admin)",
+  "event AdminTransferred(address indexed admin)",
 ]);
 
 export const kernelEvents = pickEvents(KernelV3_1AccountAbi as Abi, ["PermissionInstalled", "PermissionUninstalled", "NonceInvalidated"]);

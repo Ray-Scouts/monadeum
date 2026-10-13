@@ -33,6 +33,7 @@ The spend policy contract is `contracts/src/AgentSpendPolicy.sol` (issue #25). T
 | `WALLETS_TRADED_ASSETS` | no | Comma-separated ERC-20 bases a close sells (WETH `0xEE8c0E9f1BFFb4Eb878d8f15f368A02a35481242` for the Monad mainnet WETH/USDC market). Each gets `approve` only and is marked with the spend policy's `setTradedAsset` before it is allowed. Unset: no close can be built. |
 | `WALLETS_SPONSORED_OPERATIONS` | yes | Sponsored operations per agent, deployment included, revocations excluded. |
 | `WALLETS_SPONSORED_GAS_WEI` | yes | Sponsored gas per agent in wei, deployment included, revocations excluded. |
+| `WALLETS_AGENT_COMMITMENTS_ADDRESS` | no | Deployed `AgentCommitments` (`contracts/src/AgentCommitments.sol`, ARCHITECTURE.md section 9). Set: every deployment needs the agent's genome and strategy-version hashes and commits them from the new account in the deploying operation, fails closed if the contract has no code, and is reported done only if the chain shows exactly those hashes. Unset: nothing is committed on chain. |
 | `WALLETS_X402_VALIDATOR_ADDRESS` | no | Deployed `X402PaymentValidator`. Unset: no x402 key is created and agents cannot pay x402. Set: deployment fails closed if it has no code. |
 | `WALLETS_X402_PAYEES` | with the validator | Comma-separated x402 provider pay-to addresses, 1 to 8. |
 | `WALLETS_X402_MAX_VALUE` | no | Settlement-asset base units per payment. Defaults to the decided value 50000 (0.05 USDC). |
@@ -64,7 +65,7 @@ It protects keys at rest only: whoever holds the files and a passphrase holds th
 
 ## Not verified yet
 
-- No run on Monad testnet: the spend policy contract is implemented, and its deployment script exists (`contracts/script/DeployTestnet.s.sol`), but it has not been broadcast. The opt-in test is the check.
+- No spending operation on Monad testnet: the spend policy is deployed there (`contracts/deployments/monad-testnet.json`, 2026-10-11), and one account deployment through the app installed it, but no operation signed by a session key has run through a bundler. The opt-in test is the check (`docs/testnet-validation-checklist.md`, items 1.4 to 1.7).
 - Installing `AgentSpendPolicy` as policy and hook is verified against the Kernel v3.1 source, Foundry tests, and a fork test against the Kernel v3.1 contracts deployed on Monad testnet (`ARCHITECTURE.md` section 16.3), not yet through a bundler.
-- Sponsorship through ZeroDev's paymaster has not been exercised on Monad; both spikes paid gas from the account.
+- Sponsorship through ZeroDev's paymaster has been exercised on Monad testnet for one account deployment only (2026-10-11, `deploy/README.md`, "Live testnet deployment"); both earlier spikes paid gas from the account.
 - The Kernel v3.1 nonce rules the revocation check relies on were read from the Kernel v3.1 source (`ValidationManager.sol`, `Kernel.sol`) on 2026-10-09, not observed on chain.

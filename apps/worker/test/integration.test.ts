@@ -382,5 +382,9 @@ test("the optional smart money signal changes only the entry decision, and a fai
   const bullish = await decide({ read: async () => 1 });
   assert.equal(bullish.result?.action, "executed", "a bullish signal can tip the entry condition");
   assert.equal(sessions(bullish.w), 1);
+  const absurd = await decide({ read: async () => 1e12 });
+  assert.equal(absurd.result?.action, "executed");
+  const bearish = await decide({ read: async () => -1 });
+  assert.equal(bearish.result?.action, "none");
   assert.equal(sessions(off.w), 0);
 });
