@@ -27,6 +27,11 @@ export interface WorkerSettings {
    * then computes fitness and applies retirement, and plans and settles nothing.
    */
   reallocation?: ReallocationSwitch;
+  /**
+   * The optional Nansen Smart Money signal (ARCHITECTURE.md section 8.1). Omitted means off. A null reading, or one that
+   * throws, is no signal: the tick proceeds as if the integration were off.
+   */
+  smartMoney?: { read(): Promise<number | null> };
   clock(): Date;
 }
 
@@ -222,6 +227,7 @@ export class AgentWorker {
       return null;
     }
     if (!reading || !Number.isFinite(reading.signal)) return null;
+    const smartMoney = await settings.smartMoney?.read().catch(() => null);
     const state = await agents.state(agent.agentId);
     const today = settings.clock().toISOString().slice(0, 10);
     const provider = agent.genome.informationSources.find((p) => (PROVIDERS as readonly string[]).includes(p));
@@ -238,6 +244,7 @@ export class AgentWorker {
         pair: agent.genome.pair,
         ticksSinceTrade: state.ticksSinceTrade,
         signal: reading.signal,
+        ...(typeof smartMoney === "number" && Number.isFinite(smartMoney) ? { smartMoney } : {}),
       },
       ledger: {
         capital,

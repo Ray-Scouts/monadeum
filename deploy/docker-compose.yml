@@ -190,6 +190,13 @@ services:
       WORKER_MAX_SLIPPAGE_BPS: ${WORKER_MAX_SLIPPAGE_BPS:-100}
       WORKER_MARKET_MAX_AGE_SECONDS: ${WORKER_MARKET_MAX_AGE_SECONDS:-60}
       WORKER_MARKET_MAX_SPREAD_BPS: ${WORKER_MARKET_MAX_SPREAD_BPS:-200}
+      # Optional Nansen Smart Money signal (ARCHITECTURE.md section 8.1). disabled (the default): no call is made.
+      NANSEN_SIGNAL: ${NANSEN_SIGNAL:-disabled}
+      NANSEN_API_KEY: ${NANSEN_API_KEY:-}
+      NANSEN_TOKEN_ADDRESS: ${NANSEN_TOKEN_ADDRESS:-}
+      NANSEN_NORMALIZER_USD: ${NANSEN_NORMALIZER_USD:-100000}
+      NANSEN_MAX_CREDITS_PER_DAY: ${NANSEN_MAX_CREDITS_PER_DAY:-10}
+      NANSEN_CACHE_SECONDS: ${NANSEN_CACHE_SECONDS:-3600}
     volumes:
       - vault:/var/lib/monadeum/vault
     secrets: [session_vault_passphrase, x402_vault_passphrase]

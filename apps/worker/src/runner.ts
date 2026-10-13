@@ -1,3 +1,4 @@
+import { NansenClient, NansenSignalFeed, loadNansenConfig } from "@monadeum/external";
 import { FitnessService } from "@monadeum/fitness";
 import { ReallocationService, type ReallocationSwitch } from "@monadeum/reallocation";
 import { RiskService } from "@monadeum/risk";
@@ -106,6 +107,8 @@ export function assembleTickRunner(parts: {
   settlementAsset: Hex;
   network: string;
   reallocation: ReallocationSwitch;
+  /** The optional Nansen Smart Money signal (ARCHITECTURE.md section 8.1); omitted is off. */
+  smartMoney?: { read(): Promise<number | null> };
   maxSlippageBps: number;
   signer: Address;
   target: PolicyTarget;
@@ -127,7 +130,7 @@ export function assembleTickRunner(parts: {
     fitness: new FitnessService(),
     // No owner policy and no executor: even with the switch on, nothing is planned or settled (section 5).
     reallocation: new ReallocationService(),
-    settings: { maxSlippageBps: parts.maxSlippageBps, information: null, reallocation: parts.reallocation, clock: parts.clock },
+    settings: { maxSlippageBps: parts.maxSlippageBps, information: null, reallocation: parts.reallocation, ...(parts.smartMoney ? { smartMoney: parts.smartMoney } : {}), clock: parts.clock },
   });
   const runner = new PolicyGatedRunner({
     worker, risk, policies: parts.stores.policies, signer: parts.signer, target: parts.target, market: parts.market, clock: parts.clock, log: parts.log,
@@ -193,6 +196,7 @@ export async function buildTickRunner(input: {
     limits: config.marketData,
     clock: input.clock,
   });
+  const smartMoney = buildSmartMoney(input.env, input.clock, log);
   const { runner } = assembleTickRunner({
     stores: input.stores,
     chain,
@@ -201,6 +205,7 @@ export async function buildTickRunner(input: {
     settlementAsset: target.settlementAsset,
     network: `eip155:${chainId}`,
     reallocation: input.reallocation,
+    ...(smartMoney ? { smartMoney } : {}),
     maxSlippageBps: config.maxSlippageBps,
     signer: config.policySigner,
     target,
@@ -212,4 +217,24 @@ export async function buildTickRunner(input: {
   log(problem ? `tick runner: ${problem}; every tick is skipped until a valid version is appended` : "tick runner: risk policy verified and in effect");
   log(`tick runner enabled: ${trading.market.pair} on ${trading.market.market}, signal from that book's mid, slippage bound ${config.maxSlippageBps} bps, x402 off, information not bought`);
   return runner;
+}
+
+/** The Nansen Smart Money signal, off unless `NANSEN_SIGNAL=enabled` (ARCHITECTURE.md section 8.1). The key is read from the environment only. */
+function buildSmartMoney(env: Record<string, string | undefined>, clock: () => Date, log: (message: string) => void): NansenSignalFeed | null {
+  let config;
+  try {
+    config = loadNansenConfig(env);
+  } catch (error) {
+    throw new WorkerConfigError(error instanceof Error ? error.message : String(error));
+  }
+  if (!config.enabled) return null;
+  const client = new NansenClient({
+    apiKey: config.apiKey,
+    tokenAddress: config.tokenAddress,
+    normalizerUsd: config.normalizerUsd,
+    maxCreditsPerDay: config.maxCreditsPerDay,
+    clock,
+  });
+  log(`nansen smart money signal enabled: token ${config.tokenAddress} on monad, at most ${config.maxCreditsPerDay} credits a day, one call per ${config.cacheSeconds} seconds`);
+  return new NansenSignalFeed(client, config.cacheSeconds, clock, log);
 }
