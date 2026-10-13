@@ -85,8 +85,8 @@ export function EventFeed({ events, labels, heading }: { events: EvolutionEvent[
                       </p>
                     )}
                   </div>
-                  <time dateTime={`PT${e.minutesAgo}M`} className="col-start-2 font-mono text-xs whitespace-nowrap text-faint sm:col-start-3 sm:row-start-1">
-                    {ago(e.minutesAgo)}
+                  <time dateTime={e.when ? undefined : `PT${e.minutesAgo}M`} className="col-start-2 font-mono text-xs whitespace-nowrap text-faint sm:col-start-3 sm:row-start-1">
+                    {e.when ?? ago(e.minutesAgo)}
                   </time>
                 </li>
               );

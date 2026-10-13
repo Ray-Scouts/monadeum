@@ -195,6 +195,27 @@ export class AgentWorker {
     }));
     const plan = reallocation.plan(tick, population);
     const settled = await reallocation.settle(sequence, plan, decimals);
+    // What the plan did to each recorded agent, with the base units submitted for it (issue #43). A move that rounded to
+    // zero was never submitted, so it does not count as sent or received. Whether a submitted debit settled on chain is
+    // what the indexed `Reallocated` events show, not this record.
+    const sent = new Map<string, bigint>();
+    const received = new Map<string, bigint>();
+    for (const debit of settled) {
+      sent.set(debit.source, (sent.get(debit.source) ?? 0n) + debit.total);
+      for (const credit of debit.credits) received.set(credit.sink, (received.get(credit.sink) ?? 0n) + credit.amount);
+    }
+    const outcomes = reallocation.outcomes(population, plan, { sent: new Set(sent.keys()), received: new Set(received.keys()) });
+    for (const record of records) {
+      const e = outcomes.get(record.agentId);
+      if (!e) continue;
+      const o = e.outcome;
+      record.reallocation = {
+        kind: o.kind,
+        reason: "reason" in o ? o.reason : null,
+        amount: o.kind === "sent" ? sent.get(record.agentId)! : o.kind === "received" ? received.get(record.agentId)! : null,
+        rank: e.rank,
+      };
+    }
     await evaluations.record(records);
     return { sequence, fitness: rows, retired, reallocationEnabled: true, plan, settled };
   }

@@ -18,12 +18,14 @@ import {
   reallocationNote,
   sessionLabel,
   share,
+  signedAmount,
   utc,
   type Explainer,
 } from "@/data/api/present";
 import type { AgentSpend, ApiAgent, CapitalFlowResponse, OwnerResponse, PopulationResponse, X402Totals } from "@/data/api/types";
 import type { WebConfig } from "@/data/config";
 import { shortAddress } from "@/lib/format";
+import { formatEther } from "viem";
 
 // Presentational views of the API's answers. They take data as props and hold no state, so tests render them directly.
 
@@ -231,6 +233,15 @@ export function ApiX402Split({ x402, title, scope, settlement }: { x402: X402Tot
   );
 }
 
+/**
+ * The mean niche percentile of the caller's ranked agents, rounded, or null when none is ranked. Only the caller's own
+ * agents: a platform-wide mean of within-niche percentiles is about 50 by construction and says nothing.
+ */
+export function averageFitness(agents: readonly ApiAgent[]): number | null {
+  const ranked = agents.map((a) => a.fitnessPercentile).filter((f): f is number => f != null);
+  return ranked.length === 0 ? null : Math.round(ranked.reduce((s, f) => s + f, 0) / ranked.length);
+}
+
 export function PopulationView({
   population,
   agents,
@@ -285,6 +296,7 @@ export function PopulationView({
         <Card>
           <CardHead title="Your agents">
             <Tag>{agents.length} {agents.length === 1 ? "agent" : "agents"}</Tag>
+            {averageFitness(agents) !== null && <Tag>average fitness P{averageFitness(agents)}</Tag>}
           </CardHead>
           <AgentsTable agents={agents} settlement={settlement} />
         </Card>
@@ -415,6 +427,51 @@ export function AgentFacts({ agent, settlement, actions }: { agent: ApiAgent; se
         />
       </section>
     </>
+  );
+}
+
+/**
+ * Net earnings after costs since creation (EVOLUTION.md section 2.1): realized P&L less x402 spend, gas, fees, and
+ * slippage, each line as the API sums it. Unrealized P&L on an open position is not part of it.
+ */
+/** Net earnings as a share of principal, to two decimals of a percent, or null without a positive principal. */
+export function roi(net: string, principal: string | null): string | null {
+  if (principal === null || !/^\d+$/.test(principal) || BigInt(principal) === 0n || !/^-?\d+$/.test(net)) return null;
+  const bps = (BigInt(net) * 10_000n) / BigInt(principal);
+  return `${(Number(bps) / 100).toFixed(2)}%`;
+}
+
+export function EarningsCard({ agent, settlement }: { agent: ApiAgent; settlement: Settlement }) {
+  const e = agent.earnings;
+  return (
+    <Card>
+      <CardHead title="Net earnings after costs" />
+      {e == null ? (
+        <PendingBody />
+      ) : (
+        <>
+          <p className="text-[26px] font-bold tabular">{signedAmount(e.net, settlement)}</p>
+          {roi(e.net, agent.principal) !== null && <p className="text-sm text-muted">Return on principal: {roi(e.net, agent.principal)}</p>}
+          <dl className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1.5 text-sm">
+            {[
+              ["Realized P&L", signedAmount(e.realizedPnl, settlement)],
+              ["x402 purchases", `-${amount(e.x402, settlement)}`],
+              ["Gas", `-${amount(e.gas, settlement)}`],
+              ["Trading fees", `-${amount(e.fees, settlement)}`],
+              ["Slippage", e.slippage.startsWith("-") ? signedAmount(e.slippage.slice(1), settlement) : `-${amount(e.slippage, settlement)}`],
+            ].map(([label, value]) => (
+              <div key={label} className="contents">
+                <dt className="text-muted">{label}</dt>
+                <dd className="m-0 text-right tabular">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-3 text-xs text-faint">
+            Since creation. Gas is converted from {formatEther(BigInt(/^\d+$/.test(e.gasWei) ? e.gasWei : "0"))} MON at the price the worker read for each trade. Unrealized P&amp;L on an open position is not included.
+          </p>
+        </>
+      )}
+    </Card>
   );
 }
 

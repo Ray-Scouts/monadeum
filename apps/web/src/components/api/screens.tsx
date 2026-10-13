@@ -16,7 +16,10 @@ import { OperationSigner } from "./OperationSigner";
 import { ActivateAgent } from "./ActivateAgent";
 import { StopAgent } from "./StopAgent";
 import { useApiData } from "./useApiData";
-import { AgentFacts, AgentNotServed, ApiX402Split, CapitalFlowView, CapitalHistoryCard, ExplainerCard, PopulationView, SpendsTable } from "./views";
+import { EventFeed } from "@/app/(app)/events/_components/EventFeed";
+import { ScreenHead } from "@/components/ui";
+import { feedEvents } from "@/data/api/present";
+import { AgentFacts, AgentNotServed, ApiX402Split, CapitalFlowView, CapitalHistoryCard, EarningsCard, ExplainerCard, LiveBadge, PopulationView, SpendsTable } from "./views";
 
 const settlement = WEB_CONFIG.settlement;
 
@@ -170,6 +173,7 @@ export function ApiAgent({ id }: { id: string }) {
         <CapitalHistoryCard agent={agent} settlement={settlement} />
         <StrategyCard agent={agent} />
       </div>
+      <EarningsCard agent={agent} settlement={settlement} />
       {agent.deployment === "deployed" && <FundAgent agent={agent} onChanged={reload} />}
       <div className="grid gap-4 min-[900px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <ExplainerCard explainer={explainAgent(agent, owner, { flow, settlement })} owner={owner} />
@@ -180,6 +184,33 @@ export function ApiAgent({ id }: { id: string }) {
         <SpendsTable spends={spends} settlement={settlement} />
       </Card>
       <AgentNotServed agent={agent} />
+    </>
+  );
+}
+
+/**
+ * The selection event feed in api mode: retirements and the reallocations the worker submitted, from the API's
+ * `GET /events`, refreshed with the other screens. Policy-engine decisions are not served, so the feed says so.
+ */
+export function ApiEvents() {
+  const { data, error } = useApiData(async (s) => {
+    const [events, mine] = await Promise.all([s.events(), s.agents()]);
+    return { events: events.events, agents: mine.agents };
+  }, "events");
+  if (!data) return error ? <ErrorNote error={error} /> : <Loading />;
+  const names = new Map(data.agents.map((a) => [a.id, a.name]));
+  return (
+    <>
+      <ErrorNote error={error} />
+      <EventFeed
+        events={feedEvents(data.events, names, settlement)}
+        labels={Object.fromEntries(names)}
+        heading={
+          <ScreenHead title="Selection events" aside={<LiveBadge />}>
+            Reallocations between your agents and retirements, from the worker&apos;s evaluation records. What the policy engine blocked is not served here yet.
+          </ScreenHead>
+        }
+      />
     </>
   );
 }

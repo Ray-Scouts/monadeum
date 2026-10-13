@@ -5,6 +5,7 @@
   "exports": {
     ".": "./dist/src/index.js",
     "./constants": "./dist/src/constants.js",
+    "./outcomes": "./dist/src/outcomes.js",
     "./plan": "./dist/src/plan.js",
     "./retirement": "./dist/src/retirement.js",
     "./switch": "./dist/src/switch.js"

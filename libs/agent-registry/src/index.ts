@@ -180,6 +180,24 @@ export interface EvaluationRecord {
   retired: boolean;
   /** The section 6 rule that retired the agent in this evaluation, or null when it was not retired. */
   retirementRule: string | null;
+  /**
+   * What reallocation did to the agent in this evaluation (`evaluationOutcomes` of `@monadeum/reallocation`), or null
+   * when the deployment's reallocation switch was off, so nothing was planned. Optional so a record written before it
+   * existed reads the same as one with no outcome.
+   */
+  reallocation?: RecordedReallocation | null;
+}
+
+/**
+ * One agent's reallocation outcome as recorded. `reason` is set for `off`, `unranked`, and `held`; `amount` (base units)
+ * for `sent` and `received`, the sum of the credits the worker submitted for it; `rank` when it was in its owner's
+ * ranking pool (position 1 is the lowest).
+ */
+export interface RecordedReallocation {
+  kind: "off" | "unranked" | "sent" | "received" | "held" | "retired";
+  reason: string | null;
+  amount: bigint | null;
+  rank: { position: number; of: number; quota: number } | null;
 }
 
 /**

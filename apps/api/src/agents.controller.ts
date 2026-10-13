@@ -6,7 +6,7 @@ import { DEFAULT_GENOME_PRESET, GENOME_PRESETS, genomePreset } from "@monadeum/s
 import type { OwnerSigner, RevokeResult } from "@monadeum/wallets";
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Res, UseGuards } from "@nestjs/common";
 import type { Address } from "viem";
-import { activityOf, agentView, callerUser, chainView, evaluationsOf, ownedAgent, spendsOf, x402View } from "./agents.js";
+import { activityOf, agentView, callerUser, chainView, evaluationsOf, ownedAgent, selectionEvents, spendsOf, x402View } from "./agents.js";
 import { API_DEPENDENCIES, fail, type ApiDependencies } from "./dependencies.js";
 import { buildGenome, workerGenome } from "./genome.js";
 import { jsonSafe } from "./json.js";
@@ -176,6 +176,19 @@ export class AgentsController {
       blockNumber: e.blockNumber,
     }));
     return jsonSafe({ ownerId: user.id, reallocations, reallocationsIndexed, spends });
+  }
+
+  /**
+   * The caller's selection events, newest first (`selectionEvents`): retirements and the reallocations the worker
+   * submitted, from the evaluation records of the caller's agents, the last `CAPITAL_HISTORY_LIMIT` evaluations of each.
+   * Policy-engine decisions are not served here.
+   */
+  @Get("events")
+  async events(@Caller() principal: Principal) {
+    const user = await callerUser(this.deps, principal);
+    const agents = user.ownerWallet ? await this.deps.agents.listByOwner(user.ownerWallet) : [];
+    const records = (await Promise.all(agents.map((a) => evaluationsOf(this.deps, a.agentId)))).flat();
+    return jsonSafe({ ownerId: user.id, events: selectionEvents(records) });
   }
 
   /** The genome presets an owner can create an agent from (EVOLUTION.md section 1.1), with the pair they trade. */

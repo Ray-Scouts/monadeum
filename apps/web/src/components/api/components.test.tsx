@@ -13,7 +13,7 @@ import { SignatureRequestView } from "./OperationSigner";
 import { SignInPanel } from "./SignIn";
 import { StopPanel, type StopPanelProps } from "./StopAgent";
 import { agentNotServed } from "@/data/api/present";
-import { AgentFacts, CapitalFlowView, CapitalHistoryCard, PopulationView } from "./views";
+import { AgentFacts, CapitalFlowView, CapitalHistoryCard, EarningsCard, PopulationView, averageFitness, roi } from "./views";
 import { SampleReallocationNote } from "@/components/SampleReallocationNote";
 import { REALLOCATION_OFF_REASON } from "@monadeum/reallocation/switch";
 
@@ -302,6 +302,23 @@ describe("read views, continued", () => {
     );
     expect(html).toContain("Reallocations are not indexed on this deployment");
     expect(html).toContain("does not mean nothing moved");
+  });
+});
+
+describe("net earnings", () => {
+  test("shows the net figure and each cost, or pending when the API does not serve them", () => {
+    const earnings = { realizedPnl: "100000", x402: "55000", gas: "6000", gasWei: "2000000000000000", fees: "2000", slippage: "1000", net: "36000" };
+    const html = text(renderToStaticMarkup(<EarningsCard agent={apiAgent({ earnings, principal: "10000000" })} settlement={settlement} />));
+    expect(html).toContain("Return on principal: 0.36%");
+    expect(roi("-36000", "10000000")).toBe("-0.36%");
+    expect(roi("1", null)).toBeNull();
+    expect(averageFitness([apiAgent({ fitnessPercentile: 40 }), apiAgent({ fitnessPercentile: 61 }), apiAgent()])).toBe(51);
+    expect(averageFitness([apiAgent()])).toBeNull();
+    expect(html).toContain("0.036 USDC");
+    expect(html).toContain("Realized P&amp;L");
+    expect(html).toContain("-0.055 USDC");
+    expect(html).toContain("0.002 MON");
+    expect(text(renderToStaticMarkup(<EarningsCard agent={apiAgent()} settlement={settlement} />))).toContain("Not served by the API yet");
   });
 });
 

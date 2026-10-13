@@ -65,7 +65,8 @@ export interface Reallocation {
 }
 
 /** Why a ranked agent moved nothing. `counterpart` means the agents on the other side could not give or take anything. */
-export type HeldReason = "floor" | "ceiling" | "zero-downside" | "middle" | "counterpart" | "alone";
+export type { HeldReason } from "@monadeum/reallocation/outcomes";
+import type { HeldReason } from "@monadeum/reallocation/outcomes";
 
 /** What the mechanism did to one agent at one evaluation. */
 export type Outcome =
@@ -120,6 +121,8 @@ export interface EvolutionEvent {
   id: string;
   kind: EventKind;
   minutesAgo: number;
+  /** Shown instead of `minutesAgo` when set, for an event dated by its own clock (the API's events). */
+  when?: string;
   title: string;
   body: string;
   /** Agents the event is about, in the order they appear in the title. */
