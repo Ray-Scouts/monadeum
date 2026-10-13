@@ -1,6 +1,6 @@
 # Audit package
 
-This directory is the material an external auditor needs to review the on-chain contracts of this repository, prepared under issue #46. It is organized per contract so that each contract in scope has its own section. Today it covers `AgentSpendPolicy`, the on-chain spend policy for agent smart accounts (issue #25), in sections 1 to 11, `X402PaymentValidator`, which bounds the account's x402 payment signatures, in section 12, and `AgentReallocation`, the owner-scoped reallocation and retirement contract (issue #31, merged in #105), in section 13. Section 14 ties the testnet deployment to this source, section 15 lists every command that reproduces the package, and section 16 states what remains before and during the external engagement.
+This directory is the material an external auditor needs to review the on-chain contracts of this repository, prepared under issue #46. It is organized per contract so that each contract in scope has its own section. Today it covers `AgentSpendPolicy`, the on-chain spend policy for agent smart accounts (issue #25), in sections 1 to 11, `X402PaymentValidator`, which bounds the account's x402 payment signatures, in section 12, and `AgentReallocation`, the owner-scoped reallocation and retirement contract (issue #31, merged in #105), in section 13. Section 14 ties the testnet deployment to this source, section 15 lists every command that reproduces the package, and section 16 states what remains before and during the external engagement, and section 17 records automated analysis run with open-source tools.
 
 `SECURITY.md` section 3 sets the gate this package serves: `AgentSpendPolicy` carries no real user-controlled capital, on testnet or mainnet, before an external audit is complete and every finding is resolved or explicitly accepted as residual risk in `SECURITY.md`.
 
@@ -34,6 +34,7 @@ Contents:
 14. Deployed testnet bytecode
 15. Reproducing this package
 16. Engagement status and remaining steps
+17. Automated analysis, open-source tools (2026-10-13)
 
 ## 1. Scope
 
@@ -522,13 +523,14 @@ Everything below runs from `contracts/` with Foundry 1.8.5 and the `forge-std` s
 | `forge test --match-path test/fork/WmonMarketFork.t.sol --fork-url https://testnet-rpc.monad.xyz` | Creating, seeding, buying on, and closing on the testnet WMON/USDC market, on a fork; outside audit scope, evidence for the trading path | 2026-10-12: 1 passed |
 | `forge test --match-path test/fork/X402MainnetFork.t.sol --fork-url "$MONAD_MAINNET_RPC_URL"` | Section 12.3, against Monad mainnet USDC and Kernel v3.1 | 2026-10-10: 7 passed; not rerun on 2026-10-12 |
 | Slither, Aderyn, `forge lint` | Sections 6, 12.4, 13.4 | 2026-10-10 |
+| Wake, Echidna, Halmos, Mythril | Section 17 | 2026-10-13, `4a7856b` |
 | `python3 audit/check-deployed-bytecode.py` | Section 14 | 2026-10-12: 3 of 3 match |
 
 Suites: `AgentSpendPolicy.t.sol`, `AgentSpendPolicy.invariant.t.sol`, and `KernelIntegration.t.sol` (sections 4 and 5); `X402PaymentValidator.t.sol` and `X402PaymentValidator.invariant.t.sol` (12.3); `AgentReallocation.t.sol`, `AgentReallocation.invariant.t.sol`, `AgentReallocationEdges.t.sol`, `ReallocationSpendPolicy.t.sol`, and `ReallocationCommitmentVector.t.sol` (13.2 and 13.3); `DeployTestnet.t.sol` and `WmonMarketScripts.t.sol` (the scripts, outside audit scope); and the three fork suites in `test/fork/`.
 
 ## 16. Engagement status and remaining steps
 
-Status on 2026-10-12: the package covers every value-bearing contract (the table at the top of this file), the tests and coverage pass, and the deployed testnet bytecode matches the source. **No auditor has been engaged, and the request for proposal in section 11 has not been sent.** The remaining steps are human decisions, in this order, and none can be done from this repository:
+Status on 2026-10-12: the package covers every value-bearing contract (the table at the top of this file), the tests and coverage pass, and the deployed testnet bytecode matches the source. **No auditor has been engaged, and the request for proposal in section 11 has not been sent.** On 2026-10-13 the decision was taken that no external auditor is engaged for the testnet phase, and an independent audit remains a precondition for any mainnet opt-in (`SECURITY.md` section 3, unchanged). The remaining steps are human decisions, in this order, and none can be done from this repository:
 
 1. Choose the auditors to approach and send them section 11, with this file and the commit to pin. The three source files are unchanged since `7ee25ee`, so any later commit that does not touch `contracts/src` audits the same code; pin the commit that merges this section or a later one, so the package and the code agree.
 2. Agree scope, price, and dates in a statement of work. Record the auditor, the pinned commit, and the dates in this section, replacing this status.
@@ -537,3 +539,78 @@ Status on 2026-10-12: the package covers every value-bearing contract (the table
 5. Publish the final report and the fix review in this directory, with the auditor's permission.
 
 Until step 4 is complete, the gate of `SECURITY.md` section 3 holds: none of the three contracts carries real user-controlled capital, on testnet or mainnet; the testnet deployment holds testnet assets only. The testnet validation checklist (`docs/testnet-validation-checklist.md`) carries the audit's status as a precondition of issue #48.
+
+## 17. Automated analysis, open-source tools (2026-10-13)
+
+These contracts have not been audited by an independent human security firm. The tools below are automated analyzers. Their output is not an audit and does not replace one.
+
+This section records what was run on 2026-10-13 with open-source tools that need no account, what each reported, and how each result was triaged. Absence of a finding is not evidence of absence of a defect. Raw outputs are in `contracts/audit/analysis/`.
+
+### 17.1 Scope, commit, environment
+
+- **Commit analyzed**: `4a7856beeecb6c2b3fd7dedb192b148af586fb25` (`git rev-parse HEAD` on `origin/main`). Any later change to a file under `contracts/src` is outside this section until the tools are re-run.
+- **Files**: `contracts/src/AgentSpendPolicy.sol`, `X402PaymentValidator.sol`, `AgentReallocation.sol`, `AgentCommitments.sol`, and the interfaces `IAgentSpendPolicy.sol`, `IAgentReallocation.sol`, `IAgentCommitments.sol`, `kernel/IKernelModules.sol`. Tests and `lib/` excluded. Wake reported 8 source files compiled, which matches this list.
+- **Compiler settings**: solc 0.8.24, EVM `cancun`, optimizer 200 runs, from `contracts/foundry.toml`.
+- **Environment**: macOS on Apple silicon. Wake, Halmos, and Mythril were installed with `uv` into throwaway virtual environments (Python 3.12, 3.12, 3.10). Echidna is the `echidna-2.3.3-aarch64-macos` release binary, with `crytic-compile` in a throwaway virtual environment. Nothing was installed globally. Wake downloaded solc 0.8.24 into its own per-user cache.
+- **AgentCommitments**: the contract has no section in this package yet (sections 1 to 16 predate it). It is 22 lines of implementation: one write-once `commit` keyed by `msg.sender`, and one view. It was covered by Wake and by one Echidna property test (17.3).
+
+### 17.2 Tools, versions, commands
+
+| Tool | Version | Command, from `contracts/` | Outcome |
+| --- | --- | --- | --- |
+| Wake (Ackee Blockchain) | 4.22.1 | `wake detect all` | Ran on all 8 source files. 3 results, exit code 3 (findings present). Raw: `wake-4.22.1-detect-all.txt` |
+| Echidna, `foundry` test mode | 2.3.3 | `echidna <test file> --contract <Test contract> --config echidna.yaml` with `testMode: foundry`, `testLimit: 50000`, `seqLen: 1`, 4 workers; `crytic-compile` on PATH | Ran for 3 of 4 contracts. 14 fuzz properties, no falsification. `X402PaymentValidatorTest` failed in `setUp()` (17.4). Raw: `echidna-2.3.3-*.txt` |
+| Halmos (a16z) | 0.3.3 | `halmos`, then `halmos --contract AgentSpendPolicyTest --function testFuzz_check_ --solver-timeout-assertion 20000 --loop 4` | Could not run the existing tests without rewrites (17.4). 0 properties proved or refuted. Raw: `halmos-0.3.3-invariants.txt`, `halmos-0.3.3-spend-policy-fuzz-tests.txt` |
+| Mythril | 0.24.8 | `myth version` | Did not start on this machine (17.4). No analysis. Raw: `mythril-0.24.8-install-failure.txt` |
+| Medusa | not installed | none | Not run (17.4) |
+
+The Echidna configuration was `testMode: foundry`, `testLimit: 50000`, `seqLen: 1`, `workers: 4`, and a corpus directory outside the repository. With `seqLen: 1` each Foundry fuzz test is called as a single transaction on the state left by `setUp()`, the same shape as `forge test`'s fuzz runner but with Echidna's coverage-guided input generation. A first run with `seqLen: 100` called the test functions in sequences on shared state and reported many tests as falsified. That is an artifact of calling independent unit tests one after another on state they were not written for (every one of those tests is part of the `forge test` suite, which has 0 failures). That output was not kept and is not counted as findings.
+
+### 17.3 Echidna properties exercised
+
+Echidna in `foundry` mode runs `test`-prefixed functions that take arguments. It does not run Foundry `invariant_` functions, so the stateful invariant suites of sections 4, 12.3, and 13.3 were not exercised by it.
+
+| Contract and test file | Properties run | Result |
+| --- | --- | --- |
+| `AgentSpendPolicyTest` in `test/AgentSpendPolicy.t.sol` | 11 `testFuzz_` tests (per-transaction cap on single and batched calls, recipient rule, target and selector allowlist, native value, traded and settlement asset selectors, rolling window against a model) | No falsification in 50,002 calls |
+| `AgentReallocationTest` in `test/AgentReallocation.t.sol` | 2 (`testFuzz_singleMoveMatchesModelAndConserves`, `testFuzz_evaluationSpacing`) | No falsification in 50,002 calls |
+| `AgentCommitmentsTest` in `test/AgentCommitments.t.sol` | 1 (`testFuzz_onlyTheCallersOwnSlotIsWritten`) | No falsification in 50,002 calls |
+| `X402PaymentValidatorTest` in `test/X402PaymentValidator.t.sol` | 0 | `setUp()` fails, see 17.4 |
+
+### 17.4 Tools that did not produce analysis
+
+- **Echidna on `X402PaymentValidatorTest`**: `setUp()` reverts with `BadCheatCode "Cannot understand cheatcode." 0x7404f1d2` at `test/utils/X402TestBase.sol:29`, the `vm.createWallet("x402Key")` call. Echidna's EVM does not implement that cheatcode (assumption: unsupported in 2.3.3; not checked against the tool's cheatcode list). The validator therefore has no Echidna coverage. Its fuzz tests and invariant suite still run under `forge test`.
+- **Halmos 0.3.3**:
+  - `AgentReallocationInvariantTest`: all 7 invariants failed in `setUp()` with `vm.etch(address who, bytes code) must have concrete argument who`, so the setup needs a rewrite to run symbolically.
+  - `AgentSpendPolicyInvariantTest`: the symbolic run of the handler reported `symbolic memory offset` and `symbolic storage base slot` errors and produced no result after more than 10 minutes; it was stopped by hand. The `X402PaymentValidator` invariants were not reached.
+  - `AgentSpendPolicyTest`, selecting `testFuzz_check_`: all 7 reported ERROR. Six because `vm.expectRevert(bytes)` is an unsupported cheatcode in Halmos 0.3.3, and `testFuzz_check_perTxCapOnBatchSum` because all paths reverted under the setup and a loop bound of 4.
+  - Conclusion: the existing tests cannot be run symbolically without rewriting them as `check_` tests with explicit revert handling. Bounded effort was spent and no rewrite was attempted.
+- **Mythril 0.24.8**: with Python 3.10 it first failed on a missing `pkg_resources`, and after pinning `setuptools<81` it failed loading `scipy` 1.15.3 (`dlopen` error, `__DATA/__thread_bss` section) on this macOS version. No retry on another interpreter or with Docker.
+- **Medusa**: not installed or run. The existing invariants are Foundry `invariant_` functions with `StdInvariant` handlers, and it was not confirmed that Medusa runs that style without a rewrite (assumption, not read from Medusa's documentation in this session).
+
+### 17.5 Findings and triage
+
+Every result is listed. None is dropped. Severity is as reported by the tool.
+
+| # | Tool | Rule or property | Location | Reported severity | Assessment | Reasoning | Action |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| W1 | Wake 4.22.1 | `unchecked-return-value` | `AgentSpendPolicy.sol:165`, `checkUserOpPolicy`, `_check(...)` result ignored | WARNING, HIGH | False positive | Same as D6 and Aderyn L-5 in section 6. `_check` reverts on every failed rule, so the call is the check. Its returned total is needed only by `_record`, which uses it | No action |
+| W2 | Wake 4.22.1 | not all execution paths have assigned return values | `AgentSpendPolicy.sol:200`, `_check`, named return `total` | WARNING, MEDIUM | False positive | The named return variable is zero-initialized by the language. A path that never reaches `total += amount` (an empty batch, or only uncounted calls) correctly returns 0, the specified count. `test_check_emptyOperationCountsZero` and `test_check_uncountedCallsCountZero` assert it | No action |
+| W3 | Wake 4.22.1 | not all execution paths have assigned return values | `AgentSpendPolicy.sol:257`, `_windowTotal`, named return `sum` | WARNING, MEDIUM | False positive | `sum` starts at 0 and is added to only for buckets inside the window. An account with no spend must return 0 | No action |
+| E1 | Echidna 2.3.3 | 14 fuzz properties, 3 contracts | see 17.3 | none reported | Informational | No falsification in 50,002 calls per contract. Adds a second fuzz engine to the Foundry fuzzer for these properties only | No action |
+| H1 | Halmos 0.3.3 | existing invariant and fuzz tests | see 17.4 | none | Not assessed | The tool could not run the tests, so no property was checked symbolically | No action. Symbolic checking would need rewritten `check_` tests and is a limitation |
+| M1 | Mythril 0.24.8 | none | none | none | Not assessed | Did not start | No action |
+
+Count by tool: Wake 3 results (0 true positives, 3 false positives), Echidna 0 falsifications, Halmos 0 results, Mythril 0 results. No true positive was found, so no change to `SECURITY.md`, `THREAT-MODEL.md`, or any file under `contracts/src` follows from this section, and the deployed testnet bytecode check of section 14 is unaffected. Had a source change been needed, the deployed bytecode would no longer match the source, and `audit/check-deployed-bytecode.py` would fail until the contracts were redeployed.
+
+### 17.6 What this section cannot show
+
+The detectors and fuzz properties here are generic or were written by the same team that wrote the contracts. They do not assess economic behavior, operator trust in `AgentReallocation`, the Kernel v3.1 integration through a bundler on Monad (section 7.2), or the items listed in sections 8, 12.5, and 13.5. Detector coverage and false-negative rates of these tools were not independently evaluated.
+
+### 17.7 AI-assisted scan (pending)
+
+Placeholder. No AI-assisted scan has been run or recorded. The owner will run it and fill this subsection with the tool, version or date, prompts or settings, raw output location, and triage in the format of 17.5. No result may be inferred from this heading.
+
+- **Commit to scan**: `4a7856beeecb6c2b3fd7dedb192b148af586fb25`, or a later pinned commit recorded here before the scan starts.
+- **Scope**: `contracts/src/AgentSpendPolicy.sol`, `contracts/src/X402PaymentValidator.sol`, `contracts/src/AgentReallocation.sol`, `contracts/src/AgentCommitments.sol`. Context only: `IAgentSpendPolicy.sol`, `IAgentReallocation.sol`, `IAgentCommitments.sol`, `kernel/IKernelModules.sol`. Tests and `lib/` excluded.
+- **Results**: pending.

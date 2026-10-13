@@ -1,0 +1,43 @@
+<venv>/wake/detectors/api.py:952: SyntaxWarning: invalid escape sequence '\['
+  title += f" [link={info.uri}]\[{detector_id}][/link]"  # pyright: ignore reportInvalidStringEscapeSequence
+<venv>/wake/detectors/api.py:954: SyntaxWarning: invalid escape sequence '\['
+  title += f" \[{detector_id}]"  # pyright: ignore reportInvalidStringEscapeSequence
+[00:58:40] Found 8 *.sol files in 0.00 s                           detect.py:729
+           Failed to load previous build artifacts               compiler.py:863
+Downloading solc 0.8.24 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
+[00:58:54] Compiled 8 files using 4 solc runs in 0.91 s         compiler.py:1249
+           Processed compilation results in 0.11 s              compiler.py:1502
+[00:58:55] Wrote build artifacts in 0.06 s                      compiler.py:1629
+
+
+╭─ [WARNING][HIGH] Unchecked return value [unchecked-return-value] ────────────╮
+│   162         if (callData.length >= 4 && bytes4(callData[:4]) == EXECUTE_US │
+│   163             callData = callData[4:];                                   │
+│   164         }                                                              │
+│ ❱ 165         _check(msg.sender, _decodeExecute(callData));                  │
+│   166         return POLICY_SUCCESS;                                         │
+│   167     }                                                                  │
+│   168                                                                        │
+╰─ src/AgentSpendPolicy.sol ───────────────────────────────────────────────────╯
+
+
+╭─ [WARNING][MEDIUM] Not all execution paths have assigned return values [miss─╮
+│   197     // Internal                                                        │
+│   198     // --------------------------------------------------------------- │
+│   199                                                                        │
+│ ❱ 200     function _check(address account, Call[] memory calls) internal vie │
+│   201         uint256 perTxCap = _limits[account].perTxCap;                  │
+│   202         for (uint256 i = 0; i < calls.length; ++i) {                   │
+│   203             Call memory c = calls[i];                                  │
+╰─ src/AgentSpendPolicy.sol ───────────────────────────────────────────────────╯
+
+
+╭─ [WARNING][MEDIUM] Not all execution paths have assigned return values [miss─╮
+│   254                                                                        │
+│   255     /// Sum of the buckets written in hours h - 24 through h. A bucket │
+│   256     /// holding an older hour is outside the window and is skipped.    │
+│ ❱ 257     function _windowTotal(address account, uint256 hour) internal view │
+│   258         Bucket[BUCKETS] storage buckets = _buckets[account];           │
+│   259         for (uint256 i = 0; i < BUCKETS; ++i) {                        │
+│   260             Bucket memory b = buckets[i];                              │
+╰─ src/AgentSpendPolicy.sol ───────────────────────────────────────────────────╯

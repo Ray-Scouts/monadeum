@@ -1,0 +1,20 @@
+[2026-10-13 01:03:00.44] Compiling `test/AgentReallocation.t.sol`... WARNING: slither not found. Echidna uses Slither (https://github.com/crytic/slither) to perform source analysis, which makes fuzzing more effective. You should install it with 'pip3 install slither-analyzer --user'
+Done! (2.997758s)
+Analyzing contract: contracts/test/AgentReallocation.t.sol:AgentReallocationTest
+[2026-10-13 01:03:13.27] [Worker 3] Test limit reached. Stopping.
+[2026-10-13 01:03:13.45] [Worker 1] Test limit reached. Stopping.
+[2026-10-13 01:03:13.57] [Worker 0] Test limit reached. Stopping.
+[2026-10-13 01:03:13.58] [Worker 2] Test limit reached. Stopping.
+testFuzz_singleMoveMatchesModelAndConserves(uint256,uint256,uint256,uint256,uint16,uint32,uint256): passing
+testFuzz_evaluationSpacing(uint256,uint256): passing
+
+Unique instructions: 231901
+Unique codehashes: 475
+Corpus size: 302
+Seed: 8686978183236092439
+Total calls: 50002
+
+[2026-10-13 01:03:13.59] Saving test reproducers... Done! (0.000001s)
+[2026-10-13 01:03:13.59] Saving corpus... Done! (0.003308s)
+[2026-10-13 01:03:13.59] Saving foundry reproducers... Done! (0.000072s)
+[2026-10-13 01:03:13.59] Saving coverage... Done! (0.540461s)

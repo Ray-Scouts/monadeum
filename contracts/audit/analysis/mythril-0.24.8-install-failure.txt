@@ -1,0 +1,5 @@
+Mythril 0.24.8 was installed with uv into a throwaway virtual environment on Python 3.10 (macOS, arm64, Darwin 27.0.0).
+`myth version` did not start. First error: ModuleNotFoundError: No module named 'pkg_resources'.
+After pinning setuptools below 81 the next error was an ImportError loading scipy 1.15.3:
+  dlopen(.../scipy/sparse/linalg/_propack/_spropack.cpython-310-darwin.so): section '__DATA/__thread_bss' has a zero-fill section type, but offset field is not zero
+No analysis was run. Not retried with other Python versions or Docker.

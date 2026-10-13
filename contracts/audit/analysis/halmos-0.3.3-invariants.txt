@@ -1,0 +1,48 @@
+Running 7 tests for test/AgentReallocation.invariant.t.sol:AgentReallocationInvariantTest
+WARNING  in setUp(), executing CALL failed with: vm.etch(address who, bytes
+         code) must have concrete argument `who` but received
+         f_vmaddr(31953739399695593666283731411274577053612996981383225307242093
+         477592974358050)
+         (see https://github.com/a16z/halmos/wiki/warnings#internal-error)
+ERROR    setUp() failed: HalmosException: No successful path found in setUp()
+Symbolic test result: 0 passed; 7 failed; time: 0.21s
+
+Running 7 tests for test/AgentSpendPolicy.invariant.t.sol:AgentSpendPolicyInvariantTest
+
+
+╭─────────────── Initial Invariant Target Functions ───────────────╮
+│ AgentSpendPolicy.invariant.t.sol:SpendPolicyHandler @ 0xaaaa0003 │
+│ ├── operate(uint256,uint8)                                       │
+│ ├── toggleAllowed(uint256,uint256,bool)                          │
+│ ├── toggleTraded(uint256,bool)                                   │
+│ └── warp(uint256)                                                │
+╰──────────────────────────────────────────────────────────────────╯
+
+
+ERROR    depth=1: addr=0x00000000000000000000000000000000aaaa0003: symbolic
+         memory offset:
+         +(0x00000000000000000000000000000000000000000000000000000000000000a0,
+         Concat(0x00000000000000000000000000000000000000000000000000000000000000
+         , Extract(0x07, 0x00, p_n_uint8_f33929b_05), 0x00))
+ERROR    depth=1: addr=0x00000000000000000000000000000000aaaa0003: symbolic
+         storage base slot:
+         Concat(0x64bdfd797c773846181d03689a7af66c1c4d7021957b16e09951208c149433
+         5e, Extract(0x30, 0x30, f_sha3_512(Concat(p_seed_uint256_5d5492b_04,
+         0x0000000000000000000000000000000000000000000000000000000000000000))))
+ERROR    depth=1: addr=0x00000000000000000000000000000000aaaa0003: symbolic
+         storage base slot:
+         Concat(0x64bdfd797c773846181d03689a7af66c1c4d7021957b16e09951208c149433
+         5e, Extract(0x30, 0x30,
+         f_sha3_512(Concat(f_sha3_512(Concat(p_seed_uint256_5d5492b_04,
+         0x0000000000000000000000000000000000000000000000000000000000000000)),
+         0x0000000000000000000000000000000000000000000000000000000000000001))))
+ERROR    depth=1: addr=0x00000000000000000000000000000000aaaa0003: symbolic
+         storage base slot:
+         Concat(0x64bdfd797c773846181d03689a7af66c1c4d7021957b16e09951208c149433
+         5e, Extract(0x30, 0x30,
+         f_sha3_512(Concat(f_sha3_512(Concat(f_sha3_512(Concat(p_seed_uint256_5d
+         5492b_04,
+         0x0000000000000000000000000000000000000000000000000000000000000000)),
+         0x0000000000000000000000000000000000000000000000000000000000000001)),
+         0x0000000000000000000000000000000000000000000000000000000000000002))))
+[output cut here; the run was stopped by hand after more than 10 minutes with no result for the spend policy invariants]
