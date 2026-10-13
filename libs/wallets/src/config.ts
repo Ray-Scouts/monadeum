@@ -19,6 +19,11 @@ export interface WalletsConfig {
   budget: SponsorshipBudget;
   /** Null unless WALLETS_X402_VALIDATOR_ADDRESS is set: no x402 key is created and agents cannot pay x402. */
   x402: X402WalletConfig | null;
+  /**
+   * The AgentCommitments contract, from WALLETS_AGENT_COMMITMENTS_ADDRESS. Null when unset: deployments commit nothing
+   * on chain, and the worker's tick runner cannot verify an agent's genome against a commitment.
+   */
+  commitments: Address | null;
 }
 
 function positiveInteger(env: Env, name: string, fallback: bigint): bigint {
@@ -134,5 +139,6 @@ export function loadWalletsConfig(env: Env = process.env): WalletsConfig {
     },
     budget: { operations: Number(operations), gasWei: nonNegativeInteger(env, "WALLETS_SPONSORED_GAS_WEI") },
     x402: x402Config(env, settlementAsset),
+    commitments: env.WALLETS_AGENT_COMMITMENTS_ADDRESS?.trim() ? address(env, "WALLETS_AGENT_COMMITMENTS_ADDRESS") : null,
   };
 }

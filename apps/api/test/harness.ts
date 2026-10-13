@@ -99,6 +99,8 @@ export class SigningFakeChain extends FakeChain {
 const USDC = getAddress("0x00000000000000000000000000000000000000a1");
 const ROUTER = getAddress("0x00000000000000000000000000000000000000b1");
 const REALLOC = getAddress("0x00000000000000000000000000000000000000c1");
+// AgentCommitments: every test deployment commits the genome and strategy-version hashes (ARCHITECTURE.md section 9).
+export const COMMITMENTS = getAddress("0x00000000000000000000000000000000000000d1");
 export const scope = buildScope({ settlementAsset: USDC, kuruRouter: ROUTER, kuruRouterSelectors: ["0x12345678"], reallocation: REALLOC, reallocationSelectors: ["0x9abcdef0"] });
 
 export interface Booted {
@@ -134,13 +136,14 @@ export async function boot(backend: Backend, options: { settings?: Partial<ApiSe
   }
   const clock = { now: Date.now() };
   const chain = new SigningFakeChain();
+  chain.deployContract(COMMITMENTS);
   const vault = new MemorySessionKeyVault();
   const deps = buildDependencies({
     stores,
     privy: new FakePrivy(),
     authSettings,
     settings: settings(options.settings),
-    wallets: options.wallets === false ? null : (s) => new WalletsService(chain, s.walletStore, vault, s.ledger, { scope, budget: { operations: 100, gasWei: 10n ** 18n }, paymaster: true }, () => clock.now),
+    wallets: options.wallets === false ? null : (s) => new WalletsService(chain, s.walletStore, vault, s.ledger, { scope, budget: { operations: 100, gasWei: 10n ** 18n }, paymaster: true, commitments: COMMITMENTS }, () => clock.now),
     policyWriter: options.policyWriter ?? null,
     funding: options.funding ? options.funding(chain, clock) : null,
     now: () => clock.now,

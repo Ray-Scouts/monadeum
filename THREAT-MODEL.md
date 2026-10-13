@@ -10,7 +10,7 @@ See `SECURITY.md` for the concrete controls that implement the mitigations refer
 
 1. **User capital**, held in each agent's own smart account. The primary asset, and the one every other item in this list exists to protect.
 2. **The platform's gas-sponsorship (paymaster) budget**, including the relayer budget for users' allocation transfers (`ARCHITECTURE.md` section 7). A cost center that can be drained independently of any agent's own trading capital if left unbounded.
-3. **Agent identity and reputation**, recorded on-chain in an ERC-8004-compatible registry: ownership, genome hash, strategy-version hash, status.
+3. **Agent identity and reputation**, recorded on-chain in an ERC-8004-compatible registry: ownership, genome hash, strategy-version hash, status. Until that registry exists, the genome and strategy-version hashes are held by the write-once `AgentCommitments` contract, written by each agent's own account when it is deployed (`ARCHITECTURE.md` section 9).
 4. **Off-chain accounting and history** (PostgreSQL): fitness scores, trade logs, x402 payment logs, LLM reasoning traces. Its integrity matters because reallocation rankings and retirement decisions are computed from it (`EVOLUTION.md` section 3).
 5. **Session keys**, held server-side by agent worker processes, scoped to one agent's smart account each: the trading session key, and a separate x402 key that can only sign bounded x402 payments (`ARCHITECTURE.md` section 16.3, "x402 signature path").
 6. **The user's root embedded wallet and social-login credential**, which owns and can recover every agent's smart account.

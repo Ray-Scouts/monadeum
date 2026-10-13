@@ -1,7 +1,9 @@
+import type { AgentStore } from "@monadeum/agent-registry";
+import { contractAgentCommitmentReader, verifyAgentCommitment, type AgentCommitmentReader } from "@monadeum/commitment";
 import { FitnessService } from "@monadeum/fitness";
 import { ReallocationService, type ReallocationSwitch } from "@monadeum/reallocation";
 import { RiskService } from "@monadeum/risk";
-import { StrategyService } from "@monadeum/strategy";
+import { STRATEGY_VERSION, StrategyService } from "@monadeum/strategy";
 import type { TickResult } from "@monadeum/tick";
 import { WalletsTradeSigner, buildKuruTrading, type TradingConfig, type TradingService } from "@monadeum/trading";
 import { loadWalletsConfig, type WalletsService } from "@monadeum/wallets";
@@ -37,10 +39,39 @@ export class PolicyGatedRunner implements TickRunner {
       signer: Address;
       target: PolicyTarget;
       market?: { sample(): Promise<unknown> };
+      /** When set, an agent ticks only while its genome and the running strategy version match its on-chain commitment. */
+      commitments?: CommitmentGate;
       clock: () => Date;
       log: (message: string) => void;
     },
   ) {}
+
+  /**
+   * Null when the agent's stored genome document and the strategy version this worker runs (`STRATEGY_VERSION`) both
+   * verify against the commitment its account made at deployment (ARCHITECTURE.md section 9), else why not. Every
+   * mismatch, including an account that committed nothing, is logged as a SECURITY.md section 12 alert, one `ALERT`
+   * line per failed kind. An unknown agent is left to the worker, which does not tick it.
+   */
+  async checkCommitment(agentId: string): Promise<string | null> {
+    const gate = this.deps.commitments;
+    if (!gate) return null;
+    let agent;
+    try {
+      agent = await gate.agents.get(agentId);
+    } catch (error) {
+      return `the agent record could not be read (${error instanceof Error ? error.message : String(error)})`;
+    }
+    if (!agent) return null;
+    let onChain;
+    try {
+      onChain = await gate.reader.readAgentCommitment(agent.account);
+    } catch (error) {
+      return `the on-chain genome commitment could not be read (${error instanceof Error ? error.message : String(error)})`;
+    }
+    const failed = verifyAgentCommitment(agentId, { genome: agent.genomeDocument, strategyVersion: STRATEGY_VERSION }, onChain).flatMap((r) => (r.ok ? [] : [r.alert]));
+    for (const alert of failed) this.deps.log(`ALERT ${alert.rule} ${alert.kind} agent ${agentId} account ${agent.account}: ${alert.reason}, ${alert.detail}`);
+    return failed.length > 0 ? `the agent's ${failed.map((a) => a.kind).join(" and ")} does not match its on-chain commitment` : null;
+  }
 
   /** Loads and verifies the policy now. Null when a verified version covering the market is in effect, else why not. */
   async checkPolicy(): Promise<string | null> {
@@ -61,7 +92,7 @@ export class PolicyGatedRunner implements TickRunner {
   async tick(agentId: string, tick: number): Promise<TickResult | null> {
     const { market, worker, log } = this.deps;
     await market?.sample().catch(() => null);
-    const problem = await this.checkPolicy();
+    const problem = (await this.checkPolicy()) ?? (await this.checkCommitment(agentId));
     if (problem) {
       log(`tick ${agentId}:${tick} skipped, nothing decided or sent: ${problem}`);
       return null;
@@ -74,6 +105,12 @@ export class PolicyGatedRunner implements TickRunner {
   evaluate(tick: number) {
     return this.deps.worker.evaluate(tick);
   }
+}
+
+/** What the runner reads to verify an agent's commitment: the agent registry and the AgentCommitments contract. */
+export interface CommitmentGate {
+  agents: Pick<AgentStore, "get">;
+  reader: AgentCommitmentReader;
 }
 
 function describe(result: TickResult | null): string {
@@ -112,6 +149,8 @@ export function assembleTickRunner(parts: {
   maxSlippageBps: number;
   signer: Address;
   target: PolicyTarget;
+  /** The AgentCommitments reader; null or absent means agents tick without their commitment being verified. */
+  commitments?: AgentCommitmentReader | null;
   clock: () => Date;
   log: (message: string) => void;
 }): { runner: PolicyGatedRunner; worker: AgentWorker; risk: RiskService } {
@@ -135,6 +174,7 @@ export function assembleTickRunner(parts: {
   });
   const runner = new PolicyGatedRunner({
     worker, risk, policies: parts.stores.policies, signer: parts.signer, target: parts.target, market: parts.market, clock: parts.clock, log: parts.log,
+    commitments: parts.commitments ? { agents: parts.stores.agents, reader: parts.commitments } : undefined,
   });
   return { runner, worker, risk };
 }
@@ -209,9 +249,14 @@ export async function buildTickRunner(input: {
     breaker: config.breaker,
     signer: config.policySigner,
     target,
+    commitments: walletsConfig.commitments ? contractAgentCommitmentReader(rpc, walletsConfig.commitments) : null,
     clock: input.clock,
     log,
   });
+  if (!walletsConfig.commitments) {
+    if (input.production) throw new WorkerConfigError("MONADEUM_ENV is production and WALLETS_AGENT_COMMITMENTS_ADDRESS is not set: no agent's genome could be verified against its commitment");
+    log("tick runner: WALLETS_AGENT_COMMITMENTS_ADDRESS is not set; agents tick without their genome being verified against an on-chain commitment");
+  }
   const problem = await runner.checkPolicy();
   if (problem && input.production) throw new WorkerConfigError(`MONADEUM_ENV is production and ${problem}`);
   log(problem ? `tick runner: ${problem}; every tick is skipped until a valid version is appended` : "tick runner: risk policy verified and in effect");

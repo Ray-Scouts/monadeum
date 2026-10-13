@@ -161,6 +161,26 @@ cast call "$REALLOC" "settlementAsset()(address)" --rpc-url $R
 
 Then copy the three addresses, the deployer, and the deployment block into `contracts/deployments/monad-testnet.json`, set `status` to `deployed`, and commit it through a pull request. Addresses are public; the committed file is the record of the deployment. Source verification on the explorer is not set up (open question below).
 
+### 2a. Deploy the genome commitment contract (not done yet)
+
+`AgentCommitments` (`ARCHITECTURE.md` section 9, issue #32) has no constructor arguments and no roles; it is deployed by its own script, so the three contracts above are not redeployed. Not broadcast yet: until it is, `WALLETS_AGENT_COMMITMENTS_ADDRESS` stays unset, deployments commit nothing on chain, and the tick runner logs that genomes are not verified.
+
+```bash
+cd contracts
+# Simulate (sends nothing, needs no key):
+MONADEUM_EXPECTED_DEPLOYER=0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3 \
+forge script script/DeployAgentCommitments.s.sol:DeployAgentCommitments \
+  --rpc-url https://testnet-rpc.monad.xyz --sender 0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3 -vvv
+# Broadcast (one transaction, prompts for the keystore password):
+MONADEUM_EXPECTED_DEPLOYER=0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3 \
+forge script script/DeployAgentCommitments.s.sol:DeployAgentCommitments \
+  --rpc-url https://testnet-rpc.monad.xyz --account monadeum-testnet-deployer \
+  --sender 0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3 --broadcast --slow -vvv
+cat deployments/monad-testnet-commitments.latest.json
+```
+
+Then add the address and block to `contracts/deployments/monad-testnet.json` under `contracts.AgentCommitments`, and set `WALLETS_AGENT_COMMITMENTS_ADDRESS` in the API's and the worker's environment (section 3). Agents created before that have no commitment: once the address is set, the tick runner raises the `SECURITY.md` section 12 alert for each of them and does not tick them, so on testnet they are replaced by new agents. Every later change to `libs/strategy/src/propose.ts` is a new strategy version and has the same effect on every live agent (`ARCHITECTURE.md` section 16.4, rule 7).
+
 ## 2b. Create and seed the testnet WMON/USDC market (owner's workstation)
 
 The decision and its limits are in `ARCHITECTURE.md` section 10, "Testnet market". Two steps, each simulated first. Nothing below has been broadcast; the simulations of 2026-10-11 are recorded in `contracts/deployments/monad-testnet-wmon-market.json`.

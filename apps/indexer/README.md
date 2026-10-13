@@ -75,5 +75,5 @@ Needed to add or change an optional contract such as `INDEXER_REALLOCATION_ADDRE
 ## Not done yet
 
 - The testnet run above synced real blocks but indexed no rows, because the spend policy was not deployed there yet. It was deployed on 2026-10-11 (block 70167444, `contracts/deployments/monad-testnet.json`), and the first agent's `account.deployed`, `spend.limits-set`, and `spend.call-allowed` rows were indexed the same day.
-- No identity registry or genome hash commitment contract exists yet (`ARCHITECTURE.md` section 9), so the indexer has nothing to read for them; each becomes a handler when its contract lands.
+- No identity registry exists yet (`ARCHITECTURE.md` section 9). The genome hash commitment contract, `AgentCommitments`, exists but is not deployed and has no handler: the worker reads it directly before every tick. An `AgentCommitted` handler is added when a read-model consumer needs it.
 - The reallocation handlers are tested against an in-memory chain only. The testnet contract has emitted no `Reallocated` event, because reallocation is off there (`MONADEUM_REALLOCATION_ENABLED=false`), and the deployed read-model was synced without the contract, so indexing it there needs the rebuild above.

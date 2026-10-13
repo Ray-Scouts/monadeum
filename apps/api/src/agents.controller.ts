@@ -5,10 +5,10 @@ import { RECOVERY_WINDOW_MS, RecoveryService, type RecoveryHold } from "@monadeu
 import { DEFAULT_GENOME_PRESET, GENOME_PRESETS, genomePreset } from "@monadeum/strategy/presets";
 import type { OwnerSigner, RevokeResult } from "@monadeum/wallets";
 import { Body, Controller, Get, HttpCode, Inject, Param, Post, Res, UseGuards } from "@nestjs/common";
-import type { Address } from "viem";
+import type { Address, Hex } from "viem";
 import { activityOf, agentView, callerUser, chainView, evaluationsOf, ownedAgent, selectionEvents, spendsOf, x402View } from "./agents.js";
 import { API_DEPENDENCIES, fail, type ApiDependencies } from "./dependencies.js";
-import { buildGenome, workerGenome } from "./genome.js";
+import { STRATEGY_VERSION_HASH, buildGenome, workerGenome } from "./genome.js";
 import { jsonSafe } from "./json.js";
 import { Caller, SessionGuard, type ApiReply } from "./session.js";
 import type { AgentRecord, StoredHold } from "./stores.js";
@@ -252,7 +252,7 @@ export class AgentsController {
     }
     if (outcome === "population-cap") fail(409, "population-cap", `agent creation is closed at ${this.deps.settings.populationCap} active agents`);
     if (outcome !== "created") fail(409, "conflict", "agent index taken concurrently; retry");
-    const operation = await this.deploy(principal, user.id, agentId, owner, agent!.index, agent!.limits, wallets);
+    const operation = await this.deploy(principal, user.id, agentId, owner, agent!.index, agent!.limits, genome.hash, wallets);
     return { agent: agentView(user, agent!, await this.deps.walletStore.get(agentId), null, worker), operation };
   }
 
@@ -261,12 +261,17 @@ export class AgentsController {
   @HttpCode(202)
   async redeploy(@Param("id") id: string, @Caller() principal: Principal) {
     const wallets = this.wallets();
-    const { user, owner, agent, wallet } = await ownedAgent(this.deps, principal, id);
+    const { user, owner, agent, wallet, worker } = await ownedAgent(this.deps, principal, id);
     if (wallet?.deployment.status === "deployed") fail(409, "already-deployed");
-    return { operation: await this.deploy(principal, user.id, agent.agentId, owner, agent.index, agent.limits, wallets) };
+    if (!worker) fail(409, "no-genome", "the agent has no committed genome record");
+    return { operation: await this.deploy(principal, user.id, agent.agentId, owner, agent.index, agent.limits, worker.genomeHash, wallets) };
   }
 
-  private deploy(principal: Principal, userId: string, agentId: string, owner: Address, index: bigint, limits: { perTxCap: bigint; dailyCap: bigint }, wallets: NonNullable<ApiDependencies["wallets"]>) {
+  /**
+   * The owner-signed deployment. With AgentCommitments configured, WalletsModule commits the genome hash and the hash
+   * of the strategy version this API runs from the new account in the same operation (ARCHITECTURE.md section 9).
+   */
+  private deploy(principal: Principal, userId: string, agentId: string, owner: Address, index: bigint, limits: { perTxCap: bigint; dailyCap: bigint }, genomeHash: Hex, wallets: NonNullable<ApiDependencies["wallets"]>) {
     return this.deps.relay.start({
       userId,
       kind: "deploy",
@@ -274,7 +279,7 @@ export class AgentsController {
       owner,
       work: async (signer) => {
         await this.authorizeSigner(principal, signer);
-        return wallets.deploy({ agentId, owner: signer, index, limits });
+        return wallets.deploy({ agentId, owner: signer, index, limits, commitment: { genomeHash, strategyVersionHash: STRATEGY_VERSION_HASH } });
       },
     });
   }
