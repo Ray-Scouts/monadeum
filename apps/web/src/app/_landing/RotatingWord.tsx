@@ -5,9 +5,8 @@ import { useInView } from "./hooks";
 import s from "./landing.module.css";
 
 const WORDS = [
-  ["place", "var(--mint)"],
-  ["capital", "var(--sky)"],
   ["keep", "var(--sun)"],
+  ["place", "var(--mint)"],
   ["survival", "var(--berry)"],
 ] as const;
 

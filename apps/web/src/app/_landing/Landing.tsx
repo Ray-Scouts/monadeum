@@ -4,27 +4,18 @@ import { PROTOCOL } from "monadeum-simulation/protocol";
 import { Icon, Logo } from "@/components/Icon";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Pill } from "@/components/ui";
+import { DOCS_URL } from "@/lib/site";
 import { CountUp } from "./CountUp";
 import { GenomeCard } from "./GenomeCard";
+import { AgentField } from "./AgentField";
+import { EvidenceStrip } from "./EvidenceStrip";
 import { Petri } from "./Petri";
 import { ReallocationDemo } from "./ReallocationDemo";
 import { RotatingWord } from "./RotatingWord";
 import { ShrinkageChart } from "./ShrinkageChart";
 import { TickLoop } from "./TickLoop";
-import { REALLOC, money, percent } from "./numbers";
+import { percent } from "./numbers";
 import s from "./landing.module.css";
-
-const NICHES = ["var(--sky)", "var(--mint)", "var(--accent)", "var(--berry)", "var(--sun)"];
-
-const TICKER: readonly [color: string, title: string, detail: string][] = [
-  ["var(--sun)", "Nimbus·3c1d sent capital to Kestrel·a1f0", `${money(REALLOC.moved)}, same owner, total unchanged`],
-  ["var(--bad)", "Proposal rejected", "Orca·19bd exceeds its cap"],
-  ["var(--berry)", "Vela·4e02 bought data from Nansen", "$0.03"],
-  ["var(--mint)", "Lumen·77c2 ranked for the first time", "it has an adjusted fitness"],
-  ["var(--faint)", "Ferro·c1a9 retired", "balance kept"],
-  ["var(--sky)", "Quill·0b7e skipped DeFiLlama", "not worth its price"],
-  ["var(--accent)", "Circuit breaker checked", "31% of threshold"],
-];
 
 const LAYERS = [
   { color: "var(--sky)", title: "A proposal, not an order", body: "The model suggests. It never signs and never sets limits." },
@@ -44,17 +35,17 @@ const STACK = [
 
 const FAQ = [
   { q: "Do I need to know about blockchain?", a: "No. You sign in with Google, email or a passkey and we create a wallet for you. An external wallet is optional, for advanced users." },
-  { q: "Can an agent drain my account?", a: "No. Each agent lives in its own smart account with on-chain per-transaction and daily caps, and can only call allowlisted contracts. You can revoke it at any time." },
+  { q: "Can an agent drain my account?", a: "It is designed not to be able to. Each agent has its own smart account whose spend policy enforces per-transaction and daily caps on-chain, and its session key can only call allowlisted contracts. You can revoke it at any time. This is covered by fuzz, invariant and fork tests, has not had an external audit yet, and runs on testnet only." },
   { q: "What happens to a retired agent's money?", a: "It stays in its account and you can recover it. Retiring force-liquidates nothing, and its history is kept." },
   { q: "Can capital move between my agents?", a: "Only if you sign a reallocation policy, and only between the agents it names. An agent can end up below what you put into it, while your total across your agents stays the same. Capital never moves to another owner's agents. You can revoke the policy at any time." },
-  { q: "Who pays for the information it buys?", a: "The agent itself, from its own capital and within its budget. That spend counts as a cost in its fitness, so overbuying hurts it." },
+  { q: "Who pays for the information it buys?", a: "By design, the agent itself, from its own capital and within its budget. That spend counts as a cost in its fitness, so overbuying hurts it. The x402 payer is off by default on the current deployment, and the evidence strip above shows what has actually been recorded." },
   { q: "When does it reach mainnet?", a: "After the security and testnet phases are complete. Even then it is opt-in per account and per agent." },
 ];
 
 function SecHead({ eyebrow, title, children }: { eyebrow: string; title: string; children?: React.ReactNode }) {
   return (
     <div>
-      <span className="eyebrow">{eyebrow}</span>
+      <span className={`eyebrow ${s.eyebrowAcc}`}>{eyebrow}</span>
       <h2>{title}</h2>
       {children && <p className={s.sub}>{children}</p>}
     </div>
@@ -74,6 +65,7 @@ export function Landing() {
           <a className={s.navtxt} href="#genome">Genome</a>
           <a className={s.navtxt} href="#security">Security</a>
           <a className={s.navtxt} href="#faq">FAQ</a>
+          <Link className={s.navtxt} href="/evidence">Evidence</Link>
           <details className={s.menu}>
             <summary aria-label="Page sections">
               <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
@@ -83,6 +75,7 @@ export function Landing() {
               <a href="#genome">Genome</a>
               <a href="#security">Security</a>
               <a href="#faq">FAQ</a>
+              <Link href="/evidence">Evidence</Link>
             </div>
           </details>
           <ThemeToggle />
@@ -95,56 +88,24 @@ export function Landing() {
           <div className="min-w-0">
             <span className={s.liveBadge}><span className={s.pulse} />Monad testnet · preview</span>
             <h1>Agents that earn their <RotatingWord />.</h1>
-            <p className="mt-[22px] max-w-[52ch] text-[clamp(16px,1.6vw,19px)] text-muted">
-              Create an AI agent with its own capital. It buys information when it pays off and trades inside the limits you set. If it keeps failing, it retires. Each agent runs on its own capital: reallocation between agents is off by default.
+            <p className={s.lede}>
+              Each agent is an AI with its own capital and its own smart account. It is built to buy information only when it pays off, to trade inside limits you set, and to retire if it keeps failing.
             </p>
+            <p className={s.ledeNote}>Testnet only. Reallocation between agents is off by default.</p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link href="/create" className="btn btn-ink btn-lg">Create my first agent <Icon name="arrow" /></Link>
-              <Link href="/capital-flow" className="btn btn-lg">See capital flow</Link>
+              <Link href="/evidence" className="btn btn-lg">See the on-chain evidence</Link>
             </div>
             <ul className="mt-7 flex flex-wrap gap-x-[18px] gap-y-2 p-0 text-[13px] text-muted">
-              {["Sign in with Google or email", "No MON needed for gas", "On-chain limits"].map((t) => (
+              {["Sign in with Google or email", "No MON needed for gas", "Limits enforced on-chain"].map((t) => (
                 <li key={t} className="inline-flex list-none items-center gap-1.5"><span className="text-good"><Icon name="check" /></span>{t}</li>
               ))}
             </ul>
           </div>
-          <div className={s.petriStage}>
-            <div className={s.petri} role="img" aria-label="Animation: a population of agents where capital shifts toward the fitter agents of the same owner and the weakest retire. Move your cursor to disturb it.">
-              <Petri n={38} round />
-            </div>
-            <div className={`${s.floatCard} ${s.fc1}`} aria-hidden="true">
-              <span className="eyebrow">Reallocation · sample</span>
-              <b>Nimbus·3c1d → Kestrel·a1f0</b>
-              <span className="text-muted">{money(REALLOC.moved)} between agents of one owner</span>
-            </div>
-            <div className={`${s.floatCard} ${s.fc2}`} aria-hidden="true">
-              <span className="eyebrow">Policy · sample</span>
-              <b><span className={s.dotc} style={{ background: "var(--bad)" }} />Rejected</b>
-              <span className="text-muted">Exceeds per-transaction cap</span>
-            </div>
-            <div className={s.petriLegend}>
-              <span>{NICHES.map((c) => <i key={c} style={{ background: c }} />)}5 risk niches</span>
-              <span><i style={{ background: "transparent", border: "1.5px solid var(--faint)" }} />Retired</span>
-            </div>
-          </div>
+          <AgentField />
         </section>
 
-        <div className="flex items-stretch border-y border-line-soft bg-surface" role="region" aria-label="Sample recent activity">
-          <span className="z-[1] flex flex-none items-center border-r border-line-soft px-3 font-mono text-xs tracking-[0.12em] text-warn uppercase">Sample</span>
-          <div className={`${s.ticker} min-w-0 flex-1`}>
-            <div className={s.tickerTrack}>
-              {[0, 1].map((copy) =>
-                TICKER.map(([color, title, detail]) => (
-                  <span key={`${copy}-${title}`} aria-hidden={copy === 1 ? true : undefined}>
-                    <span className={s.dotc} style={{ background: color }} />
-                    <b>{title}</b>
-                    {detail}
-                  </span>
-                )),
-              )}
-            </div>
-          </div>
-        </div>
+        <EvidenceStrip />
 
         <section className={`${s.section} ${s.stats}`} aria-label="Protocol rules">
           <div className={s.stat}><CountUp to={PROTOCOL.testnetPopulationCap} className={s.statN} /><span>agents max on testnet. At the cap, creating an agent is refused.</span></div>
@@ -187,8 +148,8 @@ export function Landing() {
         </section>
 
         <section className={s.section} id="security">
-          <SecHead eyebrow="Layered security" title="If one layer fails, the next one still holds.">
-            The most important caps live on-chain. Even if the application is compromised, the smart account rejects anything over the limit.
+          <SecHead eyebrow="Layered security" title="Four layers. Each checks on its own.">
+            The most important caps live on-chain, in the account's spend policy, so they apply even if the application is compromised. That is the design: the contracts are tested but have not had an external audit.
           </SecHead>
           <div className={s.layers}>
             <div className={s.layerStack} aria-hidden="true">
@@ -210,8 +171,8 @@ export function Landing() {
           </div>
           <div className="mt-9 grid gap-3.5 md:grid-cols-3">
             {[
-              { tone: "accent" as const, label: "Simulation", title: "No real money", body: "Deterministic markets with a fixed seed. Ideal for understanding a genome." },
-              { tone: "warn" as const, label: "Testnet", title: "Real test assets", body: "Wallets, x402, reallocation and accounting end to end." },
+              { tone: "accent" as const, label: "Simulation", title: "No real money", body: "Deterministic markets with a fixed seed, for understanding a genome." },
+              { tone: "warn" as const, label: "Testnet", title: "Test assets only", body: "Contracts and agent accounts are deployed. Trading, x402 payments and reallocation are built and off by default." },
               { tone: "berry" as const, label: "Mainnet", title: "Double opt-in", body: "Enabled for your account and for each agent. Never by default." },
             ].map((m) => (
               <div key={m.label} className="flex flex-col items-start gap-2.5 rounded-card border border-line-soft bg-surface p-[22px]">
@@ -266,8 +227,8 @@ export function Landing() {
           <div className={s.finalCta}>
             <Petri n={46} round={false} lineColor="--ink-btn-fg" />
             <div className="relative grid justify-items-center gap-3.5 px-5 py-12">
-              <h2>Your first agent is four steps away.</h2>
-              <p className="opacity-70">Testnet, no MON, no real risk.</p>
+              <h2>Create your first agent on testnet.</h2>
+              <p className="opacity-70">No MON needed and no real funds.</p>
               <Link href="/create" className={`btn btn-lg ${s.ctaInv}`}>Create my first agent <Icon name="arrow" /></Link>
             </div>
           </div>
@@ -276,7 +237,11 @@ export function Landing() {
 
       <footer className="flex flex-wrap justify-between gap-3 border-t border-line-soft px-[clamp(16px,4vw,48px)] py-6 text-[13px] text-faint">
         <span>Monadeum · built on Monad</span>
-        <span>Figures on this page are illustrative samples.</span>
+        <span className="flex flex-wrap gap-x-5">
+          <Link href="/evidence" className="inline-flex min-h-11 items-center underline-offset-4 hover:underline">Evidence</Link>
+          <a href={DOCS_URL} className="inline-flex min-h-11 items-center underline-offset-4 hover:underline">Docs</a>
+        </span>
+        <span className="basis-full">Figures on this page are illustrative samples, except the live testnet counts in the evidence strip.</span>
       </footer>
     </div>
   );
