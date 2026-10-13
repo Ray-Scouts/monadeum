@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 import { verifyCommands } from "@/data/evidence/commands";
+import { parseCrossCheck } from "@/data/evidence/crosscheck";
 import { CONTRACT_NAMES, DEPLOYMENT, RECORDED_CAPITAL_FLOOR, type DeploymentRecord } from "@/data/evidence/deployments";
 import { CHAIN_ID, EVIDENCE_EXPLORER, EVIDENCE_RPC } from "@/data/evidence/explorer";
 import { ago, BASE_DECIMALS, units, usdc, utc } from "@/data/evidence/format";
 import type { Evidence, Verification } from "@/data/evidence/types";
 import { keys } from "@/data/evidence/verify";
+import { CrossCheckCard } from "./CrossCheckCard";
 import { allOf, CopyValue, Empty, Hash, Records, Section, VerifyBadge, type Column } from "./parts";
 
 export interface ReportProps {
@@ -194,6 +196,8 @@ export function EvidenceReport(props: ReportProps) {
           </div>
         ))}
       </dl>
+
+      <CrossCheckCard view={parseCrossCheck(e?.crossCheck, props.now)} loaded={e !== null} now={props.now} />
 
       <Section id="deployments" title="Deployments" count="3 contracts" note={`From contracts/deployments/monad-testnet.json (status: ${d.status}), re-read from the chain. Settlement asset ${d.inputs.settlementAsset}, ${d.inputs.settlementDecimals} decimals. Total deployment gas ${d.cost.totalGas.toLocaleString("en-US")}, about ${d.cost.totalMon} MON at the recorded gas price.`}>
         <Records caption="Deployed contracts" rows={contractRows} columns={contractCols} rowKey={(c) => c.name} />

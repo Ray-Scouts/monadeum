@@ -53,6 +53,26 @@ export interface Evidence {
   };
   trades: EvidenceCategory<EvidenceTrade>;
   payments: EvidenceCategory<EvidencePayment>;
+  /** Present only when the API runs the Envio HyperSync cross-check. Read it with `parseCrossCheck`, never directly. */
+  crossCheck?: unknown;
+}
+
+/**
+ * The `crossCheck` field of the document as `GET /public/evidence` serves it when the API runs the Envio HyperSync
+ * cross-check (apps/api/src/evidence-crosscheck.ts). It holds counts and a range only. `parseCrossCheck` validates an
+ * unknown value against this shape.
+ */
+export interface CrossCheckField {
+  source: "envio-hypersync";
+  status: "match" | "mismatch" | "unverified";
+  reason?: string;
+  range: { from: string; to: string } | null;
+  counts: { indexer: number; hypersync: number };
+  matched: number;
+  missing: { inHyperSync: number; inIndexer: number };
+  fieldMismatches: number;
+  hypersyncHeight: string | null;
+  checkedAt: string | null;
 }
 
 /**

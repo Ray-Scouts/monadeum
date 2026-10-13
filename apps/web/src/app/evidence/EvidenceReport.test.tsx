@@ -173,3 +173,65 @@ describe("what the page does not show", () => {
     expect(t).toContain("Reallocation. It is off by default");
   });
 });
+
+describe("the Envio HyperSync cross-check card", () => {
+  const field = {
+    source: "envio-hypersync",
+    status: "match",
+    range: { from: "100", to: "200" },
+    counts: { indexer: 3, hypersync: 3 },
+    matched: 3,
+    missing: { inHyperSync: 0, inIndexer: 0 },
+    fieldMismatches: 0,
+    hypersyncHeight: "205",
+    checkedAt: "2026-10-12T12:00:10.000Z",
+  };
+  const withField = (crossCheck: unknown) => render({ evidence: { ...emptyEvidence, crossCheck } });
+
+  test("a match shows the title, the range, the counts, the height, the time, and the docs link", () => {
+    const html = withField(field);
+    const t = text(html);
+    expect(t).toContain("Independently cross-checked with Envio HyperSync");
+    expect(t).toContain("100 to 200");
+    expect(t).toContain("Rows in the indexer 3");
+    expect(t).toContain("Rows in HyperSync 3");
+    expect(t).toContain("HyperSync height 205");
+    expect(t).toContain("2026-10-12 12:00:10 UTC");
+    expect(html).toContain('href="https://docs.envio.dev/docs/HyperSync/overview"');
+    expect(html).toContain('rel="noopener noreferrer"');
+    expect(html).toContain(">match<");
+  });
+
+  test("unverified, mismatch, and a malformed field are never shown as a match", () => {
+    const unverified = withField({ ...field, status: "unverified", reason: "unavailable" });
+    expect(text(unverified)).toContain("Unverified: HyperSync could not be reached");
+    expect(unverified).not.toContain(">match<");
+    const mismatch = withField({ ...field, status: "mismatch", fieldMismatches: 2 });
+    expect(mismatch).toContain('role="alert"');
+    expect(mismatch).not.toContain(">match<");
+    const malformed = withField({ status: "match" });
+    expect(text(malformed)).toContain("unexpected shape");
+    expect(malformed).not.toContain(">match<");
+  });
+
+  test("a match older than 15 minutes is unverified", () => {
+    const html = render({ evidence: { ...emptyEvidence, crossCheck: field }, now: NOW + 20 * 60_000 });
+    expect(text(html)).toContain("older than 15 minutes");
+    expect(html).not.toContain(">match<");
+  });
+
+  test("without the field the card says it is not running, and without the document it says not loaded", () => {
+    expect(text(render())).toContain("is not running the Envio HyperSync cross-check");
+    const unloaded = text(render({ evidence: null }));
+    expect(unloaded).toContain("Independently cross-checked with Envio HyperSync");
+    expect(unloaded).toContain("nothing is claimed about it until the document is read");
+  });
+
+  test("the card stacks on narrow screens, wraps long values, and its link is a 44 px target", () => {
+    const html = withField(field);
+    expect(html).toContain("grid-cols-1");
+    expect(html).toContain("min-[400px]:grid-cols-2");
+    expect(html).toContain("long-value");
+    expect(html).toContain("min-h-11");
+  });
+});
