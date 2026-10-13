@@ -277,7 +277,7 @@ services:
       driver: json-file
       options: { max-size: "20m", max-file: "5" }
 
-  # Optional TLS reverse proxy: `--profile proxy`. Caddy obtains certificates for WEB_DOMAIN and API_DOMAIN itself.
+  # Optional TLS reverse proxy: `--profile proxy`. Caddy obtains certificates for WEB_DOMAIN, API_DOMAIN, and ROOT_DOMAIN (with www) itself.
   proxy:
     image: caddy:2.10.2
     profiles: [proxy]
@@ -285,6 +285,7 @@ services:
     environment:
       WEB_DOMAIN: ${WEB_DOMAIN}
       API_DOMAIN: ${API_DOMAIN}
+      ROOT_DOMAIN: ${ROOT_DOMAIN:?set ROOT_DOMAIN}
     ports:
       - "80:80"
       - "443:443"
