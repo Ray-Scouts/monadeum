@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hashRiskPolicy, type GenomeV1 } from "@monadeum/commitment";
+import { hashGenome, hashRiskPolicy, hashStrategyVersion, type AgentCommitmentReader, type GenomeV1, type OnChainAgentCommitment } from "@monadeum/commitment";
 import { REALLOCATION_DISABLED } from "@monadeum/reallocation";
 import type { PolicyDocument } from "@monadeum/risk";
+import { STRATEGY_VERSION } from "@monadeum/strategy";
 import { MemoryMidSampleStore, type SellOrder } from "@monadeum/trading";
 import { APPROVE_SELECTOR } from "@monadeum/wallets";
-import { decodeFunctionData, erc20Abi } from "viem";
+import { decodeFunctionData, erc20Abi, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { KuruMidSignal, type BookReading } from "../src/market.js";
 import { MemoryPolicyVersions, type PolicyTarget } from "../src/policy.js";
@@ -39,7 +40,7 @@ async function signed(document: PolicyDocument, by: PrivateKeyAccount = operator
   return { document, signer: by.address, signature: await by.signMessage({ message: { raw: hashRiskPolicy(document) } }) };
 }
 
-async function setup(options: { policy?: "valid" | "none" | "other-signer" | "other-pair" } = {}) {
+async function setup(options: { policy?: "valid" | "none" | "other-signer" | "other-pair"; commitments?: AgentCommitmentReader } = {}) {
   const w = await world({ market: "weth", information: false, agents: [{ agentId: "1", owner: "a" }] });
   const record = (await w.stores.agents.get("1"))!;
   await w.stores.agents.update({ ...record, genomeDocument: genome() });
@@ -69,6 +70,7 @@ async function setup(options: { policy?: "valid" | "none" | "other-signer" | "ot
     return assembleTickRunner({
       stores: { ...w.stores, policies }, chain: w.token, market, trading, settlementAsset: WETH_MARKET.quote, network: "eip155:10143",
       reallocation: REALLOCATION_DISABLED, maxSlippageBps: 100, signer: operator.address, target, clock, log: (m) => logs.push(m),
+      commitments: options.commitments ?? null,
     });
   }
 
@@ -201,6 +203,39 @@ test("restart reconciliation holds under the runner: an approved buy whose respo
   assert.equal(s.w.sessionOps().length, 1, "one operation, included once");
   assert.equal((await s.w.stores.trades.get(`1:${tick}`))?.status, "filled");
   assert.equal((await s.w.stores.ticks.get(`1:${tick}`))?.status, "recorded");
+});
+
+test("with commitments configured, an agent ticks only while its genome and the running strategy version match its commitment", async () => {
+  const zero = `0x${"0".repeat(64)}` as Hex;
+  const committed = { genomeHash: hashGenome(genome()), strategyVersionHash: hashStrategyVersion(STRATEGY_VERSION) };
+  const cases: { name: string; read: () => Promise<OnChainAgentCommitment>; alerts: RegExp[] }[] = [
+    { name: "nothing committed", read: async () => ({ genomeHash: zero, strategyVersionHash: zero }), alerts: [/ALERT security-12-commitment-mismatch genome agent 1 .*no-on-chain-commitment/, /ALERT security-12-commitment-mismatch strategyVersion agent 1 .*no-on-chain-commitment/] },
+    { name: "another genome", read: async () => ({ ...committed, genomeHash: hashGenome(genome({ timeHorizon: 3 })) }), alerts: [/ALERT security-12-commitment-mismatch genome agent 1 .*hash-mismatch/] },
+    { name: "another plugin build", read: async () => ({ ...committed, strategyVersionHash: hashStrategyVersion({ ...STRATEGY_VERSION, version: "0" }) }), alerts: [/ALERT security-12-commitment-mismatch strategyVersion agent 1 .*hash-mismatch/] },
+    { name: "chain unreadable", read: async () => { throw new Error("rpc down"); }, alerts: [] },
+  ];
+  for (const c of cases) {
+    const reads: string[] = [];
+    const s = await setup({ commitments: { readAgentCommitment: async (account) => (reads.push(account), c.read()) } });
+    const { runner } = await s.runner();
+    const tick = s.at(0, 2_500n);
+    assert.equal(await runner.tick("1", tick), null, c.name);
+    assert.deepEqual(reads, [s.w.accounts.get("1")!], `${c.name}: the commitment of the agent's own account is read`);
+    assert.equal(await s.w.stores.ticks.get(`1:${tick}`), undefined, `${c.name}: no tick record was claimed`);
+    assert.equal(s.w.sessionOps().length, 0, c.name);
+    const log = s.logs.join("\n");
+    assert.match(log, /skipped, nothing decided or sent: the (agent's .* does not match its on-chain commitment|on-chain genome commitment could not be read)/, c.name);
+    for (const alert of c.alerts) assert.match(log, alert, c.name);
+    assert.equal(s.logs.filter((l) => l.startsWith("ALERT")).length, c.alerts.length, c.name);
+  }
+
+  // The commitment the deployment made: the tick runs as it would without the gate.
+  const s = await setup({ commitments: { readAgentCommitment: async () => committed } });
+  const { runner } = await s.runner();
+  const tick = s.at(0, 2_500n);
+  assert.equal((await runner.tick("1", tick))?.action, "none");
+  assert.ok(await s.w.stores.ticks.get(`1:${tick}`), "the tick was claimed and run");
+  assert.equal(s.logs.some((l) => l.startsWith("ALERT")), false);
 });
 
 test("the runner's evaluation runs under the gate's worker and plans nothing with reallocation off", async () => {

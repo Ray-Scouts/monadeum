@@ -1,9 +1,11 @@
+import { AGENT_COMMITMENTS_ABI } from "@monadeum/commitment";
 import type { AllowedCall } from "@monadeum/risk";
-import { getAddress, isAddressEqual, keccak256, toHex, type Address, type Hex } from "viem";
+import { decodeFunctionData, getAddress, isAddressEqual, keccak256, toFunctionSelector, toHex, type Address, type Hex } from "viem";
 import { privateKeyToAddress } from "viem/accounts";
 import {
   PaymasterUnavailableError,
   SubmissionRejectedError,
+  type AgentHashes,
   type OperationLog,
   type OperationReceipt,
   type OwnerSigner,
@@ -26,6 +28,8 @@ import { decodeX402InstallData, decodeX402ModuleCall, type X402ValidatorConfig }
 
 const CONFIGURE = "0xc0f16000";
 const REVOKE = "0x5e7ef000";
+const COMMIT = toFunctionSelector(AGENT_COMMITMENTS_ABI[0]);
+const ZERO: Hex = `0x${"0".repeat(64)}`;
 
 interface Account {
   deployed: boolean;
@@ -66,6 +70,8 @@ export interface FakeOptions {
 
 export class FakeChain implements WalletsChain {
   readonly accounts = new Map<string, Account>();
+  /** AgentCommitments state, by `registry:account`, lowercase. */
+  readonly commitments = new Map<string, AgentHashes>();
   readonly submitted: { account: Address; kind: "owner" | "session"; sponsored: boolean; calls: Call[] }[] = [];
   prepareCalls = 0;
   options: Required<FakeOptions>;
@@ -204,6 +210,14 @@ export class FakeChain implements WalletsChain {
           if (!a.x402.get(key)?.installed) a.x402.set(key, { installed: true, config: decodeX402InstallData(module.installData) });
         }
         if (module?.kind === "uninstall") a.x402.set(module.validator.toLowerCase(), { installed: false, config: null });
+        // AgentCommitments.commit from the account, write-once as the contract is; a repeat is modelled as no change.
+        if (call.data.startsWith(COMMIT) && this.acct(call.to).deployed) {
+          const key = `${call.to.toLowerCase()}:${input.account.toLowerCase()}`;
+          if (!this.commitments.has(key)) {
+            const { args } = decodeFunctionData({ abi: AGENT_COMMITMENTS_ABI, data: call.data });
+            this.commitments.set(key, { genomeHash: args[0] as Hex, strategyVersionHash: args[1] as Hex });
+          }
+        }
         if (call.data.startsWith(REVOKE)) {
           const permissionId = `0x${call.data.slice(REVOKE.length)}` as Hex;
           const p = a.permissions.get(permissionId);
@@ -262,6 +276,10 @@ export class FakeChain implements WalletsChain {
     if (!c) return false;
     return isAddressEqual(c.signer, expected.signer) && c.maxValue === expected.maxValue && c.paymentsPerEpoch === expected.paymentsPerEpoch &&
       c.maxValidity === expected.maxValidity && expected.payees.every((p) => c.payees.some((q) => isAddressEqual(p, q)));
+  }
+
+  async agentCommitment(registry: Address, account: Address): Promise<AgentHashes> {
+    return this.commitments.get(`${registry.toLowerCase()}:${account.toLowerCase()}`) ?? { genomeHash: ZERO, strategyVersionHash: ZERO };
   }
 
   /** Gives `address` code, for contracts such as the x402 validator that the module checks before using. */

@@ -52,6 +52,7 @@ export async function loadWalletsRuntime(env: Env, options: WalletsRuntimeOption
         budget: config.budget,
         paymaster: config.chain.paymasterUrl !== null,
         x402: config.x402 && vaults.x402 ? { ...config.x402, vault: vaults.x402 } : null,
+        commitments: config.commitments,
       }),
     close: () => {
       vaults.session.close();

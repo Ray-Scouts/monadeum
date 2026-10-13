@@ -1,3 +1,4 @@
+import { contractAgentCommitmentReader, type CommitmentReadClient } from "@monadeum/commitment";
 import type { AllowedCall } from "@monadeum/risk";
 import { getKernelAddressFromECDSA, signerToEcdsaValidator } from "@zerodev/ecdsa-validator";
 import { toPermissionValidator } from "@zerodev/permissions";
@@ -44,6 +45,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import {
   PaymasterUnavailableError,
   SubmissionRejectedError,
+  type AgentHashes,
   type OperationReceipt,
   type OwnerSigner,
   type PermissionState,
@@ -173,6 +175,10 @@ export class ZeroDevChain implements WalletsChain {
 
   async policyDeployed(): Promise<boolean> {
     return this.isDeployed(this.config.spendPolicy.address);
+  }
+
+  agentCommitment(registry: Address, account: Address): Promise<AgentHashes> {
+    return contractAgentCommitmentReader(this.publicClient as CommitmentReadClient, registry).readAgentCommitment(account);
   }
 
   async policyConfigured(account: Address, scope: readonly AllowedCall[], limits: SpendLimits): Promise<boolean> {

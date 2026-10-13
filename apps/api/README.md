@@ -59,7 +59,7 @@ The user operation hash is a 32-byte digest, so the wallet shows the owner a has
 1. builds the genome from the preset (`@monadeum/strategy/presets`) and `API_AGENT_PAIR`, normalizes it, and hashes it with `@monadeum/commitment` (`ARCHITECTURE.md` section 16.4);
 2. takes the next account index and asks WalletsModule for the counterfactual account address;
 3. in one transaction, refuses at `API_POPULATION_CAP` Active agents (`409 population-cap`), then inserts the `api_agents` row and the `worker_agents` row: the worker's genome fields, the full normalized genome document, its hash, principal 0, and status `active`;
-4. starts the owner-signed deployment as below.
+4. starts the owner-signed deployment as below. With `WALLETS_AGENT_COMMITMENTS_ADDRESS` set, that operation also commits, from the new account, the genome hash and the hash of the strategy version this API runs (`STRATEGY_VERSION_HASH`, `ARCHITECTURE.md` sections 9 and 16.4); `POST /agents/:id/deploy` commits the stored genome hash the same way.
 
 Both rows are written or neither. Without a session key vault the request answers `503 wallets-unavailable` before anything is written. Principal is 0 until the worker's principal job recomputes it from finalized, indexed owner transfers to the deployed account (`EVOLUTION.md` section 1.1); until then the worker does not tick or evaluate the agent. The relayed allocation transfer that funds an agent from the owner wallet is described under "Fund this agent" below. The agent view serves the committed genome (`genome`, with `hash` and `preset`; `informationBudget` in base units as a decimal string), `principal` in base units as a decimal string, and the worker's `status`.
 

@@ -65,5 +65,5 @@ Checked against Monad's documentation on 2026-10-10 (`docs.monad.xyz`: Block Sta
 ## Not done yet
 
 - The testnet run above synced real blocks but indexed no rows, because the spend policy was not deployed there yet. It was deployed on 2026-10-11 (block 70167444, `contracts/deployments/monad-testnet.json`), and the first agent's `account.deployed`, `spend.limits-set`, and `spend.call-allowed` rows were indexed the same day.
-- No identity registry or genome hash commitment contract exists yet (`ARCHITECTURE.md` section 9), so the indexer has nothing to read for them; each becomes a handler when its contract lands.
+- No identity registry exists yet (`ARCHITECTURE.md` section 9). The genome hash commitment contract, `AgentCommitments`, exists but is not deployed and has no handler: the worker reads it directly before every tick. An `AgentCommitted` handler is added when a read-model consumer needs it.
 - The read API the dashboard will call, and the replacement of `apps/web`'s sample `PopulationSource`, are separate work (issue #42).

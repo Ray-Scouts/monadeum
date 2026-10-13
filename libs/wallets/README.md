@@ -33,6 +33,7 @@ The spend policy contract is `contracts/src/AgentSpendPolicy.sol` (issue #25). T
 | `WALLETS_TRADED_ASSETS` | no | Comma-separated ERC-20 bases a close sells (WETH `0xEE8c0E9f1BFFb4Eb878d8f15f368A02a35481242` for the Monad mainnet WETH/USDC market). Each gets `approve` only and is marked with the spend policy's `setTradedAsset` before it is allowed. Unset: no close can be built. |
 | `WALLETS_SPONSORED_OPERATIONS` | yes | Sponsored operations per agent, deployment included, revocations excluded. |
 | `WALLETS_SPONSORED_GAS_WEI` | yes | Sponsored gas per agent in wei, deployment included, revocations excluded. |
+| `WALLETS_AGENT_COMMITMENTS_ADDRESS` | no | Deployed `AgentCommitments` (`contracts/src/AgentCommitments.sol`, ARCHITECTURE.md section 9). Set: every deployment needs the agent's genome and strategy-version hashes and commits them from the new account in the deploying operation, fails closed if the contract has no code, and is reported done only if the chain shows exactly those hashes. Unset: nothing is committed on chain. |
 | `WALLETS_X402_VALIDATOR_ADDRESS` | no | Deployed `X402PaymentValidator`. Unset: no x402 key is created and agents cannot pay x402. Set: deployment fails closed if it has no code. |
 | `WALLETS_X402_PAYEES` | with the validator | Comma-separated x402 provider pay-to addresses, 1 to 8. |
 | `WALLETS_X402_MAX_VALUE` | no | Settlement-asset base units per payment. Defaults to the decided value 50000 (0.05 USDC). |
