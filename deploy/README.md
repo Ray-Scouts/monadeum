@@ -222,7 +222,14 @@ cd libs/trading && KURU_DRY_RUN=1 DRY_RUN_RPC_URL=$MONAD_RPC_URL TRADING_QUOTE=$
 
 The same with `DRY_RUN_FORK_EXECUTE=1` and `DRY_RUN_TAKER=<an address holding USDC>` against an anvil fork (`anvil --fork-url $MONAD_RPC_URL`) also sends both calls there, impersonating the taker; it refuses any RPC that is not anvil. The book's MON price is refused when the fork's latest block is more than 60 seconds old, so mine a block first (`cast rpc anvil_mine`).
 
-The market is permissionless: anyone can trade on it or add orders, and its owner is Kuru's router. Re-seed with `seed broadcast` when agents have taken the asks or bids; it deposits only the shortfall in Kuru's margin account. Withdrawing unused seed from the margin account and cancelling resting orders are not scripted.
+The market is permissionless: anyone can trade on it or add orders, and its owner is Kuru's router. Re-seed with `seed broadcast` when agents have taken the asks or bids; it deposits only the shortfall in Kuru's margin account. Withdrawing unused seed from the margin account is not scripted.
+
+**Test price walk.** On a flat book no agent buys (step 9). To exercise a buy and a close end to end, walk the mid up from the deployer's own orders; each step cancels and replaces the ladder in one transaction and costs about 0.12 MON of gas (`ARCHITECTURE.md` section 10, "The test price walk"):
+
+```bash
+contracts/script/walk-mid.sh simulate    # the next step, eth_call only, with its gas estimate
+contracts/script/walk-mid.sh broadcast   # asks for the keystore password once; STEP_BPS (3), STEPS (24), INTERVAL_SECONDS (300)
+```
 
 **On a host already running (section 8).** The update by rsync never copies `deploy/.env.testnet`, so add the new values to it by hand from `deploy/.env.testnet.example`: the `TRADING_*` block, `API_AGENT_PAIR=WMON/USDC`, and `WALLETS_TRADED_ASSETS` set to WMON. Then `dc up -d api worker`. `WALLETS_TRADED_ASSETS` is read when an agent's account permissions are installed, so an agent created before the change has no WMON mark on the spend policy and cannot close a WMON position; whether to reissue its permissions or create a new agent is the owner's choice.
 
