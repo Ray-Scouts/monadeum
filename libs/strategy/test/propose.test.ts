@@ -38,3 +38,19 @@ test("the strategy package does not depend on wallets or policy", () => {
   const names = Object.keys(pkg.dependencies ?? {});
   assert.deepEqual(names, ["@nestjs/common"]);
 });
+
+test("the smart money signal is off when absent and only moves the entry edge, never the size", () => {
+  const service = new StrategyService();
+  const weak = { ...base, signal: -0.0005 };
+  const plain = service.propose(weak, null);
+  assert.equal(plain?.side, "flat");
+  assert.deepEqual(service.propose({ ...weak, smartMoney: undefined }, null), plain);
+  const bullish = service.propose({ ...weak, smartMoney: 1 }, null);
+  assert.equal(bullish?.side, "long");
+  const reference = service.propose({ ...base, signal: 0.01 }, null);
+  assert.equal(bullish?.notional, reference?.notional);
+  assert.equal(service.propose({ ...base, signal: 0.0005, smartMoney: -1 }, null)?.side, "flat");
+  const huge = service.propose({ ...base, smartMoney: 1e12 }, null);
+  assert.equal(huge?.notional, reference?.notional);
+  assert.equal(service.propose({ ...weak, smartMoney: Number.NaN }, null)?.side, "flat");
+});

@@ -283,7 +283,7 @@ The agent worker's x402 client treats every external service response as untrust
 
 **Data caveat (assumption)**: Nansen documents `monad` as a supported chain for Smart Money data. This product trades on Monad testnet, and that testnet token has no Nansen data (assumption: Nansen covers mainnet only). `NANSEN_TOKEN_ADDRESS` is therefore a Monad mainnet token address, and the signal is mainnet smart money flow used as a market sentiment input for the testnet agents. This is stated in any demo.
 
-**Live verification**: the schema and the client are tested against recorded fixtures shaped from Nansen's documented response, not against a live response. `bun run nansen:probe` makes one live call and prints a redacted proof record. Until it is run with a real key, the live behavior is unverified.
+**Live verification**: the schema and the client are tested against recorded fixtures shaped from Nansen's documented response, not against a live response. `NANSEN_API_KEY=... NANSEN_TOKEN_ADDRESS=0x... bun run nansen:probe` makes one live call (about 5 credits) and prints a redacted proof record: timestamp, endpoint, HTTP status, signal, credits. It never prints the key, and exits with a message when the key is absent. Until it is run with a real key, the live behavior is unverified.
 
 ## 9. On-chain vs off-chain boundary
 
