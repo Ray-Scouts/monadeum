@@ -279,6 +279,7 @@
     "libs/wallets": {
       "name": "@monadeum/wallets",
       "dependencies": {
+        "@monadeum/commitment": "workspace:*",
         "@monadeum/risk": "workspace:*",
         "@nestjs/common": "^11.1.6",
         "@zerodev/ecdsa-validator": "5.4.9",

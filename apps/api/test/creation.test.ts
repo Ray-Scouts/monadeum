@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import type { AgentRecord as WorkerAgentRecord, AgentStore } from "@monadeum/agent-registry";
-import { hashGenome, normalizeGenome } from "@monadeum/commitment";
+import { hashGenome, hashStrategyVersion, normalizeGenome } from "@monadeum/commitment";
 import { PgAgentStore } from "@monadeum/db";
 import { GENOME_PRESETS } from "@monadeum/strategy/presets";
+import { STRATEGY_VERSION } from "@monadeum/strategy/version";
 import { getAddress } from "viem";
-import { buildGenome, roleScoped, workerGenome } from "../src/index.js";
-import { boot, call, createAgent, newWallet, privySignIn, walletSignIn, type Backend, type Booted } from "./harness.js";
+import { STRATEGY_VERSION_HASH, buildGenome, roleScoped, workerGenome } from "../src/index.js";
+import { COMMITMENTS, boot, call, createAgent, newWallet, privySignIn, walletSignIn, type Backend, type Booted } from "./harness.js";
 
 // Agent creation end to end (EVOLUTION.md section 1.1): the genome is built server-side from a preset, hashed with
 // libs/commitment, and written with the API's creation record in one transaction. On PGlite every API statement runs
@@ -53,6 +54,13 @@ for (const backend of ["memory", "pglite"] as Backend[]) {
       assert.equal(buildGenome(preset, "WETH/USDC").hash, worker.genomeHash, "the same preset and pair always commit the same hash");
       assert.deepEqual(worker.genome, workerGenome(doc), "what the worker reads is derived from the committed document");
       assert.equal(worker.genome.pair, "WETH/USDC");
+
+      // The deploying operation committed both hashes from the new account (ARCHITECTURE.md section 9, issue #32).
+      assert.deepEqual(await b.chain.agentCommitment(COMMITMENTS, getAddress(account)), {
+        genomeHash: worker.genomeHash,
+        strategyVersionHash: hashStrategyVersion(STRATEGY_VERSION),
+      });
+      assert.equal(STRATEGY_VERSION_HASH, hashStrategyVersion(STRATEGY_VERSION));
 
       // The API's creation record names the same owner, and the API serves the committed genome.
       assert.equal((await b.deps.agents.get(agentId))!.owner, alice.address);

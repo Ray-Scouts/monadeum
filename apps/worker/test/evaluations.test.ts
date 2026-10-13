@@ -106,6 +106,38 @@ test("with reallocation on, the records are written after settlement, with the c
   assert.deepEqual((await w.stores.evaluations.latest()).map((r) => r.capital), [100n * UNIT, 100n * UNIT]);
 });
 
+test("with reallocation on, each record carries what the plan did to the agent, its rank, and the base units submitted", async () => {
+  const w = await world({ reallocationOwners: ["a"], agents: [{ agentId: "1", owner: "a" }, { agentId: "2", owner: "a" }] });
+  await seedFitness(w, { "1": series(true), "2": series(false) });
+  const { worker } = await w.boot();
+  const evaluation = await worker.evaluate(EVALUATION_CADENCE);
+  const moved = evaluation.settled[0]!.total;
+  const byAgent = new Map((await w.stores.evaluations.latest()).map((r) => [r.agentId, r.reallocation]));
+  assert.deepEqual(byAgent.get("2"), { kind: "sent", reason: null, amount: moved, rank: { position: 1, of: 2, quota: 1 } });
+  assert.deepEqual(byAgent.get("1"), { kind: "received", reason: null, amount: moved, rank: { position: 2, of: 2, quota: 1 } });
+});
+
+test("with reallocation on, a ranked agent that moved nothing records the binding reason", async () => {
+  // Agent 1 ranks highest but is already at its slot ceiling (4 times a principal of 100), so nothing moves.
+  const w = await world({ reallocationOwners: ["a"], agents: [{ agentId: "1", owner: "a", capital: 400n * UNIT }, { agentId: "2", owner: "a" }] });
+  await seedFitness(w, { "1": series(true), "2": series(false) });
+  await w.stores.agents.update({ ...(await w.stores.agents.get("1"))!, principal: 100n * UNIT });
+  const { worker } = await w.boot();
+  const evaluation = await worker.evaluate(EVALUATION_CADENCE);
+  assert.equal(evaluation.settled.length, 0);
+  const byAgent = new Map((await w.stores.evaluations.latest()).map((r) => [r.agentId, r.reallocation]));
+  assert.deepEqual(byAgent.get("1"), { kind: "held", reason: "ceiling", amount: null, rank: { position: 2, of: 2, quota: 1 } });
+  assert.deepEqual(byAgent.get("2"), { kind: "held", reason: "counterpart", amount: null, rank: { position: 1, of: 2, quota: 1 } });
+});
+
+test("with reallocation off, no outcome is recorded", async () => {
+  const w = await world({ reallocation: REALLOCATION_DISABLED, agents: [{ agentId: "1", owner: "a" }, { agentId: "2", owner: "a" }] });
+  await seedFitness(w, { "1": series(true), "2": series(false) });
+  const { worker } = await w.boot();
+  await worker.evaluate(EVALUATION_CADENCE);
+  for (const r of await w.stores.evaluations.latest()) assert.equal(r.reallocation ?? null, null);
+});
+
 test("a rerun of an evaluation keeps what the first run recorded", async () => {
   const w = await world({ reallocation: REALLOCATION_DISABLED, agents: [{ agentId: "1", owner: "a" }, { agentId: "2", owner: "a" }] });
   await seedFitness(w, { "1": series(true), "2": series(false) });

@@ -1,4 +1,5 @@
 import { PgReadModelStore, loadDatabaseSettings, openDatabase, type Connect } from "@monadeum/db";
+import { IndexedContractError } from "@monadeum/read-model";
 import { ViemIndexerChain } from "./chain.js";
 import { loadIndexerConfig, type IndexerConfig } from "./config.js";
 import { defaultRegistry } from "./handlers/index.js";
@@ -8,7 +9,13 @@ import type { IndexerChain } from "./types.js";
 
 /** Builds the indexer over a given chain and store. `bootIndexer` picks the store from the environment. */
 export function createIndexer(config: IndexerConfig, chain: IndexerChain = new ViemIndexerChain(config.rpcUrl), store: ReadModelStore = new InMemoryReadModelStore()) {
-  const registry = defaultRegistry({ spendPolicy: config.spendPolicy, entryPoint: config.entryPoint, kernelFactory: config.kernelFactory, settlementAsset: config.settlementAsset });
+  const registry = defaultRegistry({
+    spendPolicy: config.spendPolicy,
+    entryPoint: config.entryPoint,
+    kernelFactory: config.kernelFactory,
+    settlementAsset: config.settlementAsset,
+    reallocation: config.reallocation,
+  });
   return { indexer: new Indexer(chain, store, registry, config.sync), store, registry };
 }
 
@@ -36,6 +43,12 @@ export async function bootIndexer(options: IndexerBootOptions) {
   // 0010). A read-model that records a different asset refuses: its rows would mix two tokens.
   try {
     await store.recordSettlementAsset(config.settlementAsset);
+    // Records the reallocation contract, so the API reports reallocations as indexed only when they are (libs/db 0016).
+    // A read-model that records one this run would not index refuses too: its reallocation rows would stop advancing
+    // while still reading as complete.
+    const recorded = (await store.indexedContracts()).reallocation;
+    if (config.reallocation) await store.recordIndexedContract("reallocation", config.reallocation);
+    else if (recorded) throw new IndexedContractError(`the read-model records reallocation contract ${recorded}; set INDEXER_REALLOCATION_ADDRESS to it, or rebuild the read-model`);
   } catch (error) {
     await database?.close();
     throw error;

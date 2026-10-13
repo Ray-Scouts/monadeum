@@ -1,7 +1,14 @@
 import type { AgentRecord as WorkerAgentRecord } from "@monadeum/agent-registry";
-import { hashGenome, normalizeGenome, type GenomeV1 } from "@monadeum/commitment";
+import { hashGenome, hashStrategyVersion, normalizeGenome, type GenomeV1 } from "@monadeum/commitment";
 import { ALLOWED_INFORMATION_SOURCES, type GenomePreset } from "@monadeum/strategy/presets";
+import { STRATEGY_VERSION } from "@monadeum/strategy/version";
 import type { Hex } from "viem";
+
+/**
+ * The section 16.4 hash of the strategy plugin build this API creates agents under (`STRATEGY_VERSION` of
+ * `@monadeum/strategy`). Committed on chain with the genome hash when the agent's account is deployed (section 9).
+ */
+export const STRATEGY_VERSION_HASH: Hex = hashStrategyVersion(STRATEGY_VERSION);
 
 // A new agent's genome, built server-side from a named preset and the deployment's trading pair (EVOLUTION.md
 // section 1.1). Nothing here reads a request: the client names a preset, and the API validates the name before it

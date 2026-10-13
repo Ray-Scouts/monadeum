@@ -1,6 +1,7 @@
 export { WalletsModule } from "./wallets.module.js";
 export { WalletsService, isRevokedOnChain, isSessionAcceptedOnChain } from "./wallets.service.js";
 export type {
+  DeployInput,
   DeployResult,
   ExecuteResult,
   Failure,
@@ -22,7 +23,7 @@ export type { SponsorshipBudget, SponsorshipLedger, SponsorshipUsage } from "./b
 export { MemoryAgentWalletStore, MemorySessionKeyVault } from "./store.js";
 export type { AgentWalletRecord, AgentWalletStore, SessionKeyVault, SessionRecord, TickAttempt, TickOperationRecord } from "./store.js";
 export { PaymasterUnavailableError, SubmissionRejectedError } from "./chain.js";
-export type { OperationLog, OperationReceipt, OwnerSigner, PermissionState, PreparedOperation, SessionApproval, SpendLimits, WalletsChain } from "./chain.js";
+export type { AgentHashes, OperationLog, OperationReceipt, OwnerSigner, PermissionState, PreparedOperation, SessionApproval, SpendLimits, WalletsChain } from "./chain.js";
 export { APPROVE_SELECTOR, TRANSFER_SELECTOR, ScopeError, buildScope, callsInScope, tradedAssetsOf } from "./scope.js";
 export type { Call, ScopeTargets } from "./scope.js";
 export { ZeroDevChain, entryPoint, kernelVersion, maxOperationCost, permissionValidationId, sessionPolicies, spendPolicyAbi, spendPolicyHook } from "./zerodev.js";

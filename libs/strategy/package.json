@@ -4,7 +4,8 @@
   "type": "module",
   "exports": {
     ".": "./dist/src/index.js",
-    "./presets": "./dist/src/presets.js"
+    "./presets": "./dist/src/presets.js",
+    "./version": "./dist/src/version.js"
   },
   "scripts": {
     "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js"

@@ -41,7 +41,7 @@ export interface CrosscheckRunOptions {
 export async function runCrosscheck(options: CrosscheckRunOptions): Promise<CrosscheckReport> {
   const { env, args } = options;
   const config = loadIndexerConfig(env);
-  const registry = defaultRegistry({ spendPolicy: config.spendPolicy, entryPoint: config.entryPoint, kernelFactory: config.kernelFactory, settlementAsset: config.settlementAsset });
+  const registry = defaultRegistry({ spendPolicy: config.spendPolicy, entryPoint: config.entryPoint, kernelFactory: config.kernelFactory, settlementAsset: config.settlementAsset, reallocation: config.reallocation });
   const unverified = (reason: string): CrosscheckReport => ({
     status: "unverified",
     range: { from: Number(args.from), to: Number(args.to) },

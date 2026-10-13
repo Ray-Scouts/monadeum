@@ -5,7 +5,7 @@ import { entryPoint07Address } from "viem/account-abstraction";
 import { crosscheck, type LogSource } from "../src/crosscheck/compare.js";
 import { HyperSyncLogSource, type HyperSyncClientLike, type HyperSyncQuery, type HyperSyncResponse } from "../src/crosscheck/hypersync.js";
 import { exitCode, parseArgs, redact, runCrosscheck } from "../src/crosscheck/main.js";
-import { entryPointEvents, spendPolicyEvents } from "../src/handlers/abi.js";
+import { entryPointEvents, reallocationEvents, spendPolicyEvents } from "../src/handlers/abi.js";
 import { defaultRegistry } from "../src/handlers/index.js";
 import { Indexer, type SyncOptions } from "../src/indexer.js";
 import { InMemoryReadModelStore } from "../src/store.js";
@@ -315,4 +315,45 @@ test("redact removes the token from an error message and the report never carrie
   const report = await runCrosscheck({ env: { ...env, ENVIO_API_TOKEN: "abc123" }, args: { from: 1n, to: 4n }, source: leak, store: await indexed(chain) });
   assert.equal(report.status, "unverified");
   assert.ok(!JSON.stringify(report).includes("abc123"));
+});
+
+// Reallocation handlers, registered when INDEXER_REALLOCATION_ADDRESS is set.
+
+test("with the reallocation handlers registered, its rows are cross-checked and a changed amount is reported", async () => {
+  const REALLOCATION = "0x5555555555555555555555555555555555555555" as Address;
+  const OWNER = "0x6666666666666666666666666666666666666666" as Address;
+  const SINK = "0x7777777777777777777777777777777777777777" as Address;
+  const realloc = (name: string, args: Record<string, unknown>): LogSpec => ({ address: REALLOCATION, event: named(reallocationEvents, name), args });
+  const deployment = (account: Address): LogSpec[] => [
+    { ...deployed, args: { ...deployed.args, sender: account } },
+    policy("LimitsSet", { account, perTxCap: 5_000_000n, dailyCap: 20_000_000n }),
+  ];
+  const build = (amount: bigint, withMove = true) =>
+    new MockChain().mine(4, [
+      [...deployment(ACCOUNT), ...deployment(SINK)],
+      [realloc("AgentRegistered", { account: ACCOUNT, owner: OWNER, principal: 10_000_000n }), realloc("PolicyCommitted", { owner: OWNER, policyHash: `0x${"cd".repeat(32)}`, nonce: 0n })],
+      withMove ? [realloc("EvaluationAdvanced", { evaluation: 1n }), realloc("Reallocated", { owner: OWNER, source: ACCOUNT, sink: SINK, amount, evaluation: 1n })] : [],
+      [],
+    ]);
+  const withRealloc = defaultRegistry({ ...registryInput, reallocation: REALLOCATION });
+  const chain = build(2_000_000n);
+  const store = new InMemoryReadModelStore();
+  const indexer = new Indexer(chain, store, withRealloc, options);
+  for (let i = 0; i < 100 && (await indexer.syncOnce()).status !== "idle"; i++);
+
+  const match = await crosscheck({ source: sourceOf(chain), store, registry: withRealloc, from: 1n, to: 4n });
+  assert.equal(match.status, "match");
+  // deploy x2, limits x2, registered, committed (no account), advanced (no account), sent, received.
+  assert.equal(match.counts.indexer, 9);
+
+  const changed = await crosscheck({ source: sourceOf(build(3_000_000n)), store, registry: withRealloc, from: 1n, to: 4n });
+  assert.equal(changed.status, "mismatch");
+  assert.deepEqual(changed.fieldMismatches.map((m) => [m.kind, m.field]).sort(), [["reallocation.received", "data.amount"], ["reallocation.sent", "data.amount"]]);
+
+  const lacking = await crosscheck({ source: sourceOf(build(2_000_000n, false)), store, registry: withRealloc, from: 1n, to: 4n });
+  assert.deepEqual(lacking.missingInSource.map((r) => r.kind).sort(), ["reallocation.evaluation-advanced", "reallocation.received", "reallocation.sent"]);
+
+  // Without the handlers registered, the reallocation contract is not asked about, so its rows are not compared.
+  const without = await crosscheck({ source: sourceOf(chain), store, registry, from: 1n, to: 4n });
+  assert.equal(without.counts.source, 4);
 });

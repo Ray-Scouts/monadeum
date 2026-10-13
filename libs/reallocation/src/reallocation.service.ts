@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { EVALUATION_CADENCE } from "./constants.js";
 import { groupDebits } from "./debits.js";
+import { evaluationOutcomes } from "./outcomes.js";
 import { planEvaluation, type AgentState, type EvaluationPlan } from "./plan.js";
 import { NoPolicies, UnconfiguredSettlement, type PolicySource, type ReallocationSettlement, type SourceDebit } from "./ports.js";
 import { evaluateRetirement, type RetirementDecision, type RetirementInput } from "./retirement.js";
@@ -22,6 +23,15 @@ export class ReallocationService {
   plan(tick: number, population: readonly AgentState[]): EvaluationPlan {
     if (!Number.isInteger(tick) || tick <= 0 || tick % EVALUATION_CADENCE !== 0) throw new Error("off_cadence");
     return planEvaluation(population, this.policies.current());
+  }
+
+  /**
+   * What `plan` did to each agent of `population`, under the same policies: off and why, unranked, sent, received, or
+   * held with the binding reason, with the agent's rank in its owner's pool (`evaluationOutcomes`). `moved` names the
+   * agents whose debits or credits were actually submitted, when the caller dropped some of the plan's moves.
+   */
+  outcomes(population: readonly AgentState[], plan: EvaluationPlan, moved?: { sent: ReadonlySet<string>; received: ReadonlySet<string> }) {
+    return evaluationOutcomes(population, this.policies.current(), plan, moved);
   }
 
   retirement(input: RetirementInput): RetirementDecision {

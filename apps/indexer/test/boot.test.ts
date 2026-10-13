@@ -7,7 +7,7 @@ import { entryPoint07Address } from "viem/account-abstraction";
 import { entryPointEvents, spendPolicyEvents } from "../src/handlers/abi.js";
 import { bootIndexer } from "../src/main.js";
 import { InMemoryReadModelStore } from "../src/store.js";
-import { SettlementAssetMismatchError } from "@monadeum/read-model";
+import { IndexedContractError, SettlementAssetMismatchError } from "@monadeum/read-model";
 import { MockChain, type LogSpec } from "./mock-chain.js";
 
 const POLICY = "0x1111111111111111111111111111111111111111" as Address;
@@ -74,6 +74,39 @@ test("with DATABASE_URL, the indexer writes Postgres and a restarted indexer res
     );
   } finally {
     await pg.close();
+  }
+});
+
+test("the indexer records the reallocation contract it indexes, and refuses one added to, dropped from, or changed on a synced read-model", async () => {
+  const pg = new PGlite();
+  const REALLOCATION = "0x4e7500415e81017670a9cfb8763f873ee6694a7f";
+  try {
+    const chain = new MockChain().mine(3);
+    const db = { DATABASE_URL: "postgres://test" };
+    // Synced without the contract: adding it now would claim earlier reallocation rows the read-model does not have.
+    const plain = await bootIndexer({ env: { ...env, ...db, DATABASE_MIGRATIONS: "apply" }, chain, connect: onto(pg) });
+    await drain(plain.indexer);
+    await plain.close();
+    await assert.rejects(bootIndexer({ env: { ...env, ...db, INDEXER_REALLOCATION_ADDRESS: REALLOCATION }, chain, connect: onto(pg) }), IndexedContractError);
+  } finally {
+    await pg.close();
+  }
+
+  const fresh = new PGlite();
+  try {
+    const chain = new MockChain().mine(3);
+    const db = { DATABASE_URL: "postgres://test" };
+    const first = await bootIndexer({ env: { ...env, ...db, DATABASE_MIGRATIONS: "apply", INDEXER_REALLOCATION_ADDRESS: REALLOCATION }, chain, connect: onto(fresh) });
+    assert.ok(first.registry.list().some((h) => h.name === "reallocation-sent"));
+    await drain(first.indexer);
+    assert.deepEqual(await first.store.indexedContracts(), { reallocation: REALLOCATION });
+    await first.close();
+    // The same contract restarts; another one, or none, refuses.
+    await (await bootIndexer({ env: { ...env, ...db, INDEXER_REALLOCATION_ADDRESS: REALLOCATION }, chain, connect: onto(fresh) })).close();
+    await assert.rejects(bootIndexer({ env: { ...env, ...db, INDEXER_REALLOCATION_ADDRESS: "0x5555555555555555555555555555555555555555" }, chain, connect: onto(fresh) }), IndexedContractError);
+    await assert.rejects(bootIndexer({ env: { ...env, ...db }, chain, connect: onto(fresh) }), IndexedContractError);
+  } finally {
+    await fresh.close();
   }
 });
 

@@ -1,3 +1,4 @@
+import { agentCommitmentCall } from "@monadeum/commitment";
 import type { AllowedCall } from "@monadeum/risk";
 import { encodeAbiParameters, isAddressEqual, keccak256, parseAbiParameters, type Address, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount, privateKeyToAddress } from "viem/accounts";
@@ -5,6 +6,7 @@ import { hasHeadroom, type SponsorshipBudget, type SponsorshipLedger } from "./b
 import {
   PaymasterUnavailableError,
   SubmissionRejectedError,
+  type AgentHashes,
   type OperationReceipt,
   type OwnerSigner,
   type PermissionState,
@@ -33,6 +35,9 @@ export interface X402WalletSettings {
   vault: SessionKeyVault;
 }
 
+const BYTES32 = /^0x[0-9a-fA-F]{64}$/;
+const ZERO_HASH = /^0x0{64}$/;
+
 export interface WalletsSettings {
   scope: readonly AllowedCall[];
   budget: SponsorshipBudget;
@@ -40,6 +45,21 @@ export interface WalletsSettings {
   paymaster: boolean;
   /** Absent or null: no x402 key is created and no validator is installed; the agent cannot pay x402. */
   x402?: X402WalletSettings | null;
+  /**
+   * The deployed AgentCommitments contract (ARCHITECTURE.md section 9). Set: every deployment carries the agent's
+   * genome and strategy-version hashes and commits them from the new account in the same owner-signed operation, and a
+   * deployment without them is refused. Absent or null: nothing is committed on chain.
+   */
+  commitments?: Address | null;
+}
+
+export interface DeployInput {
+  agentId: string;
+  owner: OwnerSigner;
+  index: bigint;
+  limits: SpendLimits;
+  /** The section 16.4 hashes the account commits; required when `commitments` is configured. */
+  commitment?: AgentHashes;
 }
 
 export type FailureReason =
@@ -233,14 +253,27 @@ export class WalletsService {
    * repeated call for the same agent returns the existing account and sends nothing, and a call made while an
    * earlier operation is pending waits for that operation instead of sending a second one.
    */
-  deploy(input: { agentId: string; owner: OwnerSigner; index: bigint; limits: SpendLimits }): Promise<DeployResult> {
+  deploy(input: DeployInput): Promise<DeployResult> {
     return this.exclusive(input.agentId, () => this.deployOnce(input));
   }
 
-  private async deployOnce(input: { agentId: string; owner: OwnerSigner; index: bigint; limits: SpendLimits }): Promise<DeployResult> {
-    const { agentId, owner, index, limits } = input;
+  /**
+   * True when the account's on-chain commitment is exactly `expected`. Calling an address without code succeeds
+   * silently, so a registry without code reads as no commitment rather than a match.
+   */
+  private async committed(registry: Address, account: Address, expected: AgentHashes): Promise<boolean> {
+    const c = await this.chain.agentCommitment(registry, account);
+    return c.genomeHash.toLowerCase() === expected.genomeHash.toLowerCase() && c.strategyVersionHash.toLowerCase() === expected.strategyVersionHash.toLowerCase();
+  }
+
+  private async deployOnce(input: DeployInput): Promise<DeployResult> {
+    const { agentId, owner, index, limits, commitment } = input;
     if (limits.perTxCap < 0n || limits.dailyCap < 0n || limits.perTxCap >= 2n ** 128n || limits.dailyCap >= 2n ** 128n) {
       return { ok: false, reason: "misconfigured", detail: "limits must fit uint128" };
+    }
+    const registry = this.settings.commitments ?? null;
+    if (registry && !(commitment && BYTES32.test(commitment.genomeHash) && BYTES32.test(commitment.strategyVersionHash) && !ZERO_HASH.test(commitment.genomeHash) && !ZERO_HASH.test(commitment.strategyVersionHash))) {
+      return { ok: false, reason: "misconfigured", detail: "agent commitments are configured: a deployment needs the genome and strategy-version hashes" };
     }
     const account = await this.chain.accountAddress(owner.address, index);
     let record = await this.store.get(agentId);
@@ -271,6 +304,11 @@ export class WalletsService {
         // Deployed but not configured as asked. Never reconfigure silently: widening a scope is an owner action.
         return { ok: false, reason: "misconfigured", detail: "account exists but its spend policy does not match" };
       }
+      if (registry && !(await this.committed(registry, account, commitment!))) {
+        // The commitment rides in the operation that deployed the account, so a deployed account without it was
+        // deployed some other way, or committed other hashes; neither is repaired here.
+        return { ok: false, reason: "misconfigured", detail: "account exists but its on-chain genome commitment does not match" };
+      }
       record.deployment = { status: "deployed", userOpHash: record.deployment.userOpHash };
       await this.store.update(record);
       // An earlier attempt's operation may have installed the x402 validator; mark it active only if the chain shows it.
@@ -280,6 +318,10 @@ export class WalletsService {
 
     // Calling an address without code succeeds silently, so configuring a missing policy would look like success.
     if (!(await this.chain.policyDeployed())) return { ok: false, reason: "policy-unavailable" };
+    // The same holds for the commitment: a commit to an address without code would land as a silent no-op.
+    if (registry && !(await this.chain.isDeployed(registry))) {
+      return { ok: false, reason: "misconfigured", detail: "the agent commitments contract has no code" };
+    }
 
     // The x402 validator is installed in the same owner-signed operation that deploys the account, when configured.
     let x402Calls: Call[] = [];
@@ -289,7 +331,9 @@ export class WalletsService {
       x402Calls = prepared.calls;
     }
 
-    const calls = [...this.chain.configurationCalls(this.settings.scope, limits), ...x402Calls];
+    // The account commits its own genome and strategy-version hashes in the operation that deploys it (section 9).
+    const commitCalls: Call[] = registry ? [agentCommitmentCall(registry, commitment!)] : [];
+    const calls = [...this.chain.configurationCalls(this.settings.scope, limits), ...x402Calls, ...commitCalls];
     const sent = await this.send(agentId, account, (sponsored) => this.chain.prepareOwnerOperation({ owner, index, account, calls, sponsored }), async (hash) => {
       record!.deployment = { status: "pending", userOpHash: hash };
       await this.store.update(record!);
@@ -302,6 +346,9 @@ export class WalletsService {
     await this.store.update(record);
     if (this.settings.x402 && !(await this.confirmX402(record))) {
       return { ok: false, reason: "misconfigured", detail: "operation succeeded but the x402 validator is not configured as asked" };
+    }
+    if (registry && !(await this.committed(registry, account, commitment!))) {
+      return { ok: false, reason: "misconfigured", detail: "operation succeeded but the chain does not show the genome commitment" };
     }
     return { ok: true, account, created: true, operation: { userOpHash: sent.userOpHash, sponsored: sent.sponsored, gasCost: sent.gasCost } };
   }

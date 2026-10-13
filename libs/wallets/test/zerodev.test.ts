@@ -211,6 +211,9 @@ test("configuration is read from the environment and rejects anything but Monad 
   assert.deepEqual(traded.map((c) => [c.target, c.selector]), [[WETH, APPROVE_SELECTOR]]);
   assert.throws(() => loadWalletsConfig({ ...env, WALLETS_TRADED_ASSETS: "weth" }), WalletsConfigError);
   assert.throws(() => loadWalletsConfig({ ...env, WALLETS_TRADED_ASSETS: USDC }), ScopeError);
+  assert.equal(config.commitments, null);
+  assert.equal(loadWalletsConfig({ ...env, WALLETS_AGENT_COMMITMENTS_ADDRESS: ` ${POLICY} ` }).commitments, POLICY);
+  assert.throws(() => loadWalletsConfig({ ...env, WALLETS_AGENT_COMMITMENTS_ADDRESS: "registry" }), WalletsConfigError);
 });
 
 test("bundler reads map to the full receipt, pending state, and the EntryPoint nonce for the operation's key", async () => {
