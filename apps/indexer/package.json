@@ -7,7 +7,8 @@
   },
   "scripts": {
     "test": "tsc -p tsconfig.json && node --test dist/test/*.test.js",
-    "start": "node dist/src/main.js"
+    "start": "node dist/src/main.js",
+    "crosscheck": "tsc -p tsconfig.json && node dist/src/crosscheck/main.js"
   },
   "dependencies": {
     "@envio-dev/hypersync-client": "1.4.1",
