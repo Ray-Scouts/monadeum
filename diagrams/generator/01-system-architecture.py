@@ -34,7 +34,7 @@ d = Diagram(
     "01-system-architecture",
     title="Services propose, the chain decides",
     subtitle="Where each part runs, and which path an action takes before capital moves.",
-    desc=("System map in four bands: owner and browser, off-chain services, on-chain contracts. "
+    desc=("System map in three bands: owner and browser, off-chain services, on-chain contracts. "
           "Reading: the tick runner sends an approved plan through ZeroDev to the agent account, "
           "where the spend policy contract checks it on chain."),
     cols=3, gutter=100, rows=6,
