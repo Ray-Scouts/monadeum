@@ -1,0 +1,51 @@
+---
+title: "Results"
+description: "What the simulations and the pre-registered study found, in order, including every negative and inconclusive result, with the files that hold the full tables."
+---
+
+All results below are from `simulation/results/`. Figures are percentage-point (pp) differences in mean ROI between an evolving or reallocating arm and a static control unless stated. "Inconclusive" follows the pre-registered rule on [Simulation method](/evidence/method).
+
+## 1. Reproduction: negative, then superseded
+
+| Experiment | File | Result |
+| --- | --- | --- |
+| Multi-seed, best static legal policy, 50 seeds | `multiseed.md` | Evolving equals static in all 12 cells, gap 0, p = 1. Reproduction count was zero, so the evolutionary branch never diverged. Mean ROI about -35 percent trending and -39 to -42 percent elsewhere |
+| Position sizing sweep | `sizing.md` | The fixed x402 charge on a capped position is the drag. Zero-cost runs are positive |
+| Diversity (niche sharing) | `diversity.md` | Reproduction count was zero in every cell, so the run neither shows a floor is needed nor that sharing prevents collapse |
+| Adversarial | `adversarial.md` | Capital invariants held when eligibility was forced |
+| Threshold sweep (issue 74) | `reproduction-threshold.md` | No reproduction at the documented 0.5 threshold at any price. At 0.1 with x402 at $0.01, population 100 reproduces in 94 percent of trending seeds |
+| 12-cell re-run | `twelve-cell-rerun.md` | Inconclusive in all three arms. Evolving below static in all 24 cells of two arms, by 0.01 to 0.85 pp. Children lose money on average |
+| Heritable skill (issue 80) | `heritability.md` | Inconclusive at every heritability. Children held about 1.4 percent of capital at population 1,000 |
+| Child capital (issue 82) | `child-capital.md` | Inconclusive in all 14 arms. A treasury narrows the gap and never makes it positive |
+
+Conclusion recorded in `ECONOMICS.md` section 8: the reproduction mechanism has not shown a population-level benefit in this harness under any setting tried.
+
+## 2. Fixed slots and reallocation: positive in the model
+
+| Experiment | File | Result |
+| --- | --- | --- |
+| Fixed slots with replacement and reallocation (issues 84 and 85) | `fixed-slot.md` | Arm B beat both controls at magnitude 0.009 with cap 0.2 (median gap 2.3 and 2.6 pp), not at magnitude 0.006, and a cap of 0.05 was not enough. Reallocation did most of the work |
+| Reallocation scope (issue 89) | `reallocation-scope.md` | Reallocation with retirement and no replacement matched replacement (median gap 0.06 pp) and held within each owner's agents. This arm was chosen after results were read |
+| Pre-registered confirmation (issue 92) | `owner-reallocation-confirmation.md` | Out of sample, seeds 51 to 100, at an assumed mixed owner distribution: 11 of 12 cells above the static control at 0.009 (median +2.78 pp), 8 of 12 at 0.006 (median +1.59 pp), none below. At 0.006 against the static control the margin was one cell, and the stress regime on its own was inconclusive |
+
+These results hold only if the genome carries an edge of the assumed size.
+
+## 3. The genome-edge study: negative
+
+`genome-edge.md` ran the pre-registered study. It backtested 1,000 genomes of the production long-or-flat plugin on hourly closes built from all 9.57 million on-chain `Trade` events of the Kuru mainnet MON-USDC market, in-sample 2025-12-23 to 2026-05-31 and held out 2026-06-01 to 2026-09-30, net of a 0 bps taker fee, a 7.4 bps half-spread, and $0.00104 of gas per swap.
+
+- **Edge size (H1).** The top fifth of genomes beat the bottom fifth by 0.028 market standard deviations per tick out of sample (95 percent bounds 0.015 to 0.039), against 0.278 modeled at magnitude 0.006. Only the choppy regime qualified for its own test: 0.024 against 0.297.
+- **Rank persistence (H2).** Mean rank correlation between adjusted fitness and the next 20 ticks' net return was 0.066 (bounds 0.027 to 0.103), against 0.416 in the model. At zero cost it was -0.017: what persists sorts genomes by how often they trade.
+- **Calibrated re-run (H3).** The measured spread calibrates to magnitude 0. On new seeds 101 to 150 the owner-scoped comparison was inconclusive against the static population (2 of 12 cells significant, both lower, median gap -0.24 pp).
+
+An alternative price proxy (Coinbase MON-USD) and the high (19.2 bps per swap) and zero cost cases give the same calls.
+
+**Decision:** no-go under the pre-registered rule. For the current strategy, selection adds nothing measurable, so the product rests on well-calibrated static agents with reallocation off.
+
+## What these results do not show
+
+- Nothing here estimates production returns.
+- The model results depend on an assumed genome model. The study that tested that assumption against data contradicted it for this strategy.
+- No stress regime occurred in the held-out data, so stress behavior of any strategy on real data is untested.
+- The study covers one signal, one venue, and cost snapshots rather than a spread history. It was run on MON-USDC, and the extension to WETH/USDC is an assumption.
+- Strategies with a different signal, or with information purchases that pay, were not and could not be replayed.

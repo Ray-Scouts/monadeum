@@ -1,0 +1,71 @@
+---
+title: "Genome hash"
+description: "How Monadeum canonicalizes and hashes a genome, a strategy version, a policy, or an execution plan: RFC 8785 JSON canonicalization, a domain tag, keccak256, strict normalization rules, and a fixed test vector."
+---
+
+Source of truth: `ARCHITECTURE.md` section 16.4, implemented in `libs/commitment`. A genome is fixed for its agent's life, so its hash is committed once, at creation. Anyone can recompute the hash from the off-chain document and compare it with the on-chain value.
+
+## Decision
+
+RFC 8785, the JSON Canonicalization Scheme (JCS), encoded as UTF-8, hashed with keccak256 behind a domain tag.
+
+```
+hash = keccak256( utf8(tag) || 0x00 || utf8(JCS(normalize(value))) )
+
+tag: "monadeum:genome:v1" | "monadeum:strategy:v1" | "monadeum:policy:v1" | "monadeum:plan:v1"
+```
+
+- **Why JCS.** It is a published specification with an exact key order (lexicographic by UTF-16 code units) and an exact number format (ECMAScript serialization), so an implementation in any language produces the same bytes. Implementations are checked against the RFC's own test vectors.
+- **Why keccak256.** It is a native EVM opcode, so a contract can recompute or compare a commitment cheaply.
+- **Why a domain tag.** All four kinds use one scheme, and the tag guarantees that a hash of one kind never equals a hash of another kind whose JSON happens to be identical.
+
+The owner's reallocation policy is not hashed this way. Its commitment is the EIP-712 struct hash, because the contract has to recompute it from the policy's fields. See [Contract interfaces](/reference/contract-interfaces).
+
+## Normalization, applied before JCS
+
+JCS does none of the following, so the library does it:
+
+1. Set-valued fields (`assetUniverse`, `informationSources`) are deduplicated and sorted in UTF-16 code unit order. The order in which an owner picks elements is an accident of history, not meaning.
+2. Numbers must be finite. Integer-valued fields (`executionFrequency`, `timeHorizon`) must be integers. `-0` is written as `0`. Base-unit amounts are decimal strings, which includes `informationBudget`.
+3. An absent optional field is omitted, never written as `null`.
+4. Only genome fields are hashed. Derived values (fitness, rank) and storage metadata (row IDs, timestamps) are excluded. The hashed object carries `schemaVersion`, and renaming or adding a field is a `schemaVersion` change, because key names are part of the hashed bytes.
+
+## Strict readings fixed by the implementation
+
+- `null` is rejected anywhere in the hashed object. A property whose value is `undefined` is an absent field and is omitted. The 16.1 `previousHash` of version 1 is mapped to an absent field before hashing.
+- A field not in the document's schema version is rejected, not hashed and not dropped.
+- Integer fields must be within the IEEE 754 safe range, below 2^53.
+- A base-unit amount is a `bigint` in memory or a canonical non-negative decimal string in JSON: digits only, no sign, no leading zero, no exponent, no fraction. `"0500000"` is rejected. A JSON number in a money field is rejected.
+- Strings are hashed exactly as given, with no Unicode normalization. A string with an unpaired UTF-16 surrogate is rejected.
+- A 20-byte address or 32-byte digest in a committed document is lowercased before hashing, so EIP-55 checksum case does not change a commitment. A malformed hex value is rejected.
+- `libs/commitment` is the only implementation for every tag. Array order is kept for the policy's `allowedCalls` and `allowedPairs` and for a plan's `calls`, because none is a set field.
+
+The strategy-version document, `{schemaVersion, strategyType, version, codeDigest}`, is provisional, and its field set may change when the chain's check on it is fixed.
+
+## Worked example
+
+This genome has a duplicated and unsorted `assetUniverse` and a `-0` threshold:
+
+```json
+{"strategyType":"trading","schemaVersion":1,"riskTolerance":0.1,"executionFrequency":5,"assetUniverse":["PAIR_B","PAIR_A","PAIR_A"],"informationSources":["nansen","defillama"],"timeHorizon":20,"entryThreshold":0.002,"exitThreshold":-0,"informationBudget":"500000","modelConfiguration":"low"}
+```
+
+It normalizes and canonicalizes to exactly these bytes, which are then hashed:
+
+```json
+{"assetUniverse":["PAIR_A","PAIR_B"],"entryThreshold":0.002,"executionFrequency":5,"exitThreshold":0,"informationBudget":"500000","informationSources":["defillama","nansen"],"modelConfiguration":"low","riskTolerance":0.1,"schemaVersion":1,"strategyType":"trading","timeHorizon":20}
+```
+
+## Test vector
+
+The resulting keccak256 value is fixed as a test vector, computed by viem's keccak256 and by a separate reference implementation written for the test, which agree:
+
+```
+0x2d9f122951f7536592f0abc24282c094bba5d43ee5ea4414091d1c0a3b8ce589
+```
+
+The vector is the genome hash: the preimage is the tag `monadeum:genome:v1`, a zero byte, and the canonical bytes above (`libs/commitment/test/commitment.test.ts`). A later change to either implementation fails a test instead of surfacing as an on-chain mismatch.
+
+## Verification and alerting
+
+A verifier recomputes the hash of the off-chain record and compares it with the 32-byte value read from the chain. Every failure is reported as an alert: the hashes differ, the chain holds the zero hash, the on-chain value is malformed, or the off-chain record cannot be canonicalized. A record that cannot be verified is treated as one that does not match.

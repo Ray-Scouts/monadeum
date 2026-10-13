@@ -1,0 +1,72 @@
+---
+title: "Monad testnet deployments"
+description: "Addresses, blocks, transactions, roles, and constructor inputs of the three Monadeum contracts on Monad testnet (chain id 10143), copied from the committed deployment record."
+---
+
+Source of truth: `contracts/deployments/monad-testnet.json`. Every value on this page is copied from that file. If the file and this page disagree, the file is correct.
+
+<Warning>
+  Testnet only. These contracts are not audited and are not on mainnet. They hold testnet assets with no real value.
+</Warning>
+
+## Network
+
+| Field | Value |
+| --- | --- |
+| Network | Monad testnet |
+| Chain id | `10143` |
+| RPC used for verification | `https://testnet-rpc.monad.xyz` |
+| Deployer | `0x617940428CABaDF4528EFEDa9C27E1577ba0c1e3` |
+| Broadcast | 2026-10-11 |
+
+## Contracts
+
+| Contract | Address | Block | Transaction | Gas used |
+| --- | --- | --- | --- | --- |
+| `AgentSpendPolicy` | `0xe54512401B8fCD0DCc3f4Aa4929b99F05AbA3f05` | 70167444 | `0xe57f5b866b9eb5a438d137fdd126030c4bbec09d5a2d30b9ad14489a72af344e` | 1975698 |
+| `AgentReallocation` | `0x4e7500415e81017670a9cFb8763f873EE6694A7f` | 70167453 | `0x654a555c3214551412c29a6a17ec391ea9dd2b032221880116fd0e58a213ee3e` | 2860335 |
+| `X402PaymentValidator` | `0xCA918F53FFc7507Bd41602c0bD1ef72558705991` | 70167461 | `0x914bb2d21130dd014ccc0688dbf5afca6df3bdd94f37880e560f1908e117bf0f` | 1933835 |
+
+The first deployment block, 70167444, is the indexer's start block. Total gas was 6,769,868 at an effective gas price of 103,407,500,000 wei, 0.70005512521 MON in all.
+
+## Constructor inputs
+
+| Input | Value |
+| --- | --- |
+| `settlementAsset` (testnet USDC) | `0x534b2f3A21130d7a60830c2Df862319e593943A3` |
+| `settlementDecimals` | `6` |
+| `reallocationOperator` | `0x9671dB7Ab4Afa09fe76402Ce127896b166029897` |
+| `reallocationAdmin` | `0x9671dB7Ab4Afa09fe76402Ce127896b166029897` |
+| `minEvaluationInterval` | `36000` seconds |
+
+That the testnet USDC is Circle's official testnet deployment is an assumption. What was checked on chain on 2026-10-11 is that its name and symbol are "USDC", it has 6 decimals, its EIP-712 version is "2" with a domain separator matching chain 10143 and its address, and it exposes the EIP-3009 type hashes.
+
+## Safe holding the reallocation roles
+
+| Field | Value |
+| --- | --- |
+| Address | `0x9671dB7Ab4Afa09fe76402Ce127896b166029897` |
+| Version | `1.4.1+L2` |
+| Threshold | `2` |
+| Owner 1 | `0x921791B37eaD3d7cd24C8207238edA4Af70cbC84` |
+| Owner 2 | `0xce4Ac95C8f5D4F102Bc97B22165F772625BDe684` |
+| Owner 3 | `0x61358B4aC51b5E763e0fb8ba5fED0bDf69a34031` |
+
+Checked 2026-10-11 with `getThreshold`, `getOwners`, and `VERSION` on chain, and with the Safe transaction service. Whether the three owner keys are held by different people on different devices is a requirement that no contract can show.
+
+## State recorded as verified on 2026-10-11
+
+Against `https://testnet-rpc.monad.xyz` (chain id 10143), the deployment record states:
+
+- All three receipts have status 1 and are from the deployer.
+- Each address has code, of 6716, 9276, and 6566 bytes respectively.
+- `settlementAsset()` of all three is the input asset.
+- On `AgentReallocation`, `operator()` and `admin()` are the Safe, `pendingAdmin()` is the zero address, `minEvaluationInterval()` is 36000, `capitalFloor()` is 60000, and `currentEvaluation()` and `lastEvaluationAt()` are 0.
+
+`capitalFloor()` of 60000 is 0.06 of a six-decimal asset, the protocol floor of [Assumptions](/economics/assumptions). The evaluation counter is 0 because reallocation is off and no evaluation has been advanced.
+
+These are facts as of that date. Re-read them yourself on [Verify it yourself](/deployments/verify-yourself).
+
+## Other testnet addresses used by the system
+
+The testnet WMON/USDC market on Kuru's testnet router is planned and was simulated only on 2026-10-11, and nothing was sent (`contracts/deployments/monad-testnet-wmon-market.json`). On 2026-10-12 the market was not on chain. Its addresses are therefore not listed here as deployed.
