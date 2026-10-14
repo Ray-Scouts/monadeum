@@ -34,6 +34,7 @@ function auth(state: AuthState, privy: PrivyBridge | null = PENDING_PRIVY): Auth
     busy: false,
     signInWithPrivy: noop,
     signInWithWallet: async () => undefined,
+    signInWithPasskey: async () => undefined,
     signOut: async () => undefined,
     ownerWallet: async () => {
       throw new Error("unused");
@@ -178,6 +179,27 @@ describe("sign-in page", () => {
     expect(text(html)).toContain("could not be loaded");
     expect(disabled(html, "Continue with email or Google")).toBe(true);
     expect(disabled(html, "Sign in with an external wallet")).toBe(false);
+  });
+
+  test("offers a passkey account, disabled only when the browser cannot run WebAuthn", () => {
+    const props = { privyAvailable: true, privyReady: true, busy: false, error: null, onPrivy: noop, onWallet: noop, onPasskey: noop };
+    const supported = text(render(<SignInPanel {...props} passkeyAvailable />));
+    expect(supported).toContain("Continue with a passkey");
+    expect(supported).toContain("preview library");
+    expect(disabled(render(<SignInPanel {...props} passkeyAvailable />), "Continue with a passkey")).toBe(false);
+    expect(disabled(render(<SignInPanel {...props} />), "Continue with a passkey")).toBe(true);
+    expect(text(render(<SignInPanel {...props} />))).toContain("secure browser context");
+  });
+
+  test("a browser that already holds a passkey signs in with it first and offers a new one second", () => {
+    const html = render(<SignInPanel privyAvailable privyReady busy={false} error={null} onPrivy={noop} onWallet={noop} onPasskey={noop} passkeyAvailable passkeyKnown />);
+    expect(text(html)).toContain("Sign in with your passkey");
+    expect(text(html)).toContain("Create a new passkey account instead");
+  });
+
+  test("shows no passkey option on a screen that does not offer it", () => {
+    const html = render(<SignInPanel privyAvailable privyReady busy={false} error={null} onPrivy={noop} onWallet={noop} />);
+    expect(text(html)).not.toContain("passkey");
   });
 
   test("shows the session error, such as the timeout", () => {

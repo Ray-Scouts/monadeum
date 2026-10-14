@@ -12,10 +12,13 @@
     "test": "bun run libs && tsc --noEmit && bun test src && next build"
   },
   "dependencies": {
+    "@category-labs/mera": "^0.2.0",
     "@monadeum/fitness": "workspace:*",
     "@monadeum/reallocation": "workspace:*",
     "@monadeum/recovery": "workspace:*",
     "@privy-io/react-auth": "3.48.0",
+    "@scure/bip32": "^2.4.0",
+    "@scure/bip39": "^2.4.0",
     "monadeum-simulation": "workspace:*",
     "next": "^16.4.0",
     "react": "^19.3.0",

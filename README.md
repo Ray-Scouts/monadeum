@@ -181,6 +181,7 @@ Stated only as far as they exist on `main`. Other integrations are in progress o
 | Technology | Role | State |
 | --- | --- | --- |
 | Privy | Social login and embedded wallets. The API verifies Privy tokens locally | Exercised on the testnet deployment (development mode), 2026-10-11 |
+| Mera | Passkey sign-in: a passkey derives an ordinary account that signs the existing wallet challenge. Optional, alongside Privy | Built and tested offline against a fixed passkey output. Not yet run against a real authenticator on the deployed app. Mera is a preview library |
 | ZeroDev | Kernel v3.1 smart accounts, bundler, and paymaster | An account was deployed with sponsored gas on testnet, 2026-10-11. Operations after deployment are not yet observed |
 | Kuru | Order-book router and markets used by the TradingModule, through the official SDK pinned in `libs/trading` | Read-only testnet and mainnet reads and fork tests. No live fill yet |
 | x402 | v2 HTTP transport client and an on-chain payment validator | Built and tested. Payer off by default |
