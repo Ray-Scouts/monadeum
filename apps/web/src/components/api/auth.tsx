@@ -3,6 +3,7 @@
 import { plainThrown } from "@/data/api/plain";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createApiClient, isApiError, type ApiClient, type Credential, type SessionClient } from "@/data/api/client";
+import { assertPasskey, createMeraProvider, createPasskey, describeMeraError, readMethod, writeMethod, type SignInMethod } from "@/data/api/mera";
 import { messageHex, sameAddress, type Eip1193 } from "@/data/api/signing";
 import type { ApiUser } from "@/data/api/types";
 import { WEB_CONFIG } from "@/data/config";
@@ -35,7 +36,8 @@ export type AuthState =
   | { status: "loading" }
   /** `byUser` marks a sign-out the user asked for, which returns to a plain sign-in page. */
   | { status: "signed-out"; error: string | null; byUser?: boolean }
-  | { status: "signed-in"; via: "privy" | "wallet"; user: ApiUser; session: SessionClient };
+  /** `method` tells a passkey session from a browser wallet session when `via` is `wallet`; absent, it is a browser wallet. */
+  | { status: "signed-in"; via: "privy" | "wallet"; method?: SignInMethod; user: ApiUser; session: SessionClient };
 
 export interface Auth {
   state: AuthState;
@@ -47,6 +49,8 @@ export interface Auth {
   busy: boolean;
   signInWithPrivy(): void;
   signInWithWallet(): Promise<void>;
+  /** A passkey account through Mera: `create` makes a new passkey on this device, `existing` asks for one already saved. */
+  signInWithPasskey(mode: "create" | "existing"): Promise<void>;
   signOut(): Promise<void>;
   /** The owner wallet's provider and address, for signing an owner operation. Never a key. */
   ownerWallet(): Promise<{ provider: Eip1193; address: string }>;
@@ -151,7 +155,7 @@ export function AuthProvider({ privy, privyError = null, children }: { privy: Pr
       const session = client.as({ via: "wallet" });
       try {
         const me = await session.me();
-        return done({ status: "signed-in", via: "wallet", user: me.user, session });
+        return done({ status: "signed-in", via: "wallet", method: readMethod() ?? "wallet", user: me.user, session });
       } catch (error) {
         if (!privyReady) return; // Privy may still restore a session.
         return done({ status: "signed-out", error: isApiError(error) && error.status === 401 ? null : describe(error) });
@@ -190,13 +194,48 @@ export function AuthProvider({ privy, privyError = null, children }: { privy: Pr
       await client.walletVerify(challenge.nonce, signature);
       const session = client.as({ via: "wallet" });
       const me = await session.me();
-      setState({ status: "signed-in", via: "wallet", user: me.user, session });
+      writeMethod("wallet");
+      setState({ status: "signed-in", via: "wallet", method: "wallet", user: me.user, session });
     } catch (error) {
       setState({ status: "signed-out", error: describe(error) });
     } finally {
       setBusy(false);
     }
   }, [client]);
+
+  // A passkey account is an ordinary wallet address to the API: the same EIP-4361 challenge, the same wallet session,
+  // and no new endpoint. One passkey prompt covers the sign-in; the PRF bytes are zeroed as soon as it is signed.
+  const signInWithPasskey = useCallback(
+    async (mode: "create" | "existing") => {
+      if (!client) return;
+      setBusy(true);
+      try {
+        const prf = mode === "create" ? await createPasskey() : await assertPasskey();
+        try {
+          const provider = createMeraProvider(async () => Uint8Array.from(prf));
+          const address = ((await provider.request({ method: "eth_requestAccounts" })) as string[])[0];
+          if (!address) throw new Error("The passkey did not yield an account.");
+          const challenge = await client.walletChallenge(address);
+          const signature = (await createMeraProvider(async () => Uint8Array.from(prf), address).request({
+            method: "personal_sign",
+            params: [messageHex(challenge.message), address],
+          })) as string;
+          await client.walletVerify(challenge.nonce, signature);
+        } finally {
+          prf.fill(0);
+        }
+        const session = client.as({ via: "wallet" });
+        const me = await session.me();
+        writeMethod("passkey");
+        setState({ status: "signed-in", via: "wallet", method: "passkey", user: me.user, session });
+      } catch (error) {
+        setState({ status: "signed-out", error: isApiError(error) ? describe(error) : describeMeraError(error) });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [client],
+  );
 
   const signOut = useCallback(async () => {
     setBusy(true);
@@ -205,6 +244,7 @@ export function AuthProvider({ privy, privyError = null, children }: { privy: Pr
       // Both are ended: a Privy session can outlive a failed API sign-in, and a wallet cookie can outlive a Privy one.
       if (privyRef.current?.authenticated) await privyRef.current.logout();
       await client?.signOut();
+      writeMethod(null);
     } catch {
       // Signing out locally still proceeds; the wallet session expires on its own.
     } finally {
@@ -223,6 +263,10 @@ export function AuthProvider({ privy, privyError = null, children }: { privy: Pr
       if (!provider) throw new Error(`Your owner wallet ${owner} is not available in this session.`);
       return { provider, address: owner };
     }
+    if (state.method === "passkey") {
+      // Each owner signature is a fresh passkey prompt; the provider refuses any passkey that is not the owner account.
+      return { provider: createMeraProvider(assertPasskey, owner), address: owner };
+    }
     const provider = injected();
     const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
     const address = accounts.find((a) => sameAddress(a, owner));
@@ -232,6 +276,6 @@ export function AuthProvider({ privy, privyError = null, children }: { privy: Pr
     return { provider, address };
   }, [state]);
 
-  const value: Auth = { state, client, privy, privyError, busy, signInWithPrivy, signInWithWallet, signOut, ownerWallet };
+  const value: Auth = { state, client, privy, privyError, busy, signInWithPrivy, signInWithWallet, signInWithPasskey, signOut, ownerWallet };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

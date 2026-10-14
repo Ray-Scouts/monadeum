@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Icon, Logo } from "@/components/Icon";
 import { Card } from "@/components/ui";
+import { passkeysSupported, readCredential } from "@/data/api/mera";
 import { shortAddress } from "@/lib/format";
 import { useAuth } from "./auth";
 import { SessionPending } from "./gate";
@@ -19,13 +20,30 @@ export interface SignInPanelProps {
   error: string | null;
   onPrivy(): void;
   onWallet(): void;
+  /** Passkey accounts through Mera. Optional so a screen that does not offer them still renders. */
+  onPasskey?(mode: "create" | "existing"): void;
+  /** False when the browser cannot run WebAuthn (or the page is not a secure context). */
+  passkeyAvailable?: boolean;
+  /** True when this browser already holds a passkey handle from an earlier sign-in, which makes signing in the main action. */
+  passkeyKnown?: boolean;
 }
 
 /**
  * Social login first, the external wallet below an "advanced" divider (BRIEF.md product principle, issue #27). Both
  * paths end at the same account on the API; this screen only captures intent, it decides nothing.
  */
-export function SignInPanel({ privyAvailable, privyReady, privyError = null, busy, error, onPrivy, onWallet }: SignInPanelProps) {
+export function SignInPanel({
+  privyAvailable,
+  privyReady,
+  privyError = null,
+  busy,
+  error,
+  onPrivy,
+  onWallet,
+  onPasskey,
+  passkeyAvailable = false,
+  passkeyKnown = false,
+}: SignInPanelProps) {
   return (
     <Card className="w-full max-w-[460px]">
       <h1 className="flex items-center gap-2.5 text-[26px] font-bold">
@@ -48,6 +66,29 @@ export function SignInPanel({ privyAvailable, privyReady, privyError = null, bus
           <p className="text-[13px] text-warn">{privyError ?? "Email and Google sign-in is not configured on this deployment (no Privy app ID)."}</p>
         )}
         <p className="text-[13px] text-muted">Email or Google creates a wallet for you. It owns your agents and is the only wallet that can sign for them. No MON is needed to sign in.</p>
+        {onPasskey && (
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost w-full justify-start! rounded-[14px] px-[18px] py-3.5"
+              disabled={!passkeyAvailable || busy}
+              onClick={() => onPasskey(passkeyKnown ? "existing" : "create")}
+            >
+              <Icon name="wallet" />
+              {passkeyKnown ? "Sign in with your passkey" : "Continue with a passkey"}
+            </button>
+            {passkeyKnown && (
+              <button type="button" className="text-left text-[13px] text-muted underline" disabled={!passkeyAvailable || busy} onClick={() => onPasskey("create")}>
+                Create a new passkey account instead
+              </button>
+            )}
+            <p className="text-[13px] text-muted">
+              {passkeyAvailable
+                ? "A passkey (Face ID, Touch ID, or a security key) creates a wallet through Mera, a preview library. There is no password and no seed phrase, and the same passkey opens the same wallet on any device it syncs to. If you lose the passkey you lose the wallet, so keep it backed up in your password manager."
+                : "Passkey accounts need a secure browser context with WebAuthn support, which this one does not offer."}
+            </p>
+          </>
+        )}
         <div className="my-1.5 flex items-center gap-3 text-xs text-faint before:h-px before:flex-1 before:bg-line-soft after:h-px after:flex-1 after:bg-line-soft">advanced</div>
         <button type="button" className="btn btn-ghost w-full justify-start! rounded-[14px] px-[18px] py-3.5" disabled={busy} onClick={onWallet}>
           <Icon name="wallet" />
@@ -76,6 +117,13 @@ export function LoginScreen() {
     const target = loginDecision(auth.state, window.location.search);
     if (target.kind === "redirect") router.replace(target.to);
   }, [auth.state, router]);
+  // Browser capabilities and storage are read after mount, so the server render and the first client render agree.
+  const [passkeyReady, setPasskeyReady] = useState(false);
+  const [passkeyKnown, setPasskeyKnown] = useState(false);
+  useEffect(() => {
+    setPasskeyReady(passkeysSupported());
+    setPasskeyKnown(readCredential() !== null);
+  }, []);
   if (decision.kind !== "render") return <SessionPending />;
   return (
     <main className="grid min-h-screen place-items-center px-4 py-10">
@@ -87,6 +135,9 @@ export function LoginScreen() {
         error={auth.state.status === "signed-out" ? auth.state.error : null}
         onPrivy={auth.signInWithPrivy}
         onWallet={() => void auth.signInWithWallet()}
+        onPasskey={(mode) => void auth.signInWithPasskey(mode)}
+        passkeyAvailable={passkeyReady}
+        passkeyKnown={passkeyKnown}
       />
     </main>
   );
@@ -96,11 +147,12 @@ export function LoginScreen() {
 export function AccountChip() {
   const auth = useAuth();
   if (auth.state.status !== "signed-in") return null;
-  const { user, via } = auth.state;
+  const { user, via, method } = auth.state;
+  const label = via === "privy" ? "Email or Google" : method === "passkey" ? "Passkey" : "Wallet";
   return (
     <span className="inline-flex items-center gap-2 rounded-full border border-line-soft bg-surface-2 py-1 pr-1 pl-3 text-[13px]">
-      <span title={via === "privy" ? "Signed in with email or Google" : "Signed in with an external wallet"} className="text-muted">
-        {via === "privy" ? "Email or Google" : "Wallet"}
+      <span title={via === "privy" ? "Signed in with email or Google" : method === "passkey" ? "Signed in with a passkey" : "Signed in with an external wallet"} className="text-muted">
+        {label}
       </span>
       {user.ownerWallet && (
         <span title={`Owner wallet ${user.ownerWallet}`} className="hidden font-mono sm:inline">
