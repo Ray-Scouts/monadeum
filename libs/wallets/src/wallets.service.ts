@@ -164,7 +164,7 @@ export interface SessionStatus {
   acceptedOnChain: boolean;
 }
 
-const brief = (error: unknown) => (error instanceof Error ? error.message : String(error)).split("\n")[0]!.slice(0, 200);
+const brief = (error: unknown, max = 200) => (error instanceof Error ? error.message : String(error)).split("\n")[0]!.slice(0, max);
 
 /**
  * WalletsModule logic, ARCHITECTURE.md sections 6, 7 and 10. Owns the agent account record, the session key, and the
@@ -708,7 +708,7 @@ export class WalletsService {
         attempt.reserved = 0n;
         attempt.rejected = true;
         await this.store.updateOperation(tick);
-        return { ok: false, reason: "rejected", detail: brief(error) };
+        return { ok: false, reason: "rejected", detail: brief(error, 500) };
       }
       return { ok: false, reason: "submission-unknown", detail: brief(error), userOpHash: prepared.userOpHash };
     }
@@ -826,7 +826,7 @@ export class WalletsService {
     } catch (error) {
       if (error instanceof SubmissionRejectedError) {
         if (reserved > 0n) await this.ledger.release(agentId, reserved);
-        return { ok: false, reason: "rejected", detail: brief(error) };
+        return { ok: false, reason: "rejected", detail: brief(error, 500) };
       }
       // The bundler may have accepted it. Keep the reservation: the budget fails closed, never open.
       return { ok: false, reason: "submission-unknown", detail: brief(error), userOpHash: prepared.userOpHash };
