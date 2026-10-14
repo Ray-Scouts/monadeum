@@ -81,7 +81,7 @@ An attacker sends a token or NFT directly to an agent's smart account. If any pa
 
 **Consequence if unmitigated**: expanded transaction authority granted from an untrusted, attacker-controlled event, with no independent approval step.
 
-**Mitigation**: security invariant 2 (section 7 below) states this directly: receiving any asset never changes an agent's permissions, spend limits, or session-key scope by itself. Permission changes are a distinct, explicit, owner-authorized action only.
+**Mitigation**: security invariant 2 (section 7 below) states this directly: receiving any asset never changes an agent's permissions, spend limits, or session-key scope by itself. Permission changes are a distinct, explicit, owner-authorized action only. A deposit does raise the capital the strategy sizes from, so a buy can be proposed larger than before; the tick clips it to the unchanged per-action cap (`ARCHITECTURE.md` section 11, "Buy size clipped to the caps"), so the deposit can change at most whether and when an agent trades at the cap, never how much it may spend. The worker's scenario B test asserts this: after a large unsolicited deposit, the one operation sent spends exactly the signed per-action cap.
 
 ### Scenario C: x402 discovery-layer manipulation
 

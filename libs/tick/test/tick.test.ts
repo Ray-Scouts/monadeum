@@ -19,6 +19,7 @@ const observation = (over: Partial<Observation> = {}): Observation => ({
   decimals: 6,
   maxSlippageBps: 50,
   position: 0n,
+  maxNotional: null,
   offer: null,
   ...over,
 });
@@ -93,6 +94,20 @@ test("a flat decision closes an open position with no declared size, and is no a
   const none = await runTick(new MemoryTickStore(), "a", 1, idle.p);
   assert.equal(none.outcome?.kind, "no-action");
   assert.equal(idle.log.submits, 0);
+});
+
+test("a buy above the per-action cap is clipped to it, and nothing is clipped without a policy in effect", async () => {
+  // capital 100 at risk tolerance 0.1 proposes a 10 USDC buy.
+  const notionals = async (maxNotional: bigint | null) => {
+    const seen: bigint[] = [];
+    const { p } = ports({ observe: async () => observation({ maxNotional }) });
+    p.trading = { ...p.trading, prepare: async (proposal) => { seen.push(proposal.action!.notional); return { ok: true, trade }; } };
+    await runTick(new MemoryTickStore(), "a", 1, p);
+    return seen;
+  };
+  assert.deepEqual(await notionals(1_000_000n), [1_000_000n]);
+  assert.deepEqual(await notionals(50_000_000n), [10_000_000n]);
+  assert.deepEqual(await notionals(null), [10_000_000n]);
 });
 
 test("the RiskModule checks the built plan, and a rejection is logged without anything being sent", async () => {

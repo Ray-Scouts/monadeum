@@ -148,6 +148,16 @@ function toReceipt(receipt: UserOperationReceipt<"0.7">): OperationReceipt {
   };
 }
 
+/**
+ * One line for a bundler rejection, the bundler's own reason first (for example the EntryPoint's AA code and revert
+ * data), because callers keep only the first line: viem's message starts with a generic sentence and puts that reason
+ * on a later "Details:" line.
+ */
+function rejectionReason(error: unknown): string {
+  if (!(error instanceof BaseError)) return error instanceof Error ? error.message : String(error);
+  return [error.details, error.shortMessage].filter(Boolean).join(" | ").replace(/\s*\n\s*/g, " ");
+}
+
 function isBundlerRejection(error: unknown): boolean {
   return error instanceof BaseError && error.walk((e) => e instanceof RpcRequestError) instanceof RpcRequestError;
 }
@@ -299,7 +309,7 @@ export class ZeroDevChain implements WalletsChain {
             params: [formatUserOperationRequest({ ...op, signature }), entryPoint.address],
           }, { retryCount: 0 });
         } catch (error) {
-          if (isBundlerRejection(error)) throw new SubmissionRejectedError(error instanceof Error ? error.message : String(error));
+          if (isBundlerRejection(error)) throw new SubmissionRejectedError(rejectionReason(error));
           throw error;
         }
       },

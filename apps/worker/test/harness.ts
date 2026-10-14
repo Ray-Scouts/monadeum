@@ -79,6 +79,8 @@ const operator = privateKeyToAccount(generatePrivateKey());
 export class FakeToken implements ChainReader {
   readonly balances = new Map<string, bigint>();
   readonly window = new Map<string, bigint>();
+  /** On-chain per-tx caps by account; an account without one is unbounded here, so the signed policy's cap binds. */
+  readonly perTx = new Map<string, bigint>();
   async decimals() {
     return DECIMALS;
   }
@@ -87,6 +89,9 @@ export class FakeToken implements ChainReader {
   }
   async windowTotal(account: Hex) {
     return this.window.get(account.toLowerCase()) ?? 0n;
+  }
+  async perTxCap(account: Hex) {
+    return this.perTx.get(account.toLowerCase()) ?? 2n ** 128n - 1n;
   }
   mint(account: Hex, amount: bigint) {
     this.balances.set(account.toLowerCase(), (this.balances.get(account.toLowerCase()) ?? 0n) + amount);

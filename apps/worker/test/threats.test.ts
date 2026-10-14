@@ -79,14 +79,21 @@ test("scenario B: an unsolicited deposit changes no permission, spend limit, ses
 
   // The attacker sends the agent a large amount of the settlement asset directly.
   w.token.mint(account, 1_000_000n * UNIT);
-  const { worker, risk } = await w.boot();
-  const result = await worker.tick("1", 1);
 
-  // The strategy now sizes off a much larger capital, but the per-action cap the policy signed still binds it: the
-  // oversized trade is rejected on the unchanged cap, and nothing is sent.
-  assert.equal(result?.outcome?.kind === "failed" && result.outcome.step, "policy");
-  assert.ok(result?.outcome?.kind === "failed" && result.outcome.violations?.includes("per-action-cap"));
+  // The attacker, now a sender of funds, is still not an allowed recipient.
+  const { worker: tampering } = await w.boot({ trading: tampered((calls) => [...calls, { target: w.market.quote, data: transfer(ATTACKER, 1n) }]) });
+  const out = await tampering.tick("1", 1);
+  assert.equal(out?.outcome?.kind === "failed" && out.outcome.step, "policy");
+  assert.equal(await w.token.balanceOf(ATTACKER), 0n);
   assert.equal(sessions(w), 0);
+
+  // The strategy now sizes off a much larger capital, but the per-action cap the policy signed still binds it: the tick
+  // clips the buy to the unchanged cap, and the one operation sent spends exactly that cap, no more.
+  const { worker, risk } = await w.boot();
+  const result = await worker.tick("1", 2);
+  assert.equal(result?.action, "executed");
+  assert.equal(sessions(w), 1);
+  assert.equal(await w.token.windowTotal(account), 50n * UNIT, "the spend is the signed per-action cap");
   assertOnlyApprovedPlansSent(w, risk.approved);
 
   // Nothing about the agent's authority moved: no owner operation, the same session record, the same registry record.
@@ -94,12 +101,6 @@ test("scenario B: an unsolicited deposit changes no permission, spend limit, ses
   assert.equal(JSON.stringify(await w.stores.wallets.get("1"), (_k, v) => (typeof v === "bigint" ? v.toString() : v)), before.wallet);
   const agent = JSON.stringify(await w.stores.agents.get("1"), (_k, v) => (typeof v === "bigint" ? v.toString() : v));
   assert.equal(agent, before.agent, "principal and genome are unchanged: only an owner deposit through the indexer raises principal");
-
-  // And the attacker, now a sender of funds, is still not an allowed recipient.
-  const { worker: next } = await w.boot({ trading: tampered((calls) => [...calls, { target: w.market.quote, data: transfer(ATTACKER, 1n) }]) });
-  const out = await next.tick("1", 3);
-  assert.equal(out?.outcome?.kind === "failed" && out.outcome.step, "policy");
-  assert.equal(await w.token.balanceOf(ATTACKER), 0n);
 });
 
 test("scenario C: an agent naming an unlisted provider buys nothing from it and asks it nothing", async () => {

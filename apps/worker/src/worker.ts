@@ -19,6 +19,8 @@ import type { BreakerTrip, PopulationBreaker } from "./breaker.js";
 import type { ChainReader, MarketSource } from "./ports.js";
 
 /** STARTING value (hypothesis, ARCHITECTURE.md section 8.1): the most the optional Smart Money signal moves the market signal. */
+const min = (a: bigint, b: bigint) => (a < b ? a : b);
+
 export const SMART_MONEY_WEIGHT = 0.001;
 
 export interface WorkerSettings {
@@ -269,11 +271,11 @@ export class AgentWorker {
   }
 
   private async observe(agent: AgentRecord): Promise<Observation | null> {
-    const { chain, market, agents, settings, trading } = this.deps;
-    let decimals: number, capital: bigint, spentInWindow: bigint, reading, position;
+    const { chain, market, agents, settings, trading, risk } = this.deps;
+    let decimals: number, capital: bigint, spentInWindow: bigint, perTxCap: bigint, reading, position;
     try {
-      [decimals, capital, spentInWindow, reading, position] = await Promise.all([
-        chain.decimals(), chain.balanceOf(agent.account), chain.windowTotal(agent.account), market.read(agent), trading.position(agent.agentId),
+      [decimals, capital, spentInWindow, perTxCap, reading, position] = await Promise.all([
+        chain.decimals(), chain.balanceOf(agent.account), chain.windowTotal(agent.account), chain.perTxCap(agent.account), market.read(agent), trading.position(agent.agentId),
       ]);
     } catch {
       return null;
@@ -313,6 +315,8 @@ export class AgentWorker {
       decimals,
       maxSlippageBps: settings.maxSlippageBps,
       position: position.size,
+      // A buy sized above either per-action cap would only be rejected, so the tick clips it to the lower of the two.
+      maxNotional: risk.active() ? min(risk.active()!.document.perActionCap, perTxCap) : null,
       offer: info && provider && maxPrice !== undefined && maxPrice > 0n
         ? { provider, resource: info.resource(agent.genome.pair), maxPrice }
         : null,

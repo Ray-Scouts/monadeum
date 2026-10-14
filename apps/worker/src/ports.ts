@@ -9,6 +9,8 @@ export interface ChainReader {
   balanceOf(account: Hex): Promise<bigint>;
   /** The spend policy's `windowTotal(account)` (section 16.3), so the RiskModule and the chain use one window. */
   windowTotal(account: Hex): Promise<bigint>;
+  /** The spend policy's `limits(account).perTxCap` (section 16.3), the most one operation may spend on chain. */
+  perTxCap(account: Hex): Promise<bigint>;
 }
 
 /** The market reading a tick observes. Every field is untrusted input until validated. */
